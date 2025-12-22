@@ -1,0 +1,41 @@
+{
+  "name": "mcp-factorial",
+  "version": "1.0.0",
+  "description": "MCP server for FactorialHR - Access employee and organizational data from FactorialHR in Claude Code and other MCP clients",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-factorial": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "factorial",
+    "factorialhr",
+    "hr",
+    "claude",
+    "anthropic"
+  ],
+  "author": "t4dhg",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/t4dhg/mcp-factorial.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
