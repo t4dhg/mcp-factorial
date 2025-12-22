@@ -31,14 +31,14 @@ We believe AI assistants should help with organizational tasks without having ac
 
 | Tool | Description |
 |------|-------------|
-| `list_employees` | Get all employees with optional team/location filters |
-| `get_employee` | Get employee details (name, role, contact, team assignments) |
+| `list_employees` | Get all employees with optional team/location filters. Returns name, email, role, manager, hire date, and more. |
+| `get_employee` | Get detailed information about a specific employee by ID |
 | `search_employees` | Search employees by name or email |
 | `list_teams` | View organizational team structure |
 | `get_team` | Get team details and member list |
 | `list_locations` | Get company office locations |
 | `get_location` | Get location details (address, contact info) |
-| `get_employee_contracts` | View job titles and employment dates |
+| `get_employee_contracts` | View job titles and contract effective dates for an employee |
 
 ## Quick Start
 
@@ -140,6 +140,12 @@ npx @modelcontextprotocol/inspector
 |---------------------|-------------|----------|
 | `FACTORIAL_API_KEY` | Your FactorialHR API key | Yes |
 | `DEBUG` | Enable debug logging (`true`/`false`) | No |
+
+## Known Limitations
+
+- **`hired_on` field**: The FactorialHR API may not populate the `hired_on` field for all employees. If you need hire dates, you may need to use contract effective dates as a proxy.
+- **Contract filtering**: The `get_employee_contracts` tool fetches all contracts and filters client-side, which may be slow for organizations with many employees.
+- **Employee IDs**: Higher employee IDs generally indicate more recent additions, but this is not guaranteed.
 
 ## Contributing
 

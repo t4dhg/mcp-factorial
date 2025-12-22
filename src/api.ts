@@ -164,7 +164,13 @@ export async function listContracts(employeeId?: number): Promise<Contract[]> {
   if (employeeId !== undefined && employeeId <= 0) {
     throw new Error('Invalid employee ID. Please provide a positive number.');
   }
-  const params = employeeId ? { employee_id: employeeId } : undefined;
-  const data = await factorialFetch<{ data: Contract[] }>('/contracts/contract-versions', params);
-  return data.data || [];
+  // Note: The API doesn't reliably filter by employee_id query param,
+  // so we fetch all contracts and filter client-side
+  const data = await factorialFetch<{ data: Contract[] }>('/contracts/contract-versions');
+  const contracts = data.data || [];
+
+  if (employeeId !== undefined) {
+    return contracts.filter(c => c.employee_id === employeeId);
+  }
+  return contracts;
 }

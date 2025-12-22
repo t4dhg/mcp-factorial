@@ -7,6 +7,8 @@ export interface Employee {
   full_name: string;
   email: string;
   birthday_on: string | null;
+  hired_on: string | null;
+  start_date: string | null;
   terminated_on: string | null;
   gender: string | null;
   nationality: string | null;

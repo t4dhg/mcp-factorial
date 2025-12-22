@@ -98,6 +98,11 @@ server.registerTool(
         role: e.role,
         team_ids: e.team_ids,
         location_id: e.location_id,
+        manager_id: e.manager_id,
+        hired_on: e.hired_on,
+        terminated_on: e.terminated_on,
+        birthday_on: e.birthday_on,
+        created_at: e.created_at,
       }));
       return {
         content: [
@@ -128,11 +133,16 @@ server.registerTool(
   async ({ id }) => {
     try {
       const employee = await getEmployee(id);
+      if (!employee) {
+        return {
+          content: [{ type: 'text', text: `Employee with ID ${id} not found.` }],
+        };
+      }
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(employee, null, 2),
+            text: `Employee details:\n\n${JSON.stringify(employee, null, 2)}`,
           },
         ],
       };
