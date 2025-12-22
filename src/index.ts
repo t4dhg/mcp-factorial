@@ -7,8 +7,52 @@
  * through the Model Context Protocol for use with Claude Code and other MCP clients.
  */
 
-// Load environment variables from .env file (if present)
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { existsSync } from 'fs';
+import { join } from 'path';
+
+// Load environment variables from .env file
+// Priority: ENV_FILE_PATH > cwd/.env > home/.env
+function loadEnv(): void {
+  // 1. Check if explicit path provided
+  if (process.env.ENV_FILE_PATH && existsSync(process.env.ENV_FILE_PATH)) {
+    config({ path: process.env.ENV_FILE_PATH });
+    return;
+  }
+
+  // 2. Check current working directory
+  const cwdEnv = join(process.cwd(), '.env');
+  if (existsSync(cwdEnv)) {
+    config({ path: cwdEnv });
+    return;
+  }
+
+  // 3. Check home directory
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const homeEnv = join(homeDir, '.env');
+  if (existsSync(homeEnv)) {
+    config({ path: homeEnv });
+    return;
+  }
+
+  // 4. Check common project locations
+  const commonPaths = [
+    join(homeDir, 'turborepo', '.env'),
+    join(homeDir, 'projects', '.env'),
+  ];
+
+  for (const envPath of commonPaths) {
+    if (existsSync(envPath)) {
+      config({ path: envPath });
+      return;
+    }
+  }
+
+  // Fall back to default dotenv behavior
+  config();
+}
+
+loadEnv();
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
