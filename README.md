@@ -24,27 +24,30 @@ A Model Context Protocol (MCP) server for [FactorialHR](https://factorialhr.com/
 
 ## Installation
 
-### For Claude Code
+### Option 1: Using .env file (Recommended)
 
-Add to your `.mcp.json` file:
+1. Add to your `.mcp.json` file:
 
 ```json
 {
   "mcpServers": {
     "factorial": {
       "command": "npx",
-      "args": ["-y", "github:t4dhg/mcp-factorial"],
-      "env": {
-        "FACTORIAL_API_KEY": "your-api-key-here"
-      }
+      "args": ["-y", "github:t4dhg/mcp-factorial"]
     }
   }
 }
 ```
 
-### For Claude Desktop
+2. Create a `.env` file in your project root:
 
-Add to your Claude Desktop configuration:
+```env
+FACTORIAL_API_KEY=your-api-key-here
+```
+
+### Option 2: Using MCP env configuration
+
+Add to your `.mcp.json` file with the key directly:
 
 ```json
 {
@@ -65,9 +68,9 @@ Add to your Claude Desktop configuration:
 1. Log in to FactorialHR as an administrator
 2. Go to Settings > Integrations > API
 3. Generate a new API key
-4. Copy the key and add it to your MCP configuration
+4. Copy the key to your `.env` file or MCP configuration
 
-> **Security Note**: API keys have full access to your FactorialHR data and never expire. Store them securely and never commit them to version control.
+> **Security Note**: API keys have full access to your FactorialHR data and never expire. Store them securely and never commit them to version control. The `.env` file should be added to `.gitignore`.
 
 ## Usage Examples
 

@@ -7,6 +7,9 @@
  * through the Model Context Protocol for use with Claude Code and other MCP clients.
  */
 
+// Load environment variables from .env file (if present)
+import 'dotenv/config';
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as z from 'zod';
