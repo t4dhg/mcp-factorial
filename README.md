@@ -49,7 +49,7 @@ We believe AI assistants should help with organizational tasks without having ac
   "mcpServers": {
     "factorial": {
       "command": "npx",
-      "args": ["-y", "github:t4dhg/mcp-factorial"]
+      "args": ["-y", "@t4dhg/mcp-factorial"]
     }
   }
 }
@@ -70,7 +70,7 @@ Or pass it directly in the MCP config:
   "mcpServers": {
     "factorial": {
       "command": "npx",
-      "args": ["-y", "github:t4dhg/mcp-factorial"],
+      "args": ["-y", "@t4dhg/mcp-factorial"],
       "env": {
         "FACTORIAL_API_KEY": "your-api-key-here"
       }

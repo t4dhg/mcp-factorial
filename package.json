@@ -1,11 +1,21 @@
 {
-  "name": "mcp-factorial",
+  "name": "@t4dhg/mcp-factorial",
   "version": "1.0.0",
   "description": "MCP server for FactorialHR - Access employee and organizational data from FactorialHR in Claude Code and other MCP clients",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "mcp-factorial": "dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
     "build": "tsc",
