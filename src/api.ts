@@ -2,7 +2,7 @@
 
 import type { Employee, Team, Location, Contract } from './types.js';
 
-const FACTORIAL_BASE_URL = 'https://api.factorialhr.com/api/2024-10-01/resources';
+const FACTORIAL_BASE_URL = 'https://api.factorialhr.com/api/2025-10-01/resources';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 
 const DEBUG = process.env.DEBUG === 'true';
