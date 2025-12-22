@@ -1,32 +1,48 @@
 # MCP FactorialHR
 
-A Model Context Protocol (MCP) server for [FactorialHR](https://factorialhr.com/) that provides access to employee and organizational data from within Claude Code, Claude Desktop, and other MCP-compatible clients.
+> **Secure, privacy-focused access to FactorialHR data for AI assistants**
 
-## Features
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen.svg)](https://nodejs.org/)
 
-- **Employee Management**: List, search, and get detailed employee information
-- **Team Organization**: View teams and their members
-- **Location Data**: Access company location information
-- **Contract Information**: Get employee contract details
+A Model Context Protocol (MCP) server that provides AI assistants like Claude with secure, read-only access to your FactorialHR employee and organizational data. Built with privacy and security as core principles.
+
+## Why This MCP Server?
+
+- **Privacy-First Design**: Deliberately excludes payroll, compensation, and sensitive financial data. Your salary information stays private.
+- **Read-Only Access**: No write operations - Claude can view but never modify your HR data.
+- **Organizational Focus**: Optimized for team structure, employee directories, and location lookups - the data you actually need for AI-assisted workflows.
+- **Enterprise Ready**: Built for companies who need AI integration without compromising data security.
+
+## Security by Design
+
+This MCP server intentionally **does NOT expose**:
+- Payroll and salary information
+- Bank account details
+- Tax documents
+- Compensation packages
+- Benefits enrollment data
+- Personal identification numbers
+
+We believe AI assistants should help with organizational tasks without having access to your most sensitive HR data.
 
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `list_employees` | Get all employees, optionally filtered by team or location |
-| `get_employee` | Get detailed information about a specific employee |
+| `list_employees` | Get all employees with optional team/location filters |
+| `get_employee` | Get employee details (name, role, contact, team assignments) |
 | `search_employees` | Search employees by name or email |
-| `list_teams` | Get all teams in the organization |
-| `get_team` | Get detailed information about a specific team |
-| `list_locations` | Get all company locations |
-| `get_location` | Get detailed information about a specific location |
-| `get_employee_contracts` | Get contract versions for an employee |
+| `list_teams` | View organizational team structure |
+| `get_team` | Get team details and member list |
+| `list_locations` | Get company office locations |
+| `get_location` | Get location details (address, contact info) |
+| `get_employee_contracts` | View job titles and employment dates |
 
-## Installation
+## Quick Start
 
-### Option 1: Using .env file (Recommended)
-
-1. Add to your `.mcp.json` file:
+### 1. Add to your MCP configuration
 
 ```json
 {
@@ -39,15 +55,15 @@ A Model Context Protocol (MCP) server for [FactorialHR](https://factorialhr.com/
 }
 ```
 
-2. Create a `.env` file in your project root:
+### 2. Set your API key
+
+Create a `.env` file in your project root:
 
 ```env
 FACTORIAL_API_KEY=your-api-key-here
 ```
 
-### Option 2: Using MCP env configuration
-
-Add to your `.mcp.json` file with the key directly:
+Or pass it directly in the MCP config:
 
 ```json
 {
@@ -63,24 +79,40 @@ Add to your `.mcp.json` file with the key directly:
 }
 ```
 
+### 3. Start using it!
+
+Once configured, ask Claude things like:
+
+- *"Who's on the Engineering team?"*
+- *"Find the email for John Smith"*
+- *"What offices do we have?"*
+- *"Show me the org structure"*
+
 ## Getting an API Key
 
-1. Log in to FactorialHR as an administrator
-2. Go to Settings > Integrations > API
+1. Log in to [FactorialHR](https://app.factorialhr.com) as an administrator
+2. Navigate to **Settings → Integrations → API**
 3. Generate a new API key
-4. Copy the key to your `.env` file or MCP configuration
+4. Add it to your `.env` file
 
-> **Security Note**: API keys have full access to your FactorialHR data and never expire. Store them securely and never commit them to version control. The `.env` file should be added to `.gitignore`.
+> **Important**: API keys have full access to FactorialHR and never expire. Store them securely and rotate them periodically.
 
-## Usage Examples
+## Use Cases
 
-Once configured, you can ask Claude:
+### For Managers
+- Quickly look up team member contact information
+- Understand org chart and reporting structures
+- Find employees by skill or department
 
-- "List all employees in the company"
-- "Search for employees named John"
-- "Show me the teams in the organization"
-- "Get the details for employee ID 123"
-- "What locations does the company have?"
+### For HR
+- Power AI-assisted employee directory searches
+- Streamline onboarding information lookups
+- Support with organizational queries
+
+### For Developers
+- Build AI workflows that need employee context
+- Create custom Claude integrations
+- Automate org-chart-aware processes
 
 ## Development
 
@@ -95,10 +127,28 @@ npm install
 # Build
 npm run build
 
-# Run locally (for testing)
-FACTORIAL_API_KEY=your-key-here npm start
+# Run locally
+FACTORIAL_API_KEY=your-key npm start
+
+# Test with MCP Inspector
+npx @modelcontextprotocol/inspector
 ```
+
+## Configuration Options
+
+| Environment Variable | Description | Required |
+|---------------------|-------------|----------|
+| `FACTORIAL_API_KEY` | Your FactorialHR API key | Yes |
+| `DEBUG` | Enable debug logging (`true`/`false`) | No |
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT
+MIT © [t4dhg](https://github.com/t4dhg)
+
+---
+
+*Built with the [Model Context Protocol](https://modelcontextprotocol.io/) by Anthropic*
