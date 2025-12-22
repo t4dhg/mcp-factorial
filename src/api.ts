@@ -2,7 +2,7 @@
 
 import type { Employee, Team, Location, Contract } from './types.js';
 
-const FACTORIAL_BASE_URL = 'https://api.factorialhr.com/api/2025-01-01/resources';
+const FACTORIAL_BASE_URL = 'https://api.factorialhr.com/api/2024-10-01/resources';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 
 const DEBUG = process.env.DEBUG === 'true';
@@ -103,7 +103,7 @@ export async function listEmployees(options?: {
   team_id?: number;
   location_id?: number;
 }): Promise<Employee[]> {
-  const data = await factorialFetch<{ data: Employee[] }>('/core/employees', options);
+  const data = await factorialFetch<{ data: Employee[] }>('/employees/employees', options);
   return data.data || [];
 }
 
@@ -111,7 +111,7 @@ export async function getEmployee(id: number): Promise<Employee> {
   if (!id || id <= 0) {
     throw new Error('Invalid employee ID. Please provide a positive number.');
   }
-  const data = await factorialFetch<{ data: Employee }>(`/core/employees/${id}`);
+  const data = await factorialFetch<{ data: Employee }>(`/employees/employees/${id}`);
   return data.data;
 }
 
@@ -133,7 +133,7 @@ export async function searchEmployees(query: string): Promise<Employee[]> {
 
 // Team endpoints
 export async function listTeams(): Promise<Team[]> {
-  const data = await factorialFetch<{ data: Team[] }>('/core/teams');
+  const data = await factorialFetch<{ data: Team[] }>('/teams/teams');
   return data.data || [];
 }
 
@@ -141,13 +141,13 @@ export async function getTeam(id: number): Promise<Team> {
   if (!id || id <= 0) {
     throw new Error('Invalid team ID. Please provide a positive number.');
   }
-  const data = await factorialFetch<{ data: Team }>(`/core/teams/${id}`);
+  const data = await factorialFetch<{ data: Team }>(`/teams/teams/${id}`);
   return data.data;
 }
 
 // Location endpoints
 export async function listLocations(): Promise<Location[]> {
-  const data = await factorialFetch<{ data: Location[] }>('/core/locations');
+  const data = await factorialFetch<{ data: Location[] }>('/locations/locations');
   return data.data || [];
 }
 
@@ -155,7 +155,7 @@ export async function getLocation(id: number): Promise<Location> {
   if (!id || id <= 0) {
     throw new Error('Invalid location ID. Please provide a positive number.');
   }
-  const data = await factorialFetch<{ data: Location }>(`/core/locations/${id}`);
+  const data = await factorialFetch<{ data: Location }>(`/locations/locations/${id}`);
   return data.data;
 }
 
@@ -165,6 +165,6 @@ export async function listContracts(employeeId?: number): Promise<Contract[]> {
     throw new Error('Invalid employee ID. Please provide a positive number.');
   }
   const params = employeeId ? { employee_id: employeeId } : undefined;
-  const data = await factorialFetch<{ data: Contract[] }>('/contracts/contract_versions', params);
+  const data = await factorialFetch<{ data: Contract[] }>('/contracts/contract-versions', params);
   return data.data || [];
 }
