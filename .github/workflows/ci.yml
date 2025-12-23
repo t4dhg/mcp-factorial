@@ -54,6 +54,8 @@ jobs:
 
       - name: Run tests with coverage
         run: npm run test:coverage
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov
         if: matrix.node-version == 20
@@ -61,4 +63,12 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
+          fail_ci_if_error: false
+
+      - name: Upload test results to Codecov
+        if: matrix.node-version == 20
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./test-results/junit.xml
           fail_ci_if_error: false

@@ -35,6 +35,7 @@ CLAUDE.md
 # Test coverage
 coverage/
 .nyc_output/
+test-results/
 
 # Vitest
 .vitest/

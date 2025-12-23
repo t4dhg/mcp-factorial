@@ -3,9 +3,14 @@
 > **The definitive Model Context Protocol server for FactorialHR**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
+[![CI](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml/badge.svg)](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/t4dhg/mcp-factorial/branch/main/graph/badge.svg)](https://codecov.io/gh/t4dhg/mcp-factorial)
+[![bundle](https://codecov.io/github/t4dhg/mcp-factorial/graph/bundle/mcp-factorial/badge.svg)](https://codecov.io/github/t4dhg/mcp-factorial/bundle/main/mcp-factorial)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen.svg)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
+[![npm downloads](https://img.shields.io/npm/dm/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
 A comprehensive Model Context Protocol (MCP) server that provides AI assistants like Claude with full access to FactorialHR. Manage employees, teams, time off, projects, training, recruiting, and more - all with built-in safety guardrails.
 
