@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { OperationRisk, OPERATION_POLICIES } from '../../write-safety.js';
+import {
+  OperationRisk,
+  OPERATION_POLICIES,
+  requiresConfirmation,
+  getWarningMessage,
+} from '../../write-safety.js';
 
 describe('Write Safety Module', () => {
   describe('OperationRisk enum', () => {
@@ -159,6 +164,80 @@ describe('Write Safety Module', () => {
           expect(policy.requiresConfirmation).toBe(true);
         }
       }
+    });
+  });
+
+  describe('requiresConfirmation', () => {
+    it('should return true for high-risk operations', () => {
+      expect(requiresConfirmation('terminate_employee')).toBe(true);
+      expect(requiresConfirmation('delete_team')).toBe(true);
+      expect(requiresConfirmation('delete_location')).toBe(true);
+      expect(requiresConfirmation('delete_project')).toBe(true);
+    });
+
+    it('should return false for low-risk operations', () => {
+      expect(requiresConfirmation('update_employee')).toBe(false);
+      expect(requiresConfirmation('update_team')).toBe(false);
+      expect(requiresConfirmation('create_shift')).toBe(false);
+    });
+
+    it('should return false for medium-risk operations', () => {
+      expect(requiresConfirmation('create_employee')).toBe(false);
+      expect(requiresConfirmation('create_team')).toBe(false);
+    });
+
+    it('should return false for unknown operations (default policy)', () => {
+      expect(requiresConfirmation('unknown_operation')).toBe(false);
+    });
+  });
+
+  describe('getWarningMessage', () => {
+    it('should return warning message for high-risk operations', () => {
+      const message = getWarningMessage('terminate_employee');
+
+      expect(message).toBeTruthy();
+      expect(message).toContain('**Warning:**');
+      expect(message).toContain('high-risk');
+      expect(message).toContain('confirm: true');
+    });
+
+    it('should return warning message for critical-risk operations', () => {
+      const message = getWarningMessage('delete_team');
+
+      expect(message).toBeTruthy();
+      expect(message).toContain('**Warning:**');
+    });
+
+    it('should return null for low-risk operations', () => {
+      const message = getWarningMessage('update_employee');
+      expect(message).toBeNull();
+    });
+
+    it('should return null for medium-risk operations', () => {
+      const message = getWarningMessage('create_employee');
+      expect(message).toBeNull();
+    });
+
+    it('should include impact description in message', () => {
+      const message = getWarningMessage('terminate_employee');
+
+      expect(message).toBeTruthy();
+      const policy = OPERATION_POLICIES.terminate_employee;
+      if (policy.impactDescription) {
+        expect(message).toContain(policy.impactDescription);
+      }
+    });
+
+    it('should include confirmation instruction for operations requiring confirmation', () => {
+      const message = getWarningMessage('delete_team');
+
+      expect(message).toBeTruthy();
+      expect(message).toContain('confirm: true');
+    });
+
+    it('should return null for unknown operations (default policy)', () => {
+      const message = getWarningMessage('unknown_operation');
+      expect(message).toBeNull();
     });
   });
 });

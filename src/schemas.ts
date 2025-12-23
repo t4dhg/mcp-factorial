@@ -184,6 +184,7 @@ export const DocumentSchema = z.object({
   id: z.number(),
   name: z.string(),
   folder_id: z.number().nullable(),
+  employee_id: z.number().nullable(), // Employee the document belongs to
   author_id: z.number().nullable(),
   company_id: z.number().nullable(),
   public: z.boolean().default(false),

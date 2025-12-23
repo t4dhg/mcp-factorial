@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuditAction, auditedOperation } from '../../audit.js';
+import { AuditAction, auditedOperation, auditLogger } from '../../audit.js';
 
 describe('Audit Module', () => {
   beforeEach(() => {
@@ -111,6 +111,64 @@ describe('Audit Module', () => {
       expect(AuditAction.UNARCHIVE).toBe('UNARCHIVE');
       expect(AuditAction.ASSIGN).toBe('ASSIGN');
       expect(AuditAction.UNASSIGN).toBe('UNASSIGN');
+    });
+  });
+
+  describe('AuditLogger', () => {
+    beforeEach(() => {
+      auditLogger.clear();
+    });
+
+    it('should filter logs by entity type', async () => {
+      const op1 = vi.fn().mockResolvedValue({ id: 1 });
+      const op2 = vi.fn().mockResolvedValue({ id: 2 });
+      const op3 = vi.fn().mockResolvedValue({ id: 3 });
+
+      await auditedOperation(AuditAction.CREATE, 'employee', 1, op1);
+      await auditedOperation(AuditAction.UPDATE, 'team', 2, op2);
+      await auditedOperation(AuditAction.DELETE, 'employee', 3, op3);
+
+      const employeeLogs = auditLogger.getLogsByEntityType('employee');
+      expect(employeeLogs).toHaveLength(2);
+      expect(employeeLogs.every(log => log.entityType === 'employee')).toBe(true);
+
+      const teamLogs = auditLogger.getLogsByEntityType('team');
+      expect(teamLogs).toHaveLength(1);
+      expect(teamLogs[0].entityType).toBe('team');
+    });
+
+    it('should filter logs by entity type and ID', async () => {
+      const op1 = vi.fn().mockResolvedValue({ id: 1 });
+      const op2 = vi.fn().mockResolvedValue({ id: 2 });
+      const op3 = vi.fn().mockResolvedValue({ id: 3 });
+
+      await auditedOperation(AuditAction.CREATE, 'employee', 1, op1);
+      await auditedOperation(AuditAction.UPDATE, 'employee', 1, op2);
+      await auditedOperation(AuditAction.CREATE, 'employee', 2, op3);
+
+      const employee1Logs = auditLogger.getLogsByEntity('employee', 1);
+      expect(employee1Logs).toHaveLength(2);
+      expect(employee1Logs.every(log => log.entityId === 1)).toBe(true);
+
+      const employee2Logs = auditLogger.getLogsByEntity('employee', 2);
+      expect(employee2Logs).toHaveLength(1);
+      expect(employee2Logs[0].entityId).toBe(2);
+    });
+
+    it('should clear all logs', async () => {
+      const op1 = vi.fn().mockResolvedValue({ id: 1 });
+      const op2 = vi.fn().mockResolvedValue({ id: 2 });
+
+      await auditedOperation(AuditAction.CREATE, 'employee', 1, op1);
+      await auditedOperation(AuditAction.UPDATE, 'team', 2, op2);
+
+      expect(auditLogger.getLogsByEntityType('employee')).toHaveLength(1);
+      expect(auditLogger.getLogsByEntityType('team')).toHaveLength(1);
+
+      auditLogger.clear();
+
+      expect(auditLogger.getLogsByEntityType('employee')).toHaveLength(0);
+      expect(auditLogger.getLogsByEntityType('team')).toHaveLength(0);
     });
   });
 });

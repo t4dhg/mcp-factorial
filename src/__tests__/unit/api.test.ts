@@ -264,13 +264,20 @@ describe('API Client', () => {
     });
 
     it('should handle 404 errors', async () => {
+      // Mock the direct endpoint returning 404
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
         text: async () => 'Not found',
       });
 
-      await expect(getEmployee(999)).rejects.toThrow('Resource not found');
+      // Mock the fallback list endpoint (empty employee list)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+
+      await expect(getEmployee(999)).rejects.toThrow('Employee with ID 999 not found');
     });
 
     it('should handle 429 rate limit errors', async () => {
