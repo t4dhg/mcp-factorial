@@ -81,7 +81,7 @@ describe('Zod Schemas', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should default team_ids to empty array if not provided', () => {
+    it('should accept optional fields', () => {
       const employee = {
         id: 3,
         first_name: 'Jane',
@@ -89,13 +89,10 @@ describe('Zod Schemas', () => {
         full_name: 'Jane Doe',
         email: 'jane@example.com',
         birthday_on: null,
-        hired_on: null,
-        start_date: null,
         terminated_on: null,
         gender: null,
         nationality: null,
         manager_id: null,
-        role: null,
         timeoff_manager_id: null,
         company_id: null,
         legal_entity_id: null,
@@ -106,9 +103,6 @@ describe('Zod Schemas', () => {
 
       const result = EmployeeSchema.safeParse(employee);
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.team_ids).toEqual([]);
-      }
     });
 
     it('should fail when id is missing', () => {

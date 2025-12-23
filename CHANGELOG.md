@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2025-12-23
+
+### Changed - BREAKING CHANGES
+
+#### EmployeeSchema corrected to match actual Factorial API
+
+The EmployeeSchema has been corrected to match the actual Factorial API response. This is a breaking change as some fields that were previously in the schema (but always null) have been removed:
+
+- **Removed fields** (never existed in API): `team_ids`, `role`, `hired_on`, `start_date`
+- **Added 30+ fields** that actually exist: `identifier`, `identifier_type`, `preferred_name`, `access_id`, address fields, banking fields, termination details, emergency contact, and more
+
+**Note**: Team membership is stored on Team objects (`employee_ids` array), not on Employee objects. To get teams for an employee, query teams and filter by `employee_ids`.
+
+#### list_employees output simplified
+
+The `list_employees` tool output no longer includes `role`, `team_ids`, or `hired_on` fields. New fields available: `identifier`, `identifier_type`, `active`, `seniority_date`.
+
+### Added
+
+#### New Tool: search_employee_documents
+
+Search documents by employee name and optional document name pattern:
+- `employee_name`: Search for employees by name (partial match)
+- `document_query`: Optional filter for document name (e.g., "resume", "certification")
+
+Example: Find Taig's resume or count Saray's certifications.
+
+#### New Prompt: team-document-summary
+
+Summarize documents across a team:
+- Shows document counts by folder for each team member
+- Identifies gaps in documentation
+- Useful for compliance reviews
+
+#### Folder name enrichment
+
+`list_documents` and `get_employee_documents` now include `folder_name` alongside `folder_id` for better context.
+
+### Fixed
+
+- Removed broken `team_id` client-side filtering (team membership is on Team, not Employee)
+- Tests updated to match corrected schema
+
 ## [4.0.0] - 2025-12-23
 
 ### Changed - BREAKING CHANGES
@@ -183,6 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TypeScript support with strict mode
 - Comprehensive README with setup instructions
 
+[7.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v6.0.0...v7.0.0
 [3.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v1.0.0...v1.1.0

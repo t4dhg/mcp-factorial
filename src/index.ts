@@ -175,15 +175,17 @@ server.registerTool(
   async ({ team_id, location_id, page, limit }) => {
     try {
       const result = await listEmployees({ team_id, location_id, page, limit });
+
       const summary = result.data.map(e => ({
         id: e.id,
         name: e.full_name,
         email: e.email,
-        role: e.role,
-        team_ids: e.team_ids,
+        identifier: e.identifier || null,
+        identifier_type: e.identifier_type || null,
         location_id: e.location_id,
         manager_id: e.manager_id,
-        hired_on: e.hired_on,
+        active: e.active,
+        seniority_date: e.seniority_calculation_date,
         terminated_on: e.terminated_on,
       }));
       return {
@@ -263,7 +265,7 @@ server.registerTool(
         id: e.id,
         name: e.full_name,
         email: e.email,
-        role: e.role,
+        identifier: e.identifier,
       }));
       return {
         content: [
@@ -835,10 +837,18 @@ server.registerTool(
         page,
         limit,
       });
+
+      // Fetch enrichment data (both are cached)
+      const [employees, leaveTypes] = await Promise.all([listEmployees(), listLeaveTypes()]);
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+      const ltMap = new Map(leaveTypes.map(lt => [lt.id, lt.name]));
+
       const summary = result.data.map(l => ({
         id: l.id,
         employee_id: l.employee_id,
+        employee_name: empMap.get(l.employee_id) || `Employee ${l.employee_id}`,
         leave_type_id: l.leave_type_id,
+        leave_type_name: ltMap.get(l.leave_type_id) || `Type ${l.leave_type_id}`,
         start_on: l.start_on,
         finish_on: l.finish_on,
         status: l.status,
@@ -981,10 +991,18 @@ server.registerTool(
   async ({ employee_id, page, limit }) => {
     try {
       const result = await listAllowances({ employee_id, page, limit });
+
+      // Fetch enrichment data (both are cached)
+      const [employees, leaveTypes] = await Promise.all([listEmployees(), listLeaveTypes()]);
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+      const ltMap = new Map(leaveTypes.map(lt => [lt.id, lt.name]));
+
       const summary = result.data.map(a => ({
         id: a.id,
         employee_id: a.employee_id,
+        employee_name: empMap.get(a.employee_id) || `Employee ${a.employee_id}`,
         leave_type_id: a.leave_type_id,
+        leave_type_name: ltMap.get(a.leave_type_id) || `Type ${a.leave_type_id}`,
         available_days: a.available_days,
         consumed_days: a.consumed_days,
         balance_days: a.balance_days,
@@ -1186,9 +1204,15 @@ server.registerTool(
   async ({ employee_id, clock_in_gte, clock_in_lte, page, limit }) => {
     try {
       const result = await listShifts({ employee_id, clock_in_gte, clock_in_lte, page, limit });
+
+      // Fetch employee names for enrichment (cached)
+      const employees = await listEmployees();
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+
       const summary = result.data.map(s => ({
         id: s.id,
         employee_id: s.employee_id,
+        employee_name: empMap.get(s.employee_id) || `Employee ${s.employee_id}`,
         clock_in: s.clock_in,
         clock_out: s.clock_out,
         worked_hours: s.worked_hours,
@@ -1418,7 +1442,8 @@ server.registerTool(
   'list_documents',
   {
     title: 'List Documents',
-    description: 'Get documents. Filter by folder or employee. Read-only access.',
+    description:
+      'Get documents with folder and employee name enrichment. Filter by folder or employee. Read-only access.',
     inputSchema: {
       folder_id: z.number().optional().describe('Filter by folder ID'),
       employee_ids: z.array(z.number()).optional().describe('Filter by employee IDs'),
@@ -1429,12 +1454,26 @@ server.registerTool(
   async ({ folder_id, employee_ids, page, limit }) => {
     try {
       const result = await listDocuments({ folder_id, employee_ids, page, limit });
+
+      // Fetch employee names for enrichment (cached)
+      const employees = await listEmployees();
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+
+      // Fetch folders for name enrichment (cached)
+      const folders = await listFolders();
+      const folderMap = new Map(folders.map(f => [f.id, f.name]));
+
       const summary = result.data.map(d => ({
         id: d.id,
         name: d.name,
         folder_id: d.folder_id,
-        employee_id: d.employee_id, // Employee the document belongs to
-        author_id: d.author_id, // Who uploaded the document
+        folder_name: d.folder_id ? folderMap.get(d.folder_id) || null : null,
+        employee_id: d.employee_id,
+        employee_name: d.employee_id
+          ? empMap.get(d.employee_id) || `Employee ${d.employee_id}`
+          : null,
+        author_id: d.author_id,
+        author_name: d.author_id ? empMap.get(d.author_id) || `Employee ${d.author_id}` : null,
         mime_type: d.mime_type,
         size_bytes: d.size_bytes,
       }));
@@ -1513,7 +1552,7 @@ server.registerTool(
   {
     title: 'Get Employee Documents',
     description:
-      'Get all documents for a specific employee. Returns document summary (id, name, folder_id, employee_id, author_id, mime_type, size_bytes). Use get_document for full details.',
+      'Get all documents for a specific employee. Returns document summary with folder_name enrichment. Use get_document for full details.',
     inputSchema: {
       employee_id: z.number().describe('The employee ID'),
       page: z.number().optional().default(1).describe('Page number'),
@@ -1524,11 +1563,16 @@ server.registerTool(
     try {
       const result = await listDocuments({ employee_ids: [employee_id], page, limit });
 
-      // Create summary format aligned with list_documents tool
+      // Fetch folders for name enrichment (cached)
+      const folders = await listFolders();
+      const folderMap = new Map(folders.map(f => [f.id, f.name]));
+
+      // Create summary format with folder name enrichment
       const summary = result.data.map(d => ({
         id: d.id,
         name: d.name ?? '[No name]',
         folder_id: d.folder_id,
+        folder_name: d.folder_id ? folderMap.get(d.folder_id) || null : null,
         employee_id: d.employee_id,
         author_id: d.author_id,
         mime_type: d.mime_type ?? 'unknown',
@@ -1540,6 +1584,95 @@ server.registerTool(
           {
             type: 'text',
             text: `Found ${result.data.length} documents for employee ${employee_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'search_employee_documents',
+  {
+    title: 'Search Employee Documents',
+    description:
+      'Search documents by employee name and optional document name pattern. Example: search for "Taig\'s resume" or "certifications for Saray".',
+    inputSchema: {
+      employee_name: z
+        .string()
+        .min(2)
+        .describe('Employee name to search for (partial match, min 2 chars)'),
+      document_query: z
+        .string()
+        .optional()
+        .describe('Document name pattern to filter by (e.g., "resume", "certification")'),
+      page: z.number().optional().default(1).describe('Page number'),
+      limit: z.number().optional().default(20).describe('Items per page (max: 100, default: 20)'),
+    },
+  },
+  async ({ employee_name, document_query, page, limit }) => {
+    try {
+      // Step 1: Search for employees by name
+      const matchingEmployees = await searchEmployees(employee_name);
+
+      if (matchingEmployees.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No employees found matching "${employee_name}".`,
+            },
+          ],
+        };
+      }
+
+      // Step 2: Get documents for matching employees
+      const employeeIds = matchingEmployees.map(e => e.id);
+      const result = await listDocuments({ employee_ids: employeeIds, page, limit });
+
+      // Step 3: Filter by document name pattern if provided
+      let filteredDocs = result.data;
+      if (document_query) {
+        const queryLower = document_query.toLowerCase();
+        filteredDocs = result.data.filter(d => d.name && d.name.toLowerCase().includes(queryLower));
+      }
+
+      // Step 4: Enrich with employee and folder names
+      const empMap = new Map(matchingEmployees.map(e => [e.id, e.full_name]));
+      const folders = await listFolders();
+      const folderMap = new Map(folders.map(f => [f.id, f.name]));
+
+      const summary = filteredDocs.map(d => ({
+        id: d.id,
+        name: d.name ?? '[No name]',
+        folder_id: d.folder_id,
+        folder_name: d.folder_id ? folderMap.get(d.folder_id) || null : null,
+        employee_id: d.employee_id,
+        employee_name: d.employee_id
+          ? empMap.get(d.employee_id) || `Employee ${d.employee_id}`
+          : null,
+        mime_type: d.mime_type ?? 'unknown',
+        size_bytes: d.size_bytes ?? 0,
+      }));
+
+      const employeeNames = matchingEmployees.map(e => e.full_name).join(', ');
+      const queryInfo = document_query ? ` matching "${document_query}"` : '';
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${summary.length} documents${queryInfo} for employees matching "${employee_name}" (${employeeNames}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -1956,11 +2089,25 @@ server.registerTool(
   async ({ project_id, page, limit }) => {
     try {
       const result = await listProjectWorkers(project_id, { page, limit });
+
+      // Fetch enrichment data
+      const [projects, employees] = await Promise.all([listProjects(), listEmployees()]);
+      const projectMap = new Map(projects.data.map(p => [p.id, p.name]));
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+
+      const summary = result.data.map(w => ({
+        id: w.id,
+        project_id: w.project_id,
+        project_name: projectMap.get(w.project_id) || `Project ${w.project_id}`,
+        employee_id: w.employee_id,
+        employee_name: empMap.get(w.employee_id) || `Employee ${w.employee_id}`,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} project workers (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} project workers (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -2338,11 +2485,27 @@ server.registerTool(
   async ({ training_id, page, limit }) => {
     try {
       const result = await listTrainingSessions(training_id, { page, limit });
+
+      // Fetch training names for enrichment
+      const trainings = await listTrainings();
+      const trainingMap = new Map(trainings.data.map(t => [t.id, t.name]));
+
+      const summary = result.data.map(s => ({
+        id: s.id,
+        training_id: s.training_id,
+        training_name: trainingMap.get(s.training_id) || `Training ${s.training_id}`,
+        name: s.name,
+        start_date: s.start_date,
+        end_date: s.end_date,
+        location: s.location,
+        max_attendees: s.max_attendees,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} sessions (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} sessions (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -2475,11 +2638,29 @@ server.registerTool(
   async ({ training_id, page, limit }) => {
     try {
       const result = await listTrainingEnrollments(training_id, { page, limit });
+
+      // Fetch enrichment data
+      const [trainings, employees] = await Promise.all([listTrainings(), listEmployees()]);
+      const trainingMap = new Map(trainings.data.map(t => [t.id, t.name]));
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+
+      const summary = result.data.map(e => ({
+        id: e.id,
+        training_id: e.training_id,
+        training_name: trainingMap.get(e.training_id) || `Training ${e.training_id}`,
+        employee_id: e.employee_id,
+        employee_name: empMap.get(e.employee_id) || `Employee ${e.employee_id}`,
+        session_id: e.session_id,
+        status: e.status,
+        enrolled_at: e.enrolled_at,
+        completed_at: e.completed_at,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} enrollments (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} enrollments (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -2574,11 +2755,27 @@ server.registerTool(
   async ({ page, limit }) => {
     try {
       const result = await listWorkAreas({ page, limit });
+
+      // Fetch location names for enrichment (cached)
+      const locations = await listLocations();
+      const locMap = new Map(locations.data.map(l => [l.id, l.name]));
+
+      const summary = result.data.map(w => ({
+        id: w.id,
+        name: w.name,
+        description: w.description,
+        location_id: w.location_id,
+        location_name: w.location_id
+          ? locMap.get(w.location_id) || `Location ${w.location_id}`
+          : null,
+        archived: w.archived,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} work areas (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} work areas (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -2771,11 +2968,33 @@ server.registerTool(
   async ({ page, limit }) => {
     try {
       const result = await listJobPostings({ page, limit });
+
+      // Fetch enrichment data (cached)
+      const [teams, locations] = await Promise.all([listTeams(), listLocations()]);
+      const teamMap = new Map(teams.data.map(t => [t.id, t.name]));
+      const locMap = new Map(locations.data.map(l => [l.id, l.name]));
+
+      const summary = result.data.map(j => ({
+        id: j.id,
+        title: j.title,
+        department: j.department,
+        team_id: j.team_id,
+        team_name: j.team_id ? teamMap.get(j.team_id) || `Team ${j.team_id}` : null,
+        location_id: j.location_id,
+        location_name: j.location_id
+          ? locMap.get(j.location_id) || `Location ${j.location_id}`
+          : null,
+        status: j.status,
+        employment_type: j.employment_type,
+        remote_status: j.remote_status,
+        published_at: j.published_at,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} job postings (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} job postings (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -3079,11 +3298,41 @@ server.registerTool(
   async ({ job_posting_id, page, limit }) => {
     try {
       const result = await listApplications(job_posting_id, { page, limit });
+
+      // Fetch enrichment data
+      const [jobPostings, candidates, hiringStages] = await Promise.all([
+        listJobPostings(),
+        listCandidates(),
+        listHiringStages(),
+      ]);
+      const jobMap = new Map(jobPostings.data.map(j => [j.id, j.title]));
+      const candidateMap = new Map(
+        candidates.data.map(c => [
+          c.id,
+          `${c.first_name || ''} ${c.last_name || ''}`.trim() || `Candidate ${c.id}`,
+        ])
+      );
+      const stageMap = new Map(hiringStages.map(s => [s.id, s.name]));
+
+      const summary = result.data.map(a => ({
+        id: a.id,
+        job_posting_id: a.job_posting_id,
+        job_title: jobMap.get(a.job_posting_id) || `Posting ${a.job_posting_id}`,
+        candidate_id: a.candidate_id,
+        candidate_name: candidateMap.get(a.candidate_id) || `Candidate ${a.candidate_id}`,
+        hiring_stage_id: a.hiring_stage_id,
+        hiring_stage_name: a.hiring_stage_id
+          ? stageMap.get(a.hiring_stage_id) || `Stage ${a.hiring_stage_id}`
+          : null,
+        status: a.status,
+        applied_at: a.applied_at,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} applications (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} applications (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -3298,11 +3547,21 @@ server.registerTool(
   async ({ employee_id, page, limit }) => {
     try {
       const result = await listPayrollSupplements(employee_id, { page, limit });
+
+      // Fetch employee names for enrichment (cached)
+      const employees = await listEmployees();
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+
+      const summary = result.data.map(s => ({
+        ...s,
+        employee_name: empMap.get(s.employee_id) || `Employee ${s.employee_id}`,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} supplements (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} supplements (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -3428,11 +3687,21 @@ server.registerTool(
   async ({ employee_id, page, limit }) => {
     try {
       const result = await listFamilySituations(employee_id, { page, limit });
+
+      // Fetch employee names for enrichment (cached)
+      const employees = await listEmployees();
+      const empMap = new Map(employees.data.map(e => [e.id, e.full_name]));
+
+      const summary = result.data.map(s => ({
+        ...s,
+        employee_name: empMap.get(s.employee_id) || `Employee ${s.employee_id}`,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} family situations (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} family situations (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -3509,9 +3778,7 @@ async function buildOrgChart(): Promise<string> {
     const lines: string[] = [];
     for (const emp of reports) {
       const indent = '  '.repeat(depth);
-      lines.push(
-        `${indent}- ${emp.full_name || 'Unknown'} (${emp.role || 'No role'}) [ID: ${emp.id}]`
-      );
+      lines.push(`${indent}- ${emp.full_name || 'Unknown'} [ID: ${emp.id}]`);
       lines.push(...buildTree(emp.id, depth + 1));
     }
     return lines;
@@ -3521,7 +3788,7 @@ async function buildOrgChart(): Promise<string> {
 
   // Add top-level employees
   for (const emp of topLevel) {
-    lines.push(`## ${emp.full_name || 'Unknown'} (${emp.role || 'No role'}) [ID: ${emp.id}]`);
+    lines.push(`## ${emp.full_name || 'Unknown'} [ID: ${emp.id}]`);
     lines.push(...buildTree(emp.id, 1));
     lines.push('');
   }
@@ -3539,44 +3806,38 @@ async function buildEmployeeDirectory(): Promise<string> {
 
   const lines: string[] = ['# Employee Directory\n'];
 
-  // Group employees by team
-  const teamEmployees = new Map<number | string, typeof employees>();
-  for (const emp of employees) {
-    const teamIds = emp.team_ids || [];
-    if (teamIds.length === 0) {
-      const key = 'no-team';
-      if (!teamEmployees.has(key)) teamEmployees.set(key, []);
-      teamEmployees.get(key)!.push(emp);
-    } else {
-      for (const teamId of teamIds) {
-        if (!teamEmployees.has(teamId)) teamEmployees.set(teamId, []);
-        teamEmployees.get(teamId)!.push(emp);
-      }
-    }
-  }
+  // Create employee lookup map
+  const employeeMap = new Map(employees.map(e => [e.id, e]));
 
-  // Output by team
+  // Track which employees are assigned to teams
+  const assignedEmployeeIds = new Set<number>();
+
+  // Output by team (using team's employee_ids)
   for (const team of teams) {
-    const emps = teamEmployees.get(team.id) || [];
+    const teamEmployeeIds = team.employee_ids || [];
     lines.push(`## ${team.name}`);
     if (team.description) lines.push(`*${team.description}*\n`);
-    if (emps.length === 0) {
+    if (teamEmployeeIds.length === 0) {
       lines.push('No employees assigned.\n');
     } else {
-      for (const emp of emps) {
-        lines.push(`- **${emp.full_name || 'Unknown'}** - ${emp.role || 'No role'}`);
-        if (emp.email) lines.push(`  - Email: ${emp.email}`);
+      for (const empId of teamEmployeeIds) {
+        const emp = employeeMap.get(empId);
+        if (emp) {
+          assignedEmployeeIds.add(empId);
+          lines.push(`- **${emp.full_name || 'Unknown'}**`);
+          if (emp.email) lines.push(`  - Email: ${emp.email}`);
+        }
       }
       lines.push('');
     }
   }
 
   // Employees without teams
-  const noTeam = teamEmployees.get('no-team') || [];
+  const noTeam = employees.filter(e => !assignedEmployeeIds.has(e.id));
   if (noTeam.length > 0) {
     lines.push('## Unassigned\n');
     for (const emp of noTeam) {
-      lines.push(`- **${emp.full_name || 'Unknown'}** - ${emp.role || 'No role'}`);
+      lines.push(`- **${emp.full_name || 'Unknown'}**`);
       if (emp.email) lines.push(`  - Email: ${emp.email}`);
     }
   }
@@ -3612,7 +3873,7 @@ async function buildLocationDirectory(): Promise<string> {
     lines.push(`**Employees:** ${emps.length}`);
     if (emps.length > 0 && emps.length <= 10) {
       for (const emp of emps) {
-        lines.push(`- ${emp.full_name || 'Unknown'} (${emp.role || 'No role'})`);
+        lines.push(`- ${emp.full_name || 'Unknown'}`);
       }
     } else if (emps.length > 10) {
       lines.push(
@@ -3746,7 +4007,6 @@ server.registerResource(
       members: empResult.data.map(e => ({
         id: e.id,
         name: e.full_name,
-        role: e.role,
         email: e.email,
       })),
     };
@@ -3782,7 +4042,8 @@ server.registerPrompt(
     const teamsResult = await listTeams();
     const teams = teamsResult.data;
 
-    const employeeTeams = teams.filter(t => employee.team_ids?.includes(t.id));
+    // Find teams that have this employee (relationship is on Team, not Employee)
+    const employeeTeams = teams.filter(t => t.employee_ids?.includes(empId));
     const teamNames = employeeTeams.map(t => t.name).join(', ') || 'No team assigned';
 
     return {
@@ -3795,9 +4056,8 @@ server.registerPrompt(
 
 **Employee Details:**
 - Name: ${employee.full_name}
-- Role: ${employee.role || 'Not specified'}
 - Team(s): ${teamNames}
-- Start Date: ${employee.hired_on || employee.start_date || 'Not specified'}
+- Start Date: ${employee.seniority_calculation_date || 'Not specified'}
 - Email: ${employee.email}
 
 Please include:
@@ -3808,7 +4068,7 @@ Please include:
 5. Key meetings to schedule
 6. 30/60/90 day milestones
 
-Tailor the checklist to their specific role and team.`,
+Tailor the checklist to their team.`,
           },
         },
       ],
@@ -3967,6 +4227,117 @@ Please provide:
 2. Peak absence periods
 3. Coverage concerns (if any patterns suggest coverage gaps)
 4. Recommendations for planning`,
+          },
+        },
+      ],
+    };
+  }
+);
+
+server.registerPrompt(
+  'team-document-summary',
+  {
+    description:
+      'Summarize documents across a team: who has certifications, payslips, missing required documents.',
+    argsSchema: {
+      team_id: z.string().describe('Team ID to analyze'),
+      document_type: z
+        .string()
+        .optional()
+        .describe('Focus on specific folder/type (e.g., "Certifications", "Payslips")'),
+    },
+  },
+  async ({ team_id, document_type }) => {
+    const teamId = parseInt(team_id, 10);
+    const team = await getTeam(teamId);
+    const employeeIds = team.employee_ids || [];
+
+    if (employeeIds.length === 0) {
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `Team "${team.name}" has no members. Cannot generate document summary.`,
+            },
+          },
+        ],
+      };
+    }
+
+    // Fetch documents for all team members
+    const docsResult = await listDocuments({ employee_ids: employeeIds });
+    const docs = docsResult.data;
+
+    // Fetch folders for categorization
+    const folders = await listFolders();
+    const folderMap = new Map(folders.map(f => [f.id, f.name]));
+
+    // Fetch employees for names
+    const empResult = await listEmployees();
+    const empMap = new Map(empResult.data.map(e => [e.id, e.full_name]));
+
+    // Group documents by employee and folder
+    const docsByEmployee = new Map<number, Map<string, number>>();
+
+    for (const empId of employeeIds) {
+      docsByEmployee.set(empId, new Map());
+    }
+
+    for (const doc of docs) {
+      if (!doc.employee_id) continue;
+      const folderName = doc.folder_id ? folderMap.get(doc.folder_id) || 'Unknown' : 'Unfiled';
+      const empDocs = docsByEmployee.get(doc.employee_id);
+      if (empDocs) {
+        empDocs.set(folderName, (empDocs.get(folderName) || 0) + 1);
+      }
+    }
+
+    // Build summary text
+    const allFolderNames = new Set<string>();
+    for (const empDocs of docsByEmployee.values()) {
+      for (const folderName of empDocs.keys()) {
+        allFolderNames.add(folderName);
+      }
+    }
+
+    const summaryLines: string[] = [];
+    for (const empId of employeeIds) {
+      const empName = empMap.get(empId) || `Employee ${empId}`;
+      const empDocs = docsByEmployee.get(empId) || new Map<string, number>();
+
+      const docCounts: string[] = [];
+      for (const folderName of allFolderNames) {
+        const count: number = empDocs.get(folderName) || 0;
+        docCounts.push(`${count} ${folderName}`);
+      }
+
+      summaryLines.push(`- ${empName}: ${docCounts.join(', ') || 'No documents'}`);
+    }
+
+    const focusInfo = document_type ? `\nFocus: ${document_type}` : '';
+
+    return {
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Please analyze the document summary for team "${team.name}":
+
+**Team:** ${team.name}
+**Members:** ${employeeIds.length}
+**Total Documents:** ${docs.length}${focusInfo}
+
+**Document Summary by Employee:**
+${summaryLines.join('\n')}
+
+Please analyze:
+1. Document completeness across the team
+2. Any employees with missing or fewer documents than others
+3. Patterns in document distribution
+4. Recommendations for improving documentation`,
           },
         },
       ],

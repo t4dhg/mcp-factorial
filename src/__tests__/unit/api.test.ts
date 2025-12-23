@@ -50,18 +50,8 @@ describe('API Client', () => {
       expect(result.data[0].full_name).toBe('John Doe');
     });
 
-    it('should filter by team_id client-side', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => employeesFixture,
-      });
-
-      const result = await listEmployees({ team_id: 1 });
-
-      // Employees with team_id 1: John Doe and Jane Smith
-      expect(result.data.length).toBeGreaterThan(0);
-      expect(result.data.every(e => e.team_ids?.includes(1))).toBe(true);
-    });
+    // Note: team_id filtering is no longer supported because team_ids is not on Employee
+    // Team membership is stored on the Team object (employee_ids) not on Employee
 
     it('should filter by location_id client-side', async () => {
       mockFetch.mockResolvedValueOnce({

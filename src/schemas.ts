@@ -11,24 +11,76 @@ import { SchemaValidationError } from './errors.js';
  * Employee schema
  */
 export const EmployeeSchema = z.object({
+  // Core identity
   id: z.number(),
+  access_id: z.number().nullable().optional(),
   first_name: z.string().nullable(),
   last_name: z.string().nullable(),
   full_name: z.string().nullable(),
-  email: z.string().nullable(),
-  birthday_on: z.string().nullable(),
-  hired_on: z.string().nullable(),
-  start_date: z.string().nullable(),
-  terminated_on: z.string().nullable(),
+  preferred_name: z.string().nullable().optional(),
+  birth_name: z.string().nullable().optional(),
   gender: z.string().nullable(),
+  pronouns: z.string().nullable().optional(),
+
+  // Identification
+  identifier: z.string().nullable().optional(),
+  identifier_type: z.string().nullable().optional(),
+  identifier_expiration_date: z.string().nullable().optional(),
+  social_security_number: z.string().nullable().optional(),
+
+  // Contact
+  email: z.string().nullable(),
+  login_email: z.string().nullable().optional(),
+  phone_number: z.string().nullable().optional(),
+  personal_email: z.string().nullable().optional(),
+
+  // Address
+  address_line_1: z.string().nullable().optional(),
+  address_line_2: z.string().nullable().optional(),
+  postal_code: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+
+  // Personal details
+  birthday_on: z.string().nullable(),
   nationality: z.string().nullable(),
-  manager_id: z.number().nullable(),
-  role: z.string().nullable(),
-  timeoff_manager_id: z.number().nullable(),
+  country_of_birth: z.string().nullable().optional(),
+  birthplace: z.string().nullable().optional(),
+  age_number: z.number().nullable().optional(),
+  disability_percentage_cents: z.number().nullable().optional(),
+
+  // Banking
+  bank_number: z.string().nullable().optional(),
+  swift_bic: z.string().nullable().optional(),
+  bank_number_format: z.string().nullable().optional(),
+
+  // Organization
   company_id: z.number().nullable(),
   legal_entity_id: z.number().nullable(),
-  team_ids: z.array(z.number()).default([]),
   location_id: z.number().nullable(),
+  manager_id: z.number().nullable(),
+  timeoff_manager_id: z.number().nullable(),
+  company_identifier: z.string().nullable().optional(),
+
+  // Employment status
+  active: z.boolean().nullable().optional(),
+  attendable: z.boolean().nullable().optional(),
+  seniority_calculation_date: z.string().nullable().optional(),
+
+  // Termination
+  terminated_on: z.string().nullable(),
+  is_terminating: z.boolean().nullable().optional(),
+  termination_reason_type: z.string().nullable().optional(),
+  termination_reason: z.string().nullable().optional(),
+  termination_observations: z.string().nullable().optional(),
+  termination_type_description: z.string().nullable().optional(),
+
+  // Emergency contact
+  contact_name: z.string().nullable().optional(),
+  contact_number: z.string().nullable().optional(),
+
+  // Timestamps
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
 });
@@ -820,11 +872,11 @@ export type PayrollSupplement = z.infer<typeof PayrollSupplementSchema>;
 export const TaxIdentifierSchema = z.object({
   id: z.number(),
   employee_id: z.number(),
-  identifier_type: z.string().nullable(),
-  identifier_value: z.string().nullable(),
-  country: z.string().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  identifier_type: z.string().nullable().optional(),
+  identifier_value: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
 });
 
 export type TaxIdentifier = z.infer<typeof TaxIdentifierSchema>;
