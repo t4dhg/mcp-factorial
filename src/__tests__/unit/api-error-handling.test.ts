@@ -111,65 +111,8 @@ describe('API Error Handling and Edge Cases', () => {
   });
 
   describe('List operations with filters', () => {
-    it('should filter employees by team ID', async () => {
-      const employees = [
-        {
-          id: 1,
-          first_name: 'John',
-          last_name: 'Doe',
-          email: 'john@example.com',
-          full_name: 'John Doe',
-          team_ids: [1],
-          hired_on: null,
-          birthday_on: null,
-          start_date: null,
-          terminated_on: null,
-          gender: null,
-          nationality: null,
-          manager_id: null,
-          role: null,
-          timeoff_manager_id: null,
-          company_id: 1,
-          legal_entity_id: null,
-          location_id: null,
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T00:00:00Z',
-        },
-        {
-          id: 2,
-          first_name: 'Jane',
-          last_name: 'Smith',
-          email: 'jane@example.com',
-          full_name: 'Jane Smith',
-          team_ids: [2],
-          hired_on: null,
-          birthday_on: null,
-          start_date: null,
-          terminated_on: null,
-          gender: null,
-          nationality: null,
-          manager_id: null,
-          role: null,
-          timeoff_manager_id: null,
-          company_id: 1,
-          legal_entity_id: null,
-          location_id: null,
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T00:00:00Z',
-        },
-      ];
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ data: employees }),
-      });
-
-      const result = await listEmployees({ team_id: 1 });
-
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].id).toBe(1);
-    });
+    // Note: team_id filtering is no longer supported because team_ids is not on Employee
+    // Team membership is stored on the Team object (employee_ids) not on Employee
 
     it('should filter employees by location ID', async () => {
       const employees = [
@@ -179,16 +122,12 @@ describe('API Error Handling and Edge Cases', () => {
           last_name: 'Doe',
           email: 'john@example.com',
           full_name: 'John Doe',
-          team_ids: [],
           location_id: 1,
-          hired_on: null,
           birthday_on: null,
-          start_date: null,
           terminated_on: null,
           gender: null,
           nationality: null,
           manager_id: null,
-          role: null,
           timeoff_manager_id: null,
           company_id: 1,
           legal_entity_id: null,
@@ -201,16 +140,12 @@ describe('API Error Handling and Edge Cases', () => {
           last_name: 'Smith',
           email: 'jane@example.com',
           full_name: 'Jane Smith',
-          team_ids: [],
           location_id: 2,
-          hired_on: null,
           birthday_on: null,
-          start_date: null,
           terminated_on: null,
           gender: null,
           nationality: null,
           manager_id: null,
-          role: null,
           timeoff_manager_id: null,
           company_id: 1,
           legal_entity_id: null,

@@ -109,9 +109,8 @@ export async function listEmployees(
     );
 
     let filtered = allEmployees;
-    if (options.team_id) {
-      filtered = filtered.filter(e => e.team_ids?.includes(options.team_id!));
-    }
+    // Note: team_id filtering requires fetching teams separately (not on Employee object)
+    // TODO: Implement team filtering via teams endpoint if needed
     if (options.location_id) {
       filtered = filtered.filter(e => e.location_id === options.location_id);
     }

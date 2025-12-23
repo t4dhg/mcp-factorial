@@ -37,7 +37,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 | **Work Areas**  | 6     | List, get, create, update, archive, unarchive                           |
 | **ATS**         | 16    | Job postings, candidates, applications, hiring stages, advance workflow |
 | **Payroll**     | 6     | List/get supplements, tax identifiers, family situations (read-only)    |
-| **Documents**   | 4     | List/get folders and documents (read-only)                              |
+| **Documents**   | 5     | List/get/search folders and documents (read-only)                       |
 | **Job Catalog** | 3     | List/get job roles and levels (read-only)                               |
 | **Contracts**   | 1     | Get employee contract history (read-only)                               |
 
@@ -51,13 +51,14 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 | `factorial://timeoff/policies`    | All leave types and policies (JSON)                |
 | `factorial://teams/{team_id}`     | Team details with member list (JSON, templated)    |
 
-### 3 MCP Prompts
+### 4 MCP Prompts
 
 | Prompt                  | Description                                                       |
 | ----------------------- | ----------------------------------------------------------------- |
 | `onboard-employee`      | Generate personalized onboarding checklists                       |
 | `analyze-org-structure` | Analyze org structure (reporting lines, team sizes, distribution) |
 | `timeoff-report`        | Generate time off reports by team or date range                   |
+| `team-document-summary` | Summarize documents across a team (certifications, payslips, etc) |
 
 ### Architecture Features
 
