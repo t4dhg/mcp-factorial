@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Engineering",
+      "description": "Software engineering team",
+      "company_id": 1,
+      "employee_ids": [1, 2],
+      "lead_ids": [1],
+      "created_at": "2020-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Product",
+      "description": "Product management and design",
+      "company_id": 1,
+      "employee_ids": [1, 3],
+      "lead_ids": [1],
+      "created_at": "2020-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}

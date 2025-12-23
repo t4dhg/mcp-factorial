@@ -1,0 +1,38 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "employee_id": 2,
+      "leave_type_id": 1,
+      "start_on": "2024-12-23",
+      "finish_on": "2024-12-27",
+      "half_day": "all_day",
+      "status": "approved",
+      "description": "Holiday vacation",
+      "deleted_at": null,
+      "duration_attributes": {
+        "days": 5,
+        "hours": 40
+      },
+      "created_at": "2024-11-15T00:00:00Z",
+      "updated_at": "2024-11-20T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "employee_id": 3,
+      "leave_type_id": 2,
+      "start_on": "2024-12-20",
+      "finish_on": "2024-12-20",
+      "half_day": "start",
+      "status": "pending",
+      "description": null,
+      "deleted_at": null,
+      "duration_attributes": {
+        "days": 0.5,
+        "hours": 4
+      },
+      "created_at": "2024-12-18T00:00:00Z",
+      "updated_at": "2024-12-18T00:00:00Z"
+    }
+  ]
+}

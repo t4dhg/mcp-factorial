@@ -1,63 +1,98 @@
-// FactorialHR API Response Types
+/**
+ * TypeScript types for MCP FactorialHR
+ *
+ * Re-exports types from schemas for backward compatibility
+ * and adds additional utility types.
+ */
 
-export interface Employee {
-  id: number;
-  first_name: string;
-  last_name: string;
-  full_name: string;
-  email: string;
-  birthday_on: string | null;
-  hired_on: string | null;
-  start_date: string | null;
-  terminated_on: string | null;
-  gender: string | null;
-  nationality: string | null;
-  manager_id: number | null;
-  role: string | null;
-  timeoff_manager_id: number | null;
-  company_id: number;
-  legal_entity_id: number | null;
-  team_ids: number[];
-  location_id: number | null;
-  created_at: string;
-  updated_at: string;
+// Re-export all types from schemas
+export type {
+  Employee,
+  Team,
+  Location,
+  Contract,
+  Leave,
+  LeaveType,
+  Allowance,
+  Shift,
+  Folder,
+  Document,
+  JobRole,
+  JobLevel,
+} from './schemas.js';
+
+// Re-export pagination types
+export type {
+  PaginationInput,
+  PaginationParams,
+  PaginationMeta,
+  PaginatedResponse,
+} from './pagination.js';
+
+/**
+ * Leave status options
+ */
+export type LeaveStatus = 'pending' | 'approved' | 'declined';
+
+/**
+ * Half day options
+ */
+export type HalfDay = 'all_day' | 'start' | 'finish';
+
+/**
+ * Options for listing employees
+ */
+export interface ListEmployeesOptions {
+  team_id?: number;
+  location_id?: number;
+  page?: number;
+  limit?: number;
 }
 
-export interface Team {
-  id: number;
-  name: string;
-  description: string | null;
-  company_id: number;
-  employee_ids: number[];
-  lead_ids: number[];
-  created_at: string;
-  updated_at: string;
+/**
+ * Options for listing leaves
+ */
+export interface ListLeavesOptions {
+  employee_id?: number;
+  status?: LeaveStatus;
+  start_on_gte?: string;
+  start_on_lte?: string;
+  page?: number;
+  limit?: number;
 }
 
-export interface Location {
-  id: number;
-  name: string;
-  country: string | null;
-  phone_number: string | null;
-  state: string | null;
-  city: string | null;
-  address_line_1: string | null;
-  address_line_2: string | null;
-  postal_code: string | null;
-  company_id: number;
-  created_at: string;
-  updated_at: string;
+/**
+ * Options for listing allowances
+ */
+export interface ListAllowancesOptions {
+  employee_id?: number;
+  page?: number;
+  limit?: number;
 }
 
-export interface Contract {
-  id: number;
-  employee_id: number;
-  job_title: string | null;
-  effective_on: string;
-  created_at: string;
-  updated_at: string;
+/**
+ * Options for listing shifts
+ */
+export interface ListShiftsOptions {
+  employee_id?: number;
+  clock_in_gte?: string;
+  clock_in_lte?: string;
+  page?: number;
+  limit?: number;
 }
 
+/**
+ * Options for listing documents
+ */
+export interface ListDocumentsOptions {
+  folder_id?: number;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Legacy ApiError type (for backward compatibility)
+ */
 export interface ApiError {
   error: string;
   message: string;
