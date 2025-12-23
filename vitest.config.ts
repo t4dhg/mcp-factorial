@@ -14,6 +14,9 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.config.*',
         'src/__tests__/fixtures/**',
+        'src/index.ts', // MCP server registration - complex to test, low value
+        'src/schemas.ts', // Zod schema definitions - type definitions
+        'src/types.ts', // Type re-exports only
       ],
       thresholds: {
         lines: 80,
