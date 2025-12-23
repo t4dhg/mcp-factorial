@@ -4,6 +4,8 @@
  * Provides consistent pagination handling across all list operations.
  */
 
+import { debug } from './config.js';
+
 /**
  * Input parameters for paginated requests from MCP tools
  */
@@ -178,9 +180,7 @@ export async function fetchAllPages<T>(
   }
 
   if (page > maxPages && hasMore) {
-    console.warn(
-      `[mcp-factorial] Stopped fetching at page ${maxPages}. More data may be available.`
-    );
+    debug(`Stopped fetching at page ${maxPages}. More data may be available.`);
   }
 
   return allData;

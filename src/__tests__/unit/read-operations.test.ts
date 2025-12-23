@@ -569,25 +569,25 @@ describe('Read Operations', () => {
   describe('Input Validation', () => {
     it('should throw error for invalid tax identifier ID (zero)', async () => {
       await expect(getTaxIdentifier(0)).rejects.toThrow(
-        'Invalid tax identifier ID. Please provide a positive number.'
+        'Invalid tax identifier ID. Please provide a positive integer.'
       );
     });
 
     it('should throw error for invalid tax identifier ID (negative)', async () => {
       await expect(getTaxIdentifier(-1)).rejects.toThrow(
-        'Invalid tax identifier ID. Please provide a positive number.'
+        'Invalid tax identifier ID. Please provide a positive integer.'
       );
     });
 
     it('should throw error for invalid family situation ID (zero)', async () => {
       await expect(getFamilySituation(0)).rejects.toThrow(
-        'Invalid family situation ID. Please provide a positive number.'
+        'Invalid family situation ID. Please provide a positive integer.'
       );
     });
 
     it('should throw error for invalid family situation ID (negative)', async () => {
       await expect(getFamilySituation(-5)).rejects.toThrow(
-        'Invalid family situation ID. Please provide a positive number.'
+        'Invalid family situation ID. Please provide a positive integer.'
       );
     });
   });
