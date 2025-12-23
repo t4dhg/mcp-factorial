@@ -1,0 +1,34 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Vacation",
+      "code": "VAC",
+      "color": "#4CAF50",
+      "description": "Annual paid vacation leave",
+      "company_id": 1,
+      "created_at": "2020-01-01T00:00:00Z",
+      "updated_at": "2020-01-01T00:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Sick Leave",
+      "code": "SICK",
+      "color": "#F44336",
+      "description": "Paid sick leave",
+      "company_id": 1,
+      "created_at": "2020-01-01T00:00:00Z",
+      "updated_at": "2020-01-01T00:00:00Z"
+    },
+    {
+      "id": 3,
+      "name": "Personal",
+      "code": "PER",
+      "color": "#2196F3",
+      "description": "Personal time off",
+      "company_id": 1,
+      "created_at": "2020-01-01T00:00:00Z",
+      "updated_at": "2020-01-01T00:00:00Z"
+    }
+  ]
+}

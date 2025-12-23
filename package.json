@@ -1,6 +1,6 @@
 {
   "name": "@t4dhg/mcp-factorial",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "MCP server for FactorialHR - Access employee and organizational data from FactorialHR in Claude Code and other MCP clients",
   "type": "module",
   "main": "dist/index.js",
@@ -20,7 +20,29 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist coverage .vitest",
+    "rebuild": "npm run clean && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"*.json\" \"*.md\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.json\" \"*.md\"",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run test && npm run build",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   },
   "keywords": [
     "mcp",
@@ -29,22 +51,37 @@
     "factorialhr",
     "hr",
     "claude",
-    "anthropic"
+    "anthropic",
+    "ai",
+    "llm"
   ],
-  "author": "t4dhg",
+  "author": "Taig Mac Carthy <https://taigmaccarthy.com/>",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/t4dhg/mcp-factorial.git"
   },
+  "bugs": {
+    "url": "https://github.com/t4dhg/mcp-factorial/issues"
+  },
+  "homepage": "https://github.com/t4dhg/mcp-factorial#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "dotenv": "^16.4.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@types/node": "^22.10.0",
-    "typescript": "^5.7.0"
+    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/ui": "^2.1.8",
+    "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.18.2",
+    "vitest": "^2.1.8"
   },
   "engines": {
     "node": ">=18.0.0"

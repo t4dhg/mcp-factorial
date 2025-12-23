@@ -1,0 +1,7 @@
+dist/
+node_modules/
+coverage/
+.vitest/
+*.log
+package-lock.json
+CHANGELOG.md

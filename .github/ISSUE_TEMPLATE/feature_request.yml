@@ -1,0 +1,55 @@
+name: Feature Request
+description: Suggest a new feature for MCP FactorialHR
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea? We'd love to hear it! AI-assisted feature development is welcome.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: What problem does this feature solve?
+      placeholder: I want to be able to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this feature work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider?
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Please confirm your feature request aligns with our principles
+      options:
+        - label: This maintains privacy (no payroll/compensation data)
+        - label: This is read-only (no write operations to Factorial)
+        - label: This follows FactorialHR API capabilities
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Feature Scope
+      description: What type of feature is this?
+      options:
+        - New MCP Tool
+        - New MCP Resource
+        - New MCP Prompt
+        - Enhancement to existing feature
+        - Documentation improvement
+        - Developer experience improvement
