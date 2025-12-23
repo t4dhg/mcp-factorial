@@ -1472,6 +1472,20 @@ server.registerTool(
   async ({ id }) => {
     try {
       const document = await getDocument(id);
+
+      // Defensive check for undefined/null document
+      if (!document) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: Document with ID ${id} exists but returned no data. This may be a Factorial API issue.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
       return {
         content: [
           {
@@ -1513,12 +1527,12 @@ server.registerTool(
       // Create summary format aligned with list_documents tool
       const summary = result.data.map(d => ({
         id: d.id,
-        name: d.name,
+        name: d.name ?? '[No name]',
         folder_id: d.folder_id,
         employee_id: d.employee_id,
         author_id: d.author_id,
-        mime_type: d.mime_type,
-        size_bytes: d.size_bytes,
+        mime_type: d.mime_type ?? 'unknown',
+        size_bytes: d.size_bytes ?? 0,
       }));
 
       return {
