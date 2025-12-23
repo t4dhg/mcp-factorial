@@ -1,6 +1,14 @@
 import { defineConfig } from 'vitest/config';
+import { codecovVitePlugin } from '@codecov/vite-plugin';
 
 export default defineConfig({
+  plugins: [
+    codecovVitePlugin({
+      enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
+      bundleName: 'mcp-factorial',
+      uploadToken: process.env.CODECOV_TOKEN,
+    }),
+  ],
   test: {
     globals: true,
     environment: 'node',
@@ -24,6 +32,10 @@ export default defineConfig({
         branches: 75,
         statements: 80,
       },
+    },
+    reporters: ['default', 'junit'],
+    outputFile: {
+      junit: './test-results/junit.xml',
     },
     mockReset: true,
     restoreMocks: true,
