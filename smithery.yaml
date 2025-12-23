@@ -1,0 +1,40 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - factorialApiKey
+    properties:
+      factorialApiKey:
+        type: string
+        description: API key from FactorialHR (Settings > API Keys)
+      factorialApiVersion:
+        type: string
+        description: API version (default 2025-10-01)
+        default: "2025-10-01"
+      factorialTimeoutMs:
+        type: number
+        description: Request timeout in milliseconds
+        default: 30000
+      factorialMaxRetries:
+        type: number
+        description: Maximum retry attempts
+        default: 3
+      debug:
+        type: boolean
+        description: Enable debug logging
+        default: false
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', '@t4dhg/mcp-factorial'],
+      env: {
+        FACTORIAL_API_KEY: config.factorialApiKey,
+        ...(config.factorialApiVersion && { FACTORIAL_API_VERSION: config.factorialApiVersion }),
+        ...(config.factorialTimeoutMs && { FACTORIAL_TIMEOUT_MS: String(config.factorialTimeoutMs) }),
+        ...(config.factorialMaxRetries && { FACTORIAL_MAX_RETRIES: String(config.factorialMaxRetries) }),
+        ...(config.debug && { DEBUG: 'true' })
+      }
+    })

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.1] - 2025-12-23
+
+### Added
+
+- MCP Registry support: Added `server.json` manifest for listing on the official [MCP Registry](https://registry.modelcontextprotocol.io)
+- Smithery support: Added `smithery.yaml` configuration for listing on [Smithery](https://smithery.ai)
+- Smithery badge in README for easy discovery and installation
+- `mcpName` field in package.json for npm ownership verification
+
 ## [7.0.0] - 2025-12-23
 
 ### Changed - BREAKING CHANGES
