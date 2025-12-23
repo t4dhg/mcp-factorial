@@ -805,19 +805,31 @@ server.registerTool(
   'get_employee_contracts',
   {
     title: 'Get Employee Contracts',
-    description: 'Get contract versions for an employee, including job title and effective date.',
+    description:
+      'Get contract versions for an employee. Returns contract summary (id, employee_id, job_title, effective_on).',
     inputSchema: {
       employee_id: z.number().describe('The employee ID'),
+      page: z.number().optional().default(1).describe('Page number'),
+      limit: z.number().optional().default(20).describe('Items per page (max: 100, default: 20)'),
     },
   },
-  async ({ employee_id }) => {
+  async ({ employee_id, page, limit }) => {
     try {
-      const result = await listContracts(employee_id);
+      const result = await listContracts(employee_id, { page, limit });
+
+      // Create summary format
+      const summary = result.data.map(c => ({
+        id: c.id,
+        employee_id: c.employee_id,
+        job_title: c.job_title,
+        effective_on: c.effective_on,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} contracts:\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} contracts for employee ${employee_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
@@ -1591,21 +1603,33 @@ server.registerTool(
   {
     title: 'Get Employee Documents',
     description:
-      'Get all documents for a specific employee. Returns document metadata including file URLs.',
+      'Get all documents for a specific employee. Returns document summary (id, name, folder_id, employee_id, author_id, mime_type, size_bytes). Use get_document for full details.',
     inputSchema: {
       employee_id: z.number().describe('The employee ID'),
       page: z.number().optional().default(1).describe('Page number'),
-      limit: z.number().optional().default(100).describe('Items per page (max: 100)'),
+      limit: z.number().optional().default(20).describe('Items per page (max: 100, default: 20)'),
     },
   },
   async ({ employee_id, page, limit }) => {
     try {
       const result = await listDocuments({ employee_ids: [employee_id], page, limit });
+
+      // Create summary format aligned with list_documents tool
+      const summary = result.data.map(d => ({
+        id: d.id,
+        name: d.name,
+        folder_id: d.folder_id,
+        employee_id: d.employee_id,
+        author_id: d.author_id,
+        mime_type: d.mime_type,
+        size_bytes: d.size_bytes,
+      }));
+
       return {
         content: [
           {
             type: 'text',
-            text: `Found ${result.data.length} documents for employee ${employee_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
+            text: `Found ${result.data.length} documents for employee ${employee_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };

@@ -5,11 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml/badge.svg)](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/t4dhg/mcp-factorial/branch/main/graph/badge.svg)](https://codecov.io/gh/t4dhg/mcp-factorial)
-[![bundle](https://codecov.io/github/t4dhg/mcp-factorial/graph/bundle/mcp-factorial/badge.svg)](https://codecov.io/github/t4dhg/mcp-factorial/bundle/main/mcp-factorial)
+[![bundle](https://codecov.io/gh/t4dhg/mcp-factorial/graph/bundle.svg)](https://codecov.io/gh/t4dhg/mcp-factorial)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen.svg)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
-[![npm downloads](https://img.shields.io/npm/dm/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
 A comprehensive Model Context Protocol (MCP) server that provides AI assistants like Claude with full access to FactorialHR. Manage employees, teams, time off, projects, training, recruiting, and more - all with built-in safety guardrails.
@@ -113,7 +112,7 @@ Or pass it directly in the MCP config:
 Once configured, ask Claude things like:
 
 - _"Who's on the Engineering team?"_
-- _"Create a new employee John Smith with email john@company.com"_
+- _"Create a new employee John Smith"_
 - _"Approve the pending time off request for employee 42"_
 - _"Create a new project called Q1 Marketing Campaign"_
 - _"Enroll Sarah in the Leadership Training program"_
@@ -165,7 +164,7 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 | ----------------------- | ------------------------ | ------------ |
 | `FACTORIAL_API_KEY`     | Your FactorialHR API key | Required     |
 | `FACTORIAL_API_VERSION` | API version              | `2025-10-01` |
-| `FACTORIAL_TIMEOUT`     | Request timeout (ms)     | `30000`      |
+| `FACTORIAL_TIMEOUT_MS`  | Request timeout (ms)     | `30000`      |
 | `FACTORIAL_MAX_RETRIES` | Max retry attempts       | `3`          |
 | `DEBUG`                 | Enable debug logging     | `false`      |
 
@@ -188,6 +187,24 @@ Some categories are intentionally read-only for security:
 - **Payroll**: Supplements, tax identifiers, family situations
 - **Documents**: Folder and document metadata only
 - **Contracts**: Historical contract data
+
+### Response Optimization for Employee Collections
+
+Employee collection tools (`get_employee_documents`, `get_employee_contracts`) return **summary format** by default to prevent token overflow:
+
+**Documents** (`get_employee_documents`):
+
+- Returns: `id`, `name`, `folder_id`, `employee_id`, `author_id`, `mime_type`, `size_bytes` (7 fields)
+- Default limit: 20 documents per page
+- For full details: Use `get_document(id)` to retrieve complete document metadata including `file_url`, timestamps, etc.
+
+**Contracts** (`get_employee_contracts`):
+
+- Returns: `id`, `employee_id`, `job_title`, `effective_on` (4 fields)
+- Default limit: 20 contracts per page
+- For full details: Timestamps (`created_at`, `updated_at`) excluded from summary
+
+Both tools accept `page` and `limit` parameters (max: 100) for pagination control.
 
 ### Audit Logging
 

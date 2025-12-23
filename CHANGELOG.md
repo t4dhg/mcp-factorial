@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2025-12-23
+
+### Changed - BREAKING CHANGES
+
+#### Response optimization for employee collection tools
+
+**get_employee_documents**:
+- **Breaking**: Now returns summary format (7 fields) instead of full document objects (13 fields)
+- **Breaking**: Default `limit` reduced from 100 to 20 documents per page
+- Summary format aligns with `list_documents` tool for consistency
+- Returns: `id`, `name`, `folder_id`, `employee_id`, `author_id`, `mime_type`, `size_bytes`
+- Excluded fields available via `get_document(id)`: `company_id`, `public`, `space`, `file_url`, `created_at`, `updated_at`
+- Reduces typical response size by ~90% (from 73KB to 4.9KB for 20 documents)
+- Fixes token overflow issue where responses exceeded LLM context limits
+
+**get_employee_contracts**:
+- **Breaking**: Now returns summary format (4 fields) instead of full contract objects (6 fields)
+- **Breaking**: Added pagination support with default `limit` of 20 contracts per page
+- Returns: `id`, `employee_id`, `job_title`, `effective_on`
+- Excluded fields: `created_at`, `updated_at`
+- Aligns with employee documents pattern for consistency across employee collection tools
+
+**Migration Guide**:
+- If you need full document details, call `get_document(id)` for specific documents
+- If you need more than 20 items, set `limit` parameter explicitly:
+  - `get_employee_documents({ employee_id: 123, limit: 50 })`
+  - `get_employee_contracts({ employee_id: 123, limit: 50 })`
+- Summary format includes all essential metadata for browsing/filtering
+- Both tools now accept `page` and `limit` parameters for pagination control
+
 ## [3.1.0] - 2025-12-23
 
 ### Added
