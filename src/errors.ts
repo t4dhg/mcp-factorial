@@ -135,6 +135,35 @@ export class ValidationError extends HttpError {
 }
 
 /**
+ * Conflict error (409) - Resource already exists or state conflict
+ */
+export class ConflictError extends HttpError {
+  constructor(endpoint: string, message: string, context?: Record<string, unknown>) {
+    super(409, endpoint, message, {
+      isRetryable: false,
+      context,
+    });
+    this.name = 'ConflictError';
+  }
+}
+
+/**
+ * Unprocessable Entity error (422) - Validation failed on the server
+ */
+export class UnprocessableEntityError extends HttpError {
+  public readonly validationErrors: Record<string, string[]>;
+
+  constructor(endpoint: string, message: string, context?: Record<string, unknown>) {
+    super(422, endpoint, message, {
+      isRetryable: false,
+      context,
+    });
+    this.name = 'UnprocessableEntityError';
+    this.validationErrors = (context?.raw as { errors?: Record<string, string[]> })?.errors || {};
+  }
+}
+
+/**
  * Server error (5xx)
  */
 export class ServerError extends HttpError {
@@ -237,4 +266,51 @@ export function getUserMessage(error: unknown): string {
     return error.message;
   }
   return 'An unexpected error occurred';
+}
+
+// ============================================================================
+// Write Operation Errors
+// ============================================================================
+
+/**
+ * Operation cancelled by user (e.g., confirmation declined)
+ */
+export class OperationCancelledError extends FactorialError {
+  public readonly operation: string;
+
+  constructor(operation: string) {
+    super(`Operation "${operation}" was cancelled.`, { isRetryable: false });
+    this.name = 'OperationCancelledError';
+    this.operation = operation;
+  }
+}
+
+/**
+ * Confirmation token expired or invalid
+ */
+export class ConfirmationExpiredError extends FactorialError {
+  constructor() {
+    super('Confirmation token has expired or is invalid. Please try the operation again.', {
+      isRetryable: false,
+    });
+    this.name = 'ConfirmationExpiredError';
+  }
+}
+
+/**
+ * Format validation errors from API response into a human-readable message
+ */
+export function formatValidationErrors(
+  errorData: { errors?: Record<string, string[]>; message?: string } | null
+): string {
+  if (!errorData) return 'Validation failed';
+
+  if (errorData.errors) {
+    const messages = Object.entries(errorData.errors)
+      .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+      .join('; ');
+    return `Validation failed: ${messages}`;
+  }
+
+  return errorData.message || 'Validation failed';
 }

@@ -1,0 +1,115 @@
+# MCP FactorialHR
+
+> The definitive Model Context Protocol server for FactorialHR
+
+## Overview
+
+MCP FactorialHR provides comprehensive access to FactorialHR data through the Model Context Protocol. It enables AI assistants like Claude to interact with your HR system for employees, teams, time off, attendance, projects, training, recruiting, and payroll.
+
+## Key Features
+
+- **80+ Tools**: Full CRUD operations for all major HR entities
+- **Safety Guardrails**: High-risk operations (terminate, delete) require confirmation
+- **Audit Logging**: All write operations are logged
+- **Read-only Payroll**: Payroll data is accessible but read-only for security
+- **Pagination**: All list operations support pagination
+- **Caching**: TTL-based caching for performance
+- **Validation**: Runtime validation with Zod schemas
+
+## Categories
+
+### Employees (6 tools)
+- list_employees, get_employee, search_employees
+- create_employee, update_employee, terminate_employee
+
+### Teams (5 tools)
+- list_teams, get_team
+- create_team, update_team, delete_team
+
+### Locations (5 tools)
+- list_locations, get_location
+- create_location, update_location, delete_location
+
+### Time Off (10 tools)
+- list_leaves, get_leave, list_leave_types, get_leave_type, list_allowances
+- create_leave, update_leave, cancel_leave, approve_leave, reject_leave
+
+### Attendance (5 tools)
+- list_shifts, get_shift
+- create_shift, update_shift, delete_shift
+
+### Projects (17 tools)
+- list_projects, get_project, create_project, update_project, delete_project
+- list_project_tasks, create_project_task, update_project_task, delete_project_task
+- list_project_workers, assign_project_worker, remove_project_worker
+- list_time_records, create_time_record, update_time_record, delete_time_record
+
+### Training (14 tools)
+- list_trainings, get_training, create_training, update_training, delete_training
+- list_training_sessions, create_training_session, update_training_session, delete_training_session
+- list_training_enrollments, enroll_in_training, unenroll_from_training
+
+### Work Areas (6 tools)
+- list_work_areas, get_work_area
+- create_work_area, update_work_area, archive_work_area, unarchive_work_area
+
+### ATS/Recruiting (16 tools)
+- list_job_postings, get_job_posting, create_job_posting, update_job_posting, delete_job_posting
+- list_candidates, get_candidate, create_candidate, update_candidate, delete_candidate
+- list_applications, get_application, create_application, update_application, delete_application
+- advance_application, list_hiring_stages
+
+### Payroll (6 tools, read-only)
+- list_payroll_supplements, get_payroll_supplement
+- list_tax_identifiers, get_tax_identifier
+- list_family_situations, get_family_situation
+
+### Documents (4 tools, read-only)
+- list_folders, get_folder, list_documents, get_document
+
+### Job Catalog (3 tools, read-only)
+- list_job_roles, get_job_role, list_job_levels
+
+### Contracts (1 tool, read-only)
+- get_employee_contracts
+
+## MCP Resources
+
+- factorial://org-chart - Organization hierarchy
+- factorial://employees/directory - Employee directory by team
+- factorial://locations/directory - Location directory
+- factorial://timeoff/policies - Leave types and policies
+- factorial://teams/{team_id} - Team details (templated)
+
+## MCP Prompts
+
+- onboard-employee - Generate onboarding checklists
+- analyze-org-structure - Analyze organizational structure
+- timeoff-report - Generate time off reports
+
+## Installation
+
+```json
+{
+  "mcpServers": {
+    "factorial": {
+      "command": "npx",
+      "args": ["-y", "@t4dhg/mcp-factorial"],
+      "env": {
+        "FACTORIAL_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+## Links
+
+- npm: https://www.npmjs.com/package/@t4dhg/mcp-factorial
+- GitHub: https://github.com/t4dhg/mcp-factorial
+- FactorialHR API: https://apidoc.factorialhr.com/
+
+## Contact
+
+Author: Taig Mac Carthy
+Website: https://taigmaccarthy.com/

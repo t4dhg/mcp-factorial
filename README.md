@@ -1,62 +1,41 @@
 # MCP FactorialHR
 
-> **Secure, privacy-focused access to FactorialHR data for AI assistants**
+> **The definitive Model Context Protocol server for FactorialHR**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen.svg)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
 
-A Model Context Protocol (MCP) server that provides AI assistants like Claude with secure, read-only access to your FactorialHR employee and organizational data. Built with privacy and security as core principles.
+A comprehensive Model Context Protocol (MCP) server that provides AI assistants like Claude with full access to FactorialHR. Manage employees, teams, time off, projects, training, recruiting, and more - all with built-in safety guardrails.
 
 ## Why This MCP Server?
 
-- **Privacy-First Design**: Deliberately excludes payroll, compensation, and sensitive financial data. Your salary information stays private.
-- **Read-Only Access**: No write operations - Claude can view but never modify your HR data.
-- **Organizational Focus**: Optimized for team structure, employee directories, and location lookups - the data you actually need for AI-assisted workflows.
-- **Enterprise Ready**: Built for companies who need AI integration without compromising data security.
-
-## Security by Design
-
-This MCP server intentionally **does NOT expose**:
-
-- Payroll and salary information
-- Bank account details
-- Tax documents
-- Compensation packages
-- Benefits enrollment data
-- Personal identification numbers
-
-We believe AI assistants should help with organizational tasks without having access to your most sensitive HR data.
+- **Comprehensive Coverage**: 80+ tools spanning employees, teams, time off, attendance, projects, training, recruiting (ATS), and payroll
+- **Full CRUD Operations**: Create, read, update, and delete across all major entities
+- **Safety Guardrails**: High-risk operations require explicit confirmation
+- **Audit Logging**: All write operations are logged for compliance
+- **Enterprise Ready**: Built for companies who need AI integration with proper controls
 
 ## Features
 
-### 22 Tools
+### 80+ Tools
 
-| Category        | Tool                     | Description                                                      |
-| --------------- | ------------------------ | ---------------------------------------------------------------- |
-| **Employees**   | `list_employees`         | Get employees with optional team/location filters and pagination |
-|                 | `get_employee`           | Get detailed information about a specific employee               |
-|                 | `search_employees`       | Search employees by name or email                                |
-| **Teams**       | `list_teams`             | View organizational team structure                               |
-|                 | `get_team`               | Get team details and member list                                 |
-| **Locations**   | `list_locations`         | Get company office locations                                     |
-|                 | `get_location`           | Get location details (address, contact info)                     |
-| **Contracts**   | `get_employee_contracts` | View job titles and contract effective dates                     |
-| **Time Off**    | `list_leaves`            | List time off requests with filters                              |
-|                 | `get_leave`              | Get leave request details                                        |
-|                 | `list_leave_types`       | Get all leave types (vacation, sick, etc.)                       |
-|                 | `get_leave_type`         | Get leave type details                                           |
-|                 | `list_allowances`        | Get time off balances                                            |
-| **Attendance**  | `list_shifts`            | List employee shifts                                             |
-|                 | `get_shift`              | Get shift details                                                |
-| **Documents**   | `list_folders`           | List document folders                                            |
-|                 | `get_folder`             | Get folder details                                               |
-|                 | `list_documents`         | List documents                                                   |
-|                 | `get_document`           | Get document metadata                                            |
-| **Job Catalog** | `list_job_roles`         | List job roles                                                   |
-|                 | `get_job_role`           | Get job role details                                             |
-|                 | `list_job_levels`        | List job levels                                                  |
+| Category        | Tools | Operations                                                              |
+| --------------- | ----- | ----------------------------------------------------------------------- |
+| **Employees**   | 6     | List, get, search, create, update, terminate                            |
+| **Teams**       | 5     | List, get, create, update, delete                                       |
+| **Locations**   | 5     | List, get, create, update, delete                                       |
+| **Time Off**    | 10    | List leaves/types/allowances, create, update, cancel, approve, reject   |
+| **Attendance**  | 5     | List shifts, create, update, delete                                     |
+| **Projects**    | 17    | Full CRUD for projects, tasks, workers, time records                    |
+| **Training**    | 14    | Full CRUD for trainings, sessions, enrollments                          |
+| **Work Areas**  | 6     | List, get, create, update, archive, unarchive                           |
+| **ATS**         | 16    | Job postings, candidates, applications, hiring stages, advance workflow |
+| **Payroll**     | 6     | List/get supplements, tax identifiers, family situations (read-only)    |
+| **Documents**   | 4     | List/get folders and documents (read-only)                              |
+| **Job Catalog** | 3     | List/get job roles and levels (read-only)                               |
+| **Contracts**   | 1     | Get employee contract history (read-only)                               |
 
 ### 5 MCP Resources
 
@@ -78,6 +57,8 @@ We believe AI assistants should help with organizational tasks without having ac
 
 ### Architecture Features
 
+- **Safety Guardrails**: High-risk operations (terminate, delete) marked for confirmation
+- **Audit Logging**: All write operations logged with timestamps and context
 - **Caching**: In-memory TTL-based caching (configurable by resource type)
 - **Pagination**: All list operations support pagination
 - **Retry Logic**: Exponential backoff with rate limit handling
@@ -127,40 +108,51 @@ Or pass it directly in the MCP config:
 Once configured, ask Claude things like:
 
 - _"Who's on the Engineering team?"_
-- _"Find the email for John Smith"_
-- _"What offices do we have?"_
-- _"Show me the org structure"_
-- _"How much PTO does employee 42 have left?"_
-- _"Generate an onboarding checklist for the new hire"_
+- _"Create a new employee John Smith with email john@company.com"_
+- _"Approve the pending time off request for employee 42"_
+- _"Create a new project called Q1 Marketing Campaign"_
+- _"Enroll Sarah in the Leadership Training program"_
+- _"Show me all open job postings"_
+- _"What candidates applied for the Senior Developer position?"_
 
 ## Getting an API Key
 
-1. Log in to [FactorialHR](https://app.factorialhr.com) as an administrator
-2. Navigate to **Settings → Integrations → API**
-3. Generate a new API key
-4. Add it to your `.env` file
+You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
-> **Important**: API keys have full access to FactorialHR and never expire. Store them securely and rotate them periodically.
+1. Log in to [FactorialHR](https://app.factorialhr.com) as an administrator
+2. Go to [**Settings → API keys**](https://app.factorialhr.com/settings/api-keys)
+3. Click the **"New API key"** button
+4. Give your key a descriptive name (e.g., "Claude Code" or "MCP Server")
+5. Click **Create** - your API key will be displayed
+6. **Copy the key immediately** - it's only shown once and cannot be retrieved later
+7. Add the key to your `.env` file or MCP configuration
+
+> **Important**: API keys have full access to your FactorialHR data and never expire. Store them securely, never commit them to version control, and rotate them periodically.
 
 ## Use Cases
 
 ### For Managers
 
-- Quickly look up team member contact information
-- Understand org chart and reporting structures
-- Monitor time off schedules for coverage planning
+- Create and manage team structures
+- Approve or reject time off requests
+- Assign employees to projects
+- Track project time records
+- Monitor training enrollments
 
 ### For HR
 
-- Power AI-assisted employee directory searches
-- Streamline onboarding information lookups
-- Generate time off reports and analyze patterns
+- Onboard new employees with full data entry
+- Manage job postings and recruiting pipeline
+- Track candidate applications through hiring stages
+- Generate org structure analysis
+- Manage training programs and enrollments
 
 ### For Developers
 
 - Build AI workflows that need employee context
 - Create custom Claude integrations
-- Automate org-chart-aware processes
+- Automate HR processes with AI assistance
+- Generate reports and analytics
 
 ## Configuration Options
 
@@ -171,6 +163,35 @@ Once configured, ask Claude things like:
 | `FACTORIAL_TIMEOUT`     | Request timeout (ms)     | `30000`      |
 | `FACTORIAL_MAX_RETRIES` | Max retry attempts       | `3`          |
 | `DEBUG`                 | Enable debug logging     | `false`      |
+
+## Safety & Security
+
+### High-Risk Operations
+
+The following operations are marked as high-risk and should be used with care:
+
+- `terminate_employee` - Terminates an employee (sets termination date)
+- `delete_team` - Permanently deletes a team
+- `delete_location` - Permanently deletes a location
+- `delete_project` - Permanently deletes a project
+- `delete_candidate` - Permanently deletes a candidate
+
+### Read-Only Categories
+
+Some categories are intentionally read-only for security:
+
+- **Payroll**: Supplements, tax identifiers, family situations
+- **Documents**: Folder and document metadata only
+- **Contracts**: Historical contract data
+
+### Audit Logging
+
+All write operations (create, update, delete, approve, reject) are logged with:
+
+- Timestamp
+- Operation type
+- Entity type and ID
+- Changes made
 
 ## Development
 
@@ -229,16 +250,19 @@ The server implements exponential backoff for rate limits. If you're hitting lim
 ## FAQ
 
 **Q: Does this expose salary/payroll data?**
-A: No. This MCP server deliberately excludes all payroll, compensation, and financial data.
+A: Payroll data (supplements, tax identifiers, family situations) is available read-only. No write operations for payroll are supported.
 
 **Q: Can Claude modify data in Factorial?**
-A: No. This is a read-only integration. No write operations are supported.
+A: Yes! Full CRUD operations are available for employees, teams, locations, time off, projects, training, and recruiting. High-risk operations are clearly marked.
 
 **Q: How is data cached?**
 A: Data is cached in-memory with TTLs: employees (5 min), teams (10 min), locations (15 min), contracts (3 min).
 
 **Q: What FactorialHR API version is used?**
 A: Version `2025-10-01` by default. Override with `FACTORIAL_API_VERSION` environment variable.
+
+**Q: Are write operations logged?**
+A: Yes, all write operations are logged via the audit module for compliance and debugging.
 
 ## Contributing
 
