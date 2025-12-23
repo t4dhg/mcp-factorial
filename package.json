@@ -1,7 +1,7 @@
 {
   "name": "@t4dhg/mcp-factorial",
-  "version": "2.0.0",
-  "description": "MCP server for FactorialHR - Access employee and organizational data from FactorialHR in Claude Code and other MCP clients",
+  "version": "3.0.0",
+  "description": "The definitive MCP server for FactorialHR - Full CRUD operations for employees, teams, time off, projects, training, recruiting (ATS), and payroll. 80+ tools with safety guardrails.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -9,7 +9,8 @@
   },
   "files": [
     "dist/",
-    "README.md"
+    "README.md",
+    "llms.txt"
   ],
   "exports": {
     ".": {
@@ -47,13 +48,31 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "mcp-server",
     "factorial",
     "factorialhr",
+    "factorial-hr",
+    "hris",
     "hr",
+    "hrm",
+    "human-resources",
+    "employee-management",
+    "time-off",
+    "attendance",
+    "pto",
+    "recruiting",
+    "ats",
+    "applicant-tracking",
+    "training",
+    "projects",
+    "payroll",
     "claude",
+    "claude-code",
     "anthropic",
     "ai",
-    "llm"
+    "llm",
+    "ai-integration",
+    "enterprise"
   ],
   "author": "Taig Mac Carthy <https://taigmaccarthy.com/>",
   "license": "MIT",

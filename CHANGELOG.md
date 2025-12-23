@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-12-22
+
+### Added
+
+#### Write Operations
+- Employee write operations: create_employee, update_employee, terminate_employee
+- Team write operations: create_team, update_team, delete_team
+- Location write operations: create_location, update_location, delete_location
+- Leave write operations: create_leave, update_leave, cancel_leave, approve_leave, reject_leave
+- Shift write operations: create_shift, update_shift, delete_shift
+
+#### New Categories - Projects (17 tools)
+- list_projects, get_project, create_project, update_project, delete_project
+- list_project_tasks, create_project_task, update_project_task, delete_project_task
+- list_project_workers, assign_project_worker, remove_project_worker
+- list_time_records, create_time_record, update_time_record, delete_time_record
+
+#### New Categories - Training (14 tools)
+- list_trainings, get_training, create_training, update_training, delete_training
+- list_training_sessions, create_training_session, update_training_session, delete_training_session
+- list_training_enrollments, get_training_enrollment, enroll_in_training, unenroll_from_training
+
+#### New Categories - Work Areas (6 tools)
+- list_work_areas, get_work_area, create_work_area, update_work_area
+- archive_work_area, unarchive_work_area
+
+#### New Categories - ATS/Recruiting (16 tools)
+- list_job_postings, get_job_posting, create_job_posting, update_job_posting, delete_job_posting
+- list_candidates, get_candidate, create_candidate, update_candidate, delete_candidate
+- list_applications, get_application, create_application, update_application, delete_application
+- advance_application, list_hiring_stages
+
+#### New Categories - Payroll (6 tools, read-only)
+- list_payroll_supplements, get_payroll_supplement
+- list_tax_identifiers, get_tax_identifier
+- list_family_situations, get_family_situation
+
+#### Infrastructure
+- Audit logging module for all write operations
+- Write safety module with risk classification
+- Confirmation token management for high-risk operations
+- HTTP client extended with POST/PUT/PATCH/DELETE methods
+- Idempotency key support for safe write retries
+- New error types: ConflictError, UnprocessableEntityError, OperationCancelledError
+
+#### Visibility
+- llms.txt for LLM discoverability
+- Enhanced package.json keywords for npm searchability
+- Comprehensive README update with all 80+ tools
+
+### Changed
+- Bumped version to 3.0.0 (major feature release)
+- Updated project philosophy from read-only to full CRUD with safety guardrails
+- Payroll data now accessible (read-only) instead of being excluded
+- Server version updated to 3.0.0 in MCP metadata
+
+### Security
+- High-risk operations clearly marked in descriptions
+- Audit logging for compliance
+- Payroll operations remain read-only
+
 ## [2.0.0] - 2025-12-22
 
 ### Added
@@ -67,6 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TypeScript support with strict mode
 - Comprehensive README with setup instructions
 
+[3.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/t4dhg/mcp-factorial/releases/tag/v1.0.0

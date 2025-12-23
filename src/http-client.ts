@@ -13,8 +13,17 @@ import {
   ServerError,
   TimeoutError,
   NetworkError,
+  ValidationError,
+  ConflictError,
+  UnprocessableEntityError,
   isRetryableError,
+  formatValidationErrors,
 } from './errors.js';
+
+/**
+ * HTTP methods supported by the client
+ */
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
  * Request options for the HTTP client
@@ -28,6 +37,18 @@ export interface RequestOptions {
   maxRetries?: number;
   /** Skip retry logic */
   noRetry?: boolean;
+}
+
+/**
+ * Extended options for write operations (POST, PUT, PATCH, DELETE)
+ */
+export interface WriteRequestOptions extends RequestOptions {
+  /** HTTP method */
+  method?: HttpMethod;
+  /** Request body (will be JSON serialized) */
+  body?: Record<string, unknown>;
+  /** Idempotency key for safe retries */
+  idempotencyKey?: string;
 }
 
 /**
@@ -74,25 +95,55 @@ function buildUrl(
 }
 
 /**
+ * Parse error response body
+ */
+function parseErrorBody(
+  errorText: string
+): { errors?: Record<string, string[]>; message?: string } | null {
+  try {
+    return JSON.parse(errorText) as { errors?: Record<string, string[]>; message?: string };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Handle HTTP response and throw appropriate errors
  */
-async function handleResponse<T>(response: Response, endpoint: string): Promise<T> {
+async function handleResponse<T>(
+  response: Response,
+  endpoint: string,
+  method: HttpMethod = 'GET'
+): Promise<T> {
   if (response.ok) {
+    // Handle 204 No Content (common for DELETE operations)
+    if (response.status === 204) {
+      return undefined as T;
+    }
     const data = (await response.json()) as T;
-    debug('Response received', { endpoint, status: response.status });
+    debug('Response received', { endpoint, method, status: response.status });
     return data;
   }
 
   const errorText = await response.text();
-  debug(`API error (${response.status})`, { endpoint, error: errorText });
+  const errorData = parseErrorBody(errorText);
+  debug(`API error (${response.status})`, { endpoint, method, error: errorText });
 
   switch (response.status) {
+    case 400:
+      throw new ValidationError(endpoint, formatValidationErrors(errorData), { raw: errorData });
     case 401:
       throw new AuthenticationError(endpoint);
     case 403:
       throw new AuthorizationError(endpoint);
     case 404:
       throw new NotFoundError(endpoint);
+    case 409:
+      throw new ConflictError(endpoint, errorData?.message || 'Resource conflict');
+    case 422:
+      throw new UnprocessableEntityError(endpoint, formatValidationErrors(errorData), {
+        raw: errorData,
+      });
     case 429: {
       const retryAfter = response.headers.get('Retry-After');
       throw new RateLimitError(endpoint, retryAfter ? parseInt(retryAfter, 10) : undefined);
@@ -107,17 +158,22 @@ async function handleResponse<T>(response: Response, endpoint: string): Promise<
 
 /**
  * Make an HTTP request with retry logic
+ * Supports both read (GET) and write (POST, PUT, PATCH, DELETE) operations
  */
 export async function factorialRequest<T>(
   endpoint: string,
-  options: RequestOptions = {}
+  options: WriteRequestOptions = {}
 ): Promise<T> {
   const config = getConfig();
+  const method = options.method ?? 'GET';
   const url = buildUrl(endpoint, options.params);
   const timeout = options.timeout ?? config.timeout;
-  const maxRetries = options.noRetry ? 1 : (options.maxRetries ?? config.maxRetries);
 
-  debug(`Fetching: ${url}`);
+  // Write operations should not retry by default (except with idempotency key)
+  const defaultMaxRetries = method === 'GET' ? config.maxRetries : options.idempotencyKey ? 2 : 1;
+  const maxRetries = options.noRetry ? 1 : (options.maxRetries ?? defaultMaxRetries);
+
+  debug(`${method} ${url}`);
 
   let lastError: Error | undefined;
 
@@ -126,17 +182,31 @@ export async function factorialRequest<T>(
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
+      // Build headers
+      const headers: Record<string, string> = {
+        'x-api-key': getApiKey(),
+        Accept: 'application/json',
+      };
+
+      // Add Content-Type for requests with body
+      if (options.body) {
+        headers['Content-Type'] = 'application/json';
+      }
+
+      // Add idempotency key header for write operations
+      if (options.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+      }
+
       const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'x-api-key': getApiKey(),
-          Accept: 'application/json',
-        },
+        method,
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
-      return await handleResponse<T>(response, endpoint);
+      return await handleResponse<T>(response, endpoint, method);
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -149,8 +219,9 @@ export async function factorialRequest<T>(
         lastError = new NetworkError('An unexpected network error occurred');
       }
 
-      // Check if we should retry
-      const shouldRetry = attempt < maxRetries && isRetryableError(lastError);
+      // Only retry writes if idempotent and retryable
+      const canRetryWrite = method === 'GET' || options.idempotencyKey;
+      const shouldRetry = attempt < maxRetries && isRetryableError(lastError) && canRetryWrite;
 
       if (shouldRetry) {
         // Handle rate limit with Retry-After header
@@ -202,4 +273,86 @@ export async function fetchOne<T>(endpoint: string, options?: RequestOptions): P
 export async function fetchList<T>(endpoint: string, options?: RequestOptions): Promise<T[]> {
   const response = await factorialRequest<ApiListResponse<T>>(endpoint, options);
   return response.data || [];
+}
+
+// ============================================================================
+// Write Operation Helpers
+// ============================================================================
+
+/**
+ * Create a resource (POST request expecting single item response)
+ */
+export async function postOne<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  options?: Omit<WriteRequestOptions, 'method' | 'body'>
+): Promise<T> {
+  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+    ...options,
+    method: 'POST',
+    body,
+  });
+  return response.data;
+}
+
+/**
+ * Update a resource (PUT request expecting single item response)
+ */
+export async function putOne<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  options?: Omit<WriteRequestOptions, 'method' | 'body'>
+): Promise<T> {
+  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+    ...options,
+    method: 'PUT',
+    body,
+  });
+  return response.data;
+}
+
+/**
+ * Partially update a resource (PATCH request expecting single item response)
+ */
+export async function patchOne<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  options?: Omit<WriteRequestOptions, 'method' | 'body'>
+): Promise<T> {
+  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+    ...options,
+    method: 'PATCH',
+    body,
+  });
+  return response.data;
+}
+
+/**
+ * Delete a resource (DELETE request, typically returns 204 No Content)
+ */
+export async function deleteOne(
+  endpoint: string,
+  options?: Omit<WriteRequestOptions, 'method' | 'body'>
+): Promise<void> {
+  await factorialRequest<void>(endpoint, {
+    ...options,
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Perform a custom action on a resource (POST to action endpoint)
+ * Used for actions like approve, reject, archive, etc.
+ */
+export async function postAction<T>(
+  endpoint: string,
+  body?: Record<string, unknown>,
+  options?: Omit<WriteRequestOptions, 'method' | 'body'>
+): Promise<T> {
+  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+    ...options,
+    method: 'POST',
+    body: body || {},
+  });
+  return response.data;
 }
