@@ -6,6 +6,7 @@
 
 import { fetchList, fetchOne, postOne, patchOne, deleteOne, postAction } from './http-client.js';
 import { cache, cached, CACHE_TTL, CacheManager } from './cache.js';
+import { debug } from './config.js';
 import {
   buildPaginationParams,
   paginateResponse,
@@ -449,21 +450,66 @@ export async function listDocuments(
 
     // Make request with custom query string
     const documents = await fetchList<Document>(`${ENDPOINTS.documents}?${fullParams}`);
+
+    debug(`listDocuments returned ${documents.length} documents`, {
+      sampleDocument: documents[0],
+      missingNames: documents.filter(d => !d.name).length,
+    });
+
     return paginateResponse(documents, params.page, params.limit);
   }
 
   const documents = await fetchList<Document>(ENDPOINTS.documents, { params: queryParams });
+
+  debug(`listDocuments returned ${documents.length} documents`, {
+    sampleDocument: documents[0],
+    missingNames: documents.filter(d => !d.name).length,
+  });
 
   return paginateResponse(documents, params.page, params.limit);
 }
 
 /**
  * Get a specific document by ID
+ *
+ * Note: The Factorial API's individual document endpoint (/documents/documents/{id})
+ * can be unreliable, similar to the employee endpoint. This function implements a fallback
+ * to listing all documents and filtering if the direct endpoint fails or returns no data.
+ *
+ * @param id - The document ID
+ * @returns The document object
+ * @throws Error if document is not found
  */
 export async function getDocument(id: number): Promise<Document> {
   validateId(id, 'document');
 
-  return fetchOne<Document>(endpointWithId(ENDPOINTS.documents, id));
+  // Try the direct endpoint first
+  try {
+    const document = await fetchOne<Document>(endpointWithId(ENDPOINTS.documents, id));
+
+    // If we got a valid document, return it
+    if (document) {
+      return document;
+    }
+  } catch (error) {
+    // If direct fetch fails with NotFoundError, try fallback
+    if (!(error instanceof NotFoundError)) {
+      throw error;
+    }
+    debug(`getDocument(${id}) - direct endpoint failed, using fallback`);
+  }
+
+  // Fallback: Fetch all documents and filter by ID
+  // This works around Factorial API limitations with the individual document endpoint
+  const allDocuments = await fetchList<Document>(ENDPOINTS.documents);
+
+  const document = allDocuments.find(doc => doc.id === id);
+
+  if (!document) {
+    throw new Error(`Document with ID ${id} not found.`);
+  }
+
+  return document;
 }
 
 // ============================================================================

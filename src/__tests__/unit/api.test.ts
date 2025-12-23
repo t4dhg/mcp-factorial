@@ -21,6 +21,8 @@ const {
   listLocations,
   getLocation,
   listContracts,
+  listDocuments,
+  getDocument,
   clearCache,
 } = await import('../../api.js');
 
@@ -328,6 +330,210 @@ describe('API Client', () => {
 
       const headers = mockFetch.mock.calls[0][1].headers;
       expect(headers['Accept']).toBe('application/json');
+    });
+  });
+
+  describe('Document API', () => {
+    describe('listDocuments', () => {
+      it('should handle documents with null name field', async () => {
+        const documents = [
+          {
+            id: 1,
+            name: null,
+            folder_id: 1,
+            employee_id: 123,
+            author_id: 456,
+            mime_type: null,
+            size_bytes: null,
+            company_id: null,
+            public: false,
+            space: null,
+            file_url: null,
+            created_at: null,
+            updated_at: null,
+          },
+          {
+            id: 2,
+            name: 'Valid.pdf',
+            folder_id: 1,
+            employee_id: 123,
+            author_id: 456,
+            mime_type: 'application/pdf',
+            size_bytes: 12345,
+            company_id: null,
+            public: false,
+            space: null,
+            file_url: 'https://example.com/file.pdf',
+            created_at: '2024-01-01',
+            updated_at: '2024-01-01',
+          },
+        ];
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: documents }),
+        });
+
+        const result = await listDocuments();
+
+        expect(result.data).toHaveLength(2);
+        expect(result.data[0].name).toBeNull();
+        expect(result.data[1].name).toBe('Valid.pdf');
+      });
+
+      it('should handle documents with missing metadata fields', async () => {
+        const documents = [
+          {
+            id: 1,
+            name: 'Contract.pdf',
+            folder_id: 1,
+            employee_id: 123,
+            author_id: 456,
+            mime_type: null,
+            size_bytes: null,
+            company_id: null,
+            public: false,
+            space: null,
+            file_url: null,
+            created_at: null,
+            updated_at: null,
+          },
+        ];
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: documents }),
+        });
+
+        const result = await listDocuments();
+
+        expect(result.data[0].mime_type).toBeNull();
+        expect(result.data[0].size_bytes).toBeNull();
+      });
+    });
+
+    describe('getDocument', () => {
+      it('should fetch a document by ID', async () => {
+        const document = {
+          id: 1,
+          name: 'Contract.pdf',
+          folder_id: 1,
+          employee_id: 123,
+          author_id: 456,
+          mime_type: 'application/pdf',
+          size_bytes: 12345,
+          company_id: null,
+          public: false,
+          space: null,
+          file_url: 'https://example.com/file.pdf',
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: document }),
+        });
+
+        const result = await getDocument(1);
+
+        expect(result.id).toBe(1);
+        expect(result.name).toBe('Contract.pdf');
+      });
+
+      it('should use fallback when direct endpoint returns 404', async () => {
+        const documents = [
+          {
+            id: 1,
+            name: 'Contract.pdf',
+            folder_id: 1,
+            employee_id: 123,
+            author_id: 456,
+            mime_type: 'application/pdf',
+            size_bytes: 12345,
+            company_id: null,
+            public: false,
+            space: null,
+            file_url: 'https://example.com/file.pdf',
+            created_at: '2024-01-01',
+            updated_at: '2024-01-01',
+          },
+          {
+            id: 2,
+            name: 'Policy.pdf',
+            folder_id: 1,
+            employee_id: 123,
+            author_id: 456,
+            mime_type: 'application/pdf',
+            size_bytes: 67890,
+            company_id: null,
+            public: false,
+            space: null,
+            file_url: 'https://example.com/file2.pdf',
+            created_at: '2024-01-01',
+            updated_at: '2024-01-01',
+          },
+        ];
+
+        // First call (direct endpoint) returns 404
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          text: async () => 'Not found',
+        });
+
+        // Second call (fallback list endpoint) succeeds
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: documents }),
+        });
+
+        const result = await getDocument(1);
+
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(result.id).toBe(1);
+        expect(result.name).toBe('Contract.pdf');
+      });
+
+      it('should throw error when document not found in fallback', async () => {
+        const documents = [
+          {
+            id: 2,
+            name: 'Policy.pdf',
+            folder_id: 1,
+            employee_id: 123,
+            author_id: 456,
+            mime_type: 'application/pdf',
+            size_bytes: 67890,
+            company_id: null,
+            public: false,
+            space: null,
+            file_url: 'https://example.com/file2.pdf',
+            created_at: '2024-01-01',
+            updated_at: '2024-01-01',
+          },
+        ];
+
+        // First call (direct endpoint) returns 404
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          text: async () => 'Not found',
+        });
+
+        // Second call (fallback list endpoint) succeeds but doesn't have the document
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: documents }),
+        });
+
+        await expect(getDocument(999)).rejects.toThrow('Document with ID 999 not found');
+      });
     });
   });
 });

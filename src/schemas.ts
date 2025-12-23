@@ -182,7 +182,7 @@ export type Folder = z.infer<typeof FolderSchema>;
  */
 export const DocumentSchema = z.object({
   id: z.number(),
-  name: z.string(),
+  name: z.string().nullable(),
   folder_id: z.number().nullable(),
   employee_id: z.number().nullable(), // Employee the document belongs to
   author_id: z.number().nullable(),
