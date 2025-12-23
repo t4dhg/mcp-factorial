@@ -218,11 +218,6 @@ server.registerTool(
   async ({ id }) => {
     try {
       const employee = await getEmployee(id);
-      if (!employee) {
-        return {
-          content: [{ type: 'text', text: `Employee with ID ${id} not found.` }],
-        };
-      }
       return {
         content: [
           {
@@ -1515,20 +1510,23 @@ server.registerTool(
   'list_documents',
   {
     title: 'List Documents',
-    description: 'Get documents. Filter by folder. Read-only access.',
+    description: 'Get documents. Filter by folder or employee. Read-only access.',
     inputSchema: {
       folder_id: z.number().optional().describe('Filter by folder ID'),
+      employee_ids: z.array(z.number()).optional().describe('Filter by employee IDs'),
       page: z.number().optional().default(1).describe('Page number'),
       limit: z.number().optional().default(100).describe('Items per page (max: 100)'),
     },
   },
-  async ({ folder_id, page, limit }) => {
+  async ({ folder_id, employee_ids, page, limit }) => {
     try {
-      const result = await listDocuments({ folder_id, page, limit });
+      const result = await listDocuments({ folder_id, employee_ids, page, limit });
       const summary = result.data.map(d => ({
         id: d.id,
         name: d.name,
         folder_id: d.folder_id,
+        employee_id: d.employee_id, // Employee the document belongs to
+        author_id: d.author_id, // Who uploaded the document
         mime_type: d.mime_type,
         size_bytes: d.size_bytes,
       }));
@@ -1571,6 +1569,43 @@ server.registerTool(
           {
             type: 'text',
             text: JSON.stringify(document, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'get_employee_documents',
+  {
+    title: 'Get Employee Documents',
+    description:
+      'Get all documents for a specific employee. Returns document metadata including file URLs.',
+    inputSchema: {
+      employee_id: z.number().describe('The employee ID'),
+      page: z.number().optional().default(1).describe('Page number'),
+      limit: z.number().optional().default(100).describe('Items per page (max: 100)'),
+    },
+  },
+  async ({ employee_id, page, limit }) => {
+    try {
+      const result = await listDocuments({ employee_ids: [employee_id], page, limit });
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${result.data.length} documents for employee ${employee_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(result.data, null, 2)}`,
           },
         ],
       };

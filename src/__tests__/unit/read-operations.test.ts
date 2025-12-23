@@ -565,4 +565,30 @@ describe('Read Operations', () => {
       expect(result.marital_status).toBe('married');
     });
   });
+
+  describe('Input Validation', () => {
+    it('should throw error for invalid tax identifier ID (zero)', async () => {
+      await expect(getTaxIdentifier(0)).rejects.toThrow(
+        'Invalid tax identifier ID. Please provide a positive number.'
+      );
+    });
+
+    it('should throw error for invalid tax identifier ID (negative)', async () => {
+      await expect(getTaxIdentifier(-1)).rejects.toThrow(
+        'Invalid tax identifier ID. Please provide a positive number.'
+      );
+    });
+
+    it('should throw error for invalid family situation ID (zero)', async () => {
+      await expect(getFamilySituation(0)).rejects.toThrow(
+        'Invalid family situation ID. Please provide a positive number.'
+      );
+    });
+
+    it('should throw error for invalid family situation ID (negative)', async () => {
+      await expect(getFamilySituation(-5)).rejects.toThrow(
+        'Invalid family situation ID. Please provide a positive number.'
+      );
+    });
+  });
 });

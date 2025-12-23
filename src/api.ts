@@ -127,17 +127,51 @@ export async function listEmployees(
 
 /**
  * Get a specific employee by ID
+ *
+ * Note: The Factorial API's individual employee endpoint (/employees/employees/{id})
+ * can be unreliable. This function falls back to fetching all employees and filtering
+ * if the direct endpoint fails or returns no data.
  */
 export async function getEmployee(id: number): Promise<Employee> {
   if (!id || id <= 0) {
     throw new Error('Invalid employee ID. Please provide a positive number.');
   }
 
-  return cached(
-    `employee:${id}`,
-    () => fetchOne<Employee>(`/employees/employees/${id}`),
+  // Try the direct endpoint first
+  try {
+    const employee = await cached(
+      `employee:${id}`,
+      () => fetchOne<Employee>(`/employees/employees/${id}`),
+      CACHE_TTL.employees
+    );
+
+    // If we got a valid employee, return it
+    if (employee) {
+      return employee;
+    }
+  } catch (error) {
+    // If direct fetch fails with NotFoundError, try fallback
+    // (other errors will be re-thrown below)
+    if (!(error instanceof Error && error.message.includes('not found'))) {
+      throw error;
+    }
+  }
+
+  // Fallback: Fetch all employees and filter (same approach as searchEmployees)
+  // This works around Factorial API limitations with the individual employee endpoint
+  const allEmployees = await cached(
+    'employees:all',
+    () => fetchList<Employee>('/employees/employees'),
     CACHE_TTL.employees
   );
+
+  const employee = allEmployees.find(emp => emp.id === id);
+
+  if (!employee) {
+    throw new Error(`Employee with ID ${id} not found.`);
+  }
+
+  return employee;
 }
 
 /**
@@ -411,6 +445,19 @@ export async function listDocuments(
   };
 
   if (options?.folder_id) queryParams.folder_id = options.folder_id;
+
+  // Handle employee_ids array parameter
+  // Factorial API expects: employee_ids[]=123&employee_ids[]=456
+  if (options?.employee_ids && options.employee_ids.length > 0) {
+    // We'll need to build the query string manually for array parameters
+    const employeeIdsParam = options.employee_ids.map(id => `employee_ids[]=${id}`).join('&');
+    const baseParams = new URLSearchParams(queryParams as Record<string, string>).toString();
+    const fullParams = baseParams ? `${baseParams}&${employeeIdsParam}` : employeeIdsParam;
+
+    // Make request with custom query string
+    const documents = await fetchList<Document>(`/documents/documents?${fullParams}`);
+    return paginateResponse(documents, params.page, params.limit);
+  }
 
   const documents = await fetchList<Document>('/documents/documents', { params: queryParams });
 
