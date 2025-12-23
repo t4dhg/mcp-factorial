@@ -148,6 +148,32 @@ export class ConflictError extends HttpError {
 }
 
 /**
+ * Safely extract validation errors from raw API response
+ */
+function extractValidationErrors(context?: Record<string, unknown>): Record<string, string[]> {
+  if (!context?.raw || typeof context.raw !== 'object') {
+    return {};
+  }
+
+  const raw = context.raw as Record<string, unknown>;
+  if (!raw.errors || typeof raw.errors !== 'object') {
+    return {};
+  }
+
+  // Validate that each entry is an array of strings
+  const errors = raw.errors as Record<string, unknown>;
+  const result: Record<string, string[]> = {};
+
+  for (const [key, value] of Object.entries(errors)) {
+    if (Array.isArray(value) && value.every((item): item is string => typeof item === 'string')) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Unprocessable Entity error (422) - Validation failed on the server
  */
 export class UnprocessableEntityError extends HttpError {
@@ -159,7 +185,7 @@ export class UnprocessableEntityError extends HttpError {
       context,
     });
     this.name = 'UnprocessableEntityError';
-    this.validationErrors = (context?.raw as { errors?: Record<string, string[]> })?.errors || {};
+    this.validationErrors = extractValidationErrors(context);
   }
 }
 

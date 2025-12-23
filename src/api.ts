@@ -74,6 +74,9 @@ import {
   type UpdateApplicationInput,
 } from './schemas.js';
 import { AuditAction, auditedOperation } from './audit.js';
+import { validateId } from './utils.js';
+import { ENDPOINTS, endpointWithId, endpointWithAction } from './endpoints.js';
+import { NotFoundError } from './errors.js';
 import type {
   ListEmployeesOptions,
   ListLeavesOptions,
@@ -100,7 +103,7 @@ export async function listEmployees(
   if (options?.team_id || options?.location_id) {
     const allEmployees = await cached(
       'employees:all',
-      () => fetchList<Employee>('/employees/employees'),
+      () => fetchList<Employee>(ENDPOINTS.employees),
       CACHE_TTL.employees
     );
 
@@ -118,7 +121,7 @@ export async function listEmployees(
   // Without filters, use pagination directly
   const employees = await cached(
     cacheKey,
-    () => fetchList<Employee>('/employees/employees', { params }),
+    () => fetchList<Employee>(ENDPOINTS.employees, { params }),
     CACHE_TTL.employees
   );
 
@@ -133,15 +136,13 @@ export async function listEmployees(
  * if the direct endpoint fails or returns no data.
  */
 export async function getEmployee(id: number): Promise<Employee> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid employee ID. Please provide a positive number.');
-  }
+  validateId(id, 'employee');
 
   // Try the direct endpoint first
   try {
     const employee = await cached(
       `employee:${id}`,
-      () => fetchOne<Employee>(`/employees/employees/${id}`),
+      () => fetchOne<Employee>(endpointWithId(ENDPOINTS.employees, id)),
       CACHE_TTL.employees
     );
 
@@ -152,7 +153,7 @@ export async function getEmployee(id: number): Promise<Employee> {
   } catch (error) {
     // If direct fetch fails with NotFoundError, try fallback
     // (other errors will be re-thrown below)
-    if (!(error instanceof Error && error.message.includes('not found'))) {
+    if (!(error instanceof NotFoundError)) {
       throw error;
     }
   }
@@ -161,7 +162,7 @@ export async function getEmployee(id: number): Promise<Employee> {
   // This works around Factorial API limitations with the individual employee endpoint
   const allEmployees = await cached(
     'employees:all',
-    () => fetchList<Employee>('/employees/employees'),
+    () => fetchList<Employee>(ENDPOINTS.employees),
     CACHE_TTL.employees
   );
 
@@ -184,7 +185,7 @@ export async function searchEmployees(query: string): Promise<Employee[]> {
 
   const allEmployees = await cached(
     'employees:all',
-    () => fetchList<Employee>('/employees/employees'),
+    () => fetchList<Employee>(ENDPOINTS.employees),
     CACHE_TTL.employees
   );
 
@@ -210,7 +211,7 @@ export async function listTeams(options?: PaginationInput): Promise<PaginatedRes
   const params = buildPaginationParams(options);
   const cacheKey = CacheManager.key('teams', options);
 
-  const teams = await cached(cacheKey, () => fetchList<Team>('/teams/teams'), CACHE_TTL.teams);
+  const teams = await cached(cacheKey, () => fetchList<Team>(ENDPOINTS.teams), CACHE_TTL.teams);
 
   return sliceForPagination(teams, params);
 }
@@ -219,11 +220,13 @@ export async function listTeams(options?: PaginationInput): Promise<PaginatedRes
  * Get a specific team by ID
  */
 export async function getTeam(id: number): Promise<Team> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid team ID. Please provide a positive number.');
-  }
+  validateId(id, 'team');
 
-  return cached(`team:${id}`, () => fetchOne<Team>(`/teams/teams/${id}`), CACHE_TTL.teams);
+  return cached(
+    `team:${id}`,
+    () => fetchOne<Team>(endpointWithId(ENDPOINTS.teams, id)),
+    CACHE_TTL.teams
+  );
 }
 
 // ============================================================================
@@ -241,7 +244,7 @@ export async function listLocations(
 
   const locations = await cached(
     cacheKey,
-    () => fetchList<Location>('/locations/locations'),
+    () => fetchList<Location>(ENDPOINTS.locations),
     CACHE_TTL.locations
   );
 
@@ -252,13 +255,11 @@ export async function listLocations(
  * Get a specific location by ID
  */
 export async function getLocation(id: number): Promise<Location> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid location ID. Please provide a positive number.');
-  }
+  validateId(id, 'location');
 
   return cached(
     `location:${id}`,
-    () => fetchOne<Location>(`/locations/locations/${id}`),
+    () => fetchOne<Location>(endpointWithId(ENDPOINTS.locations, id)),
     CACHE_TTL.locations
   );
 }
@@ -274,8 +275,8 @@ export async function listContracts(
   employeeId?: number,
   options?: PaginationInput
 ): Promise<PaginatedResponse<Contract>> {
-  if (employeeId !== undefined && employeeId <= 0) {
-    throw new Error('Invalid employee ID. Please provide a positive number.');
+  if (employeeId !== undefined) {
+    validateId(employeeId, 'employee');
   }
 
   const params = buildPaginationParams(options);
@@ -284,7 +285,7 @@ export async function listContracts(
   // so we fetch all contracts and filter client-side
   const allContracts = await cached(
     'contracts:all',
-    () => fetchList<Contract>('/contracts/contract-versions'),
+    () => fetchList<Contract>(ENDPOINTS.contracts),
     CACHE_TTL.contracts
   );
 
@@ -316,7 +317,7 @@ export async function listLeaves(options?: ListLeavesOptions): Promise<Paginated
   if (options?.start_on_gte) queryParams.start_on_gte = options.start_on_gte;
   if (options?.start_on_lte) queryParams.start_on_lte = options.start_on_lte;
 
-  const leaves = await fetchList<Leave>('/timeoff/leaves', { params: queryParams });
+  const leaves = await fetchList<Leave>(ENDPOINTS.leaves, { params: queryParams });
 
   return paginateResponse(leaves, params.page, params.limit);
 }
@@ -325,11 +326,9 @@ export async function listLeaves(options?: ListLeavesOptions): Promise<Paginated
  * Get a specific leave by ID
  */
 export async function getLeave(id: number): Promise<Leave> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid leave ID. Please provide a positive number.');
-  }
+  validateId(id, 'leave');
 
-  return fetchOne<Leave>(`/timeoff/leaves/${id}`);
+  return fetchOne<Leave>(endpointWithId(ENDPOINTS.leaves, id));
 }
 
 /**
@@ -338,7 +337,7 @@ export async function getLeave(id: number): Promise<Leave> {
 export async function listLeaveTypes(): Promise<LeaveType[]> {
   return cached(
     'leave-types:all',
-    () => fetchList<LeaveType>('/timeoff/leave-types'),
+    () => fetchList<LeaveType>(ENDPOINTS.leaveTypes),
     CACHE_TTL.leaves
   );
 }
@@ -347,11 +346,9 @@ export async function listLeaveTypes(): Promise<LeaveType[]> {
  * Get a specific leave type by ID
  */
 export async function getLeaveType(id: number): Promise<LeaveType> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid leave type ID. Please provide a positive number.');
-  }
+  validateId(id, 'leave type');
 
-  return fetchOne<LeaveType>(`/timeoff/leave-types/${id}`);
+  return fetchOne<LeaveType>(endpointWithId(ENDPOINTS.leaveTypes, id));
 }
 
 /**
@@ -369,7 +366,7 @@ export async function listAllowances(
 
   if (options?.employee_id) queryParams.employee_id = options.employee_id;
 
-  const allowances = await fetchList<Allowance>('/timeoff/allowances', { params: queryParams });
+  const allowances = await fetchList<Allowance>(ENDPOINTS.allowances, { params: queryParams });
 
   return paginateResponse(allowances, params.page, params.limit);
 }
@@ -393,7 +390,7 @@ export async function listShifts(options?: ListShiftsOptions): Promise<Paginated
   if (options?.clock_in_gte) queryParams.clock_in_gte = options.clock_in_gte;
   if (options?.clock_in_lte) queryParams.clock_in_lte = options.clock_in_lte;
 
-  const shifts = await fetchList<Shift>('/attendance/shifts', { params: queryParams });
+  const shifts = await fetchList<Shift>(ENDPOINTS.shifts, { params: queryParams });
 
   return paginateResponse(shifts, params.page, params.limit);
 }
@@ -402,11 +399,9 @@ export async function listShifts(options?: ListShiftsOptions): Promise<Paginated
  * Get a specific shift by ID
  */
 export async function getShift(id: number): Promise<Shift> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid shift ID. Please provide a positive number.');
-  }
+  validateId(id, 'shift');
 
-  return fetchOne<Shift>(`/attendance/shifts/${id}`);
+  return fetchOne<Shift>(endpointWithId(ENDPOINTS.shifts, id));
 }
 
 // ============================================================================
@@ -417,18 +412,16 @@ export async function getShift(id: number): Promise<Shift> {
  * List all folders
  */
 export async function listFolders(): Promise<Folder[]> {
-  return cached('folders:all', () => fetchList<Folder>('/documents/folders'), CACHE_TTL.default);
+  return cached('folders:all', () => fetchList<Folder>(ENDPOINTS.folders), CACHE_TTL.default);
 }
 
 /**
  * Get a specific folder by ID
  */
 export async function getFolder(id: number): Promise<Folder> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid folder ID. Please provide a positive number.');
-  }
+  validateId(id, 'folder');
 
-  return fetchOne<Folder>(`/documents/folders/${id}`);
+  return fetchOne<Folder>(endpointWithId(ENDPOINTS.folders, id));
 }
 
 /**
@@ -455,11 +448,11 @@ export async function listDocuments(
     const fullParams = baseParams ? `${baseParams}&${employeeIdsParam}` : employeeIdsParam;
 
     // Make request with custom query string
-    const documents = await fetchList<Document>(`/documents/documents?${fullParams}`);
+    const documents = await fetchList<Document>(`${ENDPOINTS.documents}?${fullParams}`);
     return paginateResponse(documents, params.page, params.limit);
   }
 
-  const documents = await fetchList<Document>('/documents/documents', { params: queryParams });
+  const documents = await fetchList<Document>(ENDPOINTS.documents, { params: queryParams });
 
   return paginateResponse(documents, params.page, params.limit);
 }
@@ -468,11 +461,9 @@ export async function listDocuments(
  * Get a specific document by ID
  */
 export async function getDocument(id: number): Promise<Document> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid document ID. Please provide a positive number.');
-  }
+  validateId(id, 'document');
 
-  return fetchOne<Document>(`/documents/documents/${id}`);
+  return fetchOne<Document>(endpointWithId(ENDPOINTS.documents, id));
 }
 
 // ============================================================================
@@ -483,18 +474,16 @@ export async function getDocument(id: number): Promise<Document> {
  * List all job roles
  */
 export async function listJobRoles(): Promise<JobRole[]> {
-  return cached('job-roles:all', () => fetchList<JobRole>('/job_catalog/roles'), CACHE_TTL.default);
+  return cached('job-roles:all', () => fetchList<JobRole>(ENDPOINTS.jobRoles), CACHE_TTL.default);
 }
 
 /**
  * Get a specific job role by ID
  */
 export async function getJobRole(id: number): Promise<JobRole> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid job role ID. Please provide a positive number.');
-  }
+  validateId(id, 'job role');
 
-  return fetchOne<JobRole>(`/job_catalog/roles/${id}`);
+  return fetchOne<JobRole>(endpointWithId(ENDPOINTS.jobRoles, id));
 }
 
 /**
@@ -503,7 +492,7 @@ export async function getJobRole(id: number): Promise<JobRole> {
 export async function listJobLevels(): Promise<JobLevel[]> {
   return cached(
     'job-levels:all',
-    () => fetchList<JobLevel>('/job_catalog/levels'),
+    () => fetchList<JobLevel>(ENDPOINTS.jobLevels),
     CACHE_TTL.default
   );
 }
@@ -512,11 +501,9 @@ export async function listJobLevels(): Promise<JobLevel[]> {
  * Get a specific job level by ID
  */
 export async function getJobLevel(id: number): Promise<JobLevel> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid job level ID. Please provide a positive number.');
-  }
+  validateId(id, 'job level');
 
-  return fetchOne<JobLevel>(`/job_catalog/levels/${id}`);
+  return fetchOne<JobLevel>(endpointWithId(ENDPOINTS.jobLevels, id));
 }
 
 // ============================================================================
@@ -550,7 +537,7 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<Employ
     'employee',
     undefined,
     async () => {
-      const employee = await postOne<Employee>('/employees/employees', input);
+      const employee = await postOne<Employee>(ENDPOINTS.employees, input);
       cache.invalidatePrefix('employees');
       return employee;
     },
@@ -562,12 +549,10 @@ export async function createEmployee(input: CreateEmployeeInput): Promise<Employ
  * Update an existing employee
  */
 export async function updateEmployee(id: number, input: UpdateEmployeeInput): Promise<Employee> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid employee ID. Please provide a positive number.');
-  }
+  validateId(id, 'employee');
 
   return auditedOperation(AuditAction.UPDATE, 'employee', id, async () => {
-    const employee = await patchOne<Employee>(`/employees/employees/${id}`, input);
+    const employee = await patchOne<Employee>(endpointWithId(ENDPOINTS.employees, id), input);
     cache.invalidate(`employee:${id}`);
     cache.invalidatePrefix('employees');
     return employee;
@@ -582,16 +567,14 @@ export async function terminateEmployee(
   terminatedOn: string,
   reason?: string
 ): Promise<Employee> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid employee ID. Please provide a positive number.');
-  }
+  validateId(id, 'employee');
 
   return auditedOperation(
     AuditAction.TERMINATE,
     'employee',
     id,
     async () => {
-      const employee = await patchOne<Employee>(`/employees/employees/${id}`, {
+      const employee = await patchOne<Employee>(endpointWithId(ENDPOINTS.employees, id), {
         terminated_on: terminatedOn,
       });
       cache.invalidate(`employee:${id}`);
@@ -611,7 +594,7 @@ export async function terminateEmployee(
  */
 export async function createTeam(input: CreateTeamInput): Promise<Team> {
   return auditedOperation(AuditAction.CREATE, 'team', undefined, async () => {
-    const team = await postOne<Team>('/teams/teams', input);
+    const team = await postOne<Team>(ENDPOINTS.teams, input);
     cache.invalidatePrefix('teams');
     return team;
   });
@@ -621,12 +604,10 @@ export async function createTeam(input: CreateTeamInput): Promise<Team> {
  * Update an existing team
  */
 export async function updateTeam(id: number, input: UpdateTeamInput): Promise<Team> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid team ID. Please provide a positive number.');
-  }
+  validateId(id, 'team');
 
   return auditedOperation(AuditAction.UPDATE, 'team', id, async () => {
-    const team = await patchOne<Team>(`/teams/teams/${id}`, input);
+    const team = await patchOne<Team>(endpointWithId(ENDPOINTS.teams, id), input);
     cache.invalidate(`team:${id}`);
     cache.invalidatePrefix('teams');
     return team;
@@ -637,12 +618,10 @@ export async function updateTeam(id: number, input: UpdateTeamInput): Promise<Te
  * Delete a team
  */
 export async function deleteTeam(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid team ID. Please provide a positive number.');
-  }
+  validateId(id, 'team');
 
   return auditedOperation(AuditAction.DELETE, 'team', id, async () => {
-    await deleteOne(`/teams/teams/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.teams, id));
     cache.invalidate(`team:${id}`);
     cache.invalidatePrefix('teams');
   });
@@ -657,7 +636,7 @@ export async function deleteTeam(id: number): Promise<void> {
  */
 export async function createLocation(input: CreateLocationInput): Promise<Location> {
   return auditedOperation(AuditAction.CREATE, 'location', undefined, async () => {
-    const location = await postOne<Location>('/locations/locations', input);
+    const location = await postOne<Location>(ENDPOINTS.locations, input);
     cache.invalidatePrefix('locations');
     return location;
   });
@@ -667,12 +646,10 @@ export async function createLocation(input: CreateLocationInput): Promise<Locati
  * Update an existing location
  */
 export async function updateLocation(id: number, input: UpdateLocationInput): Promise<Location> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid location ID. Please provide a positive number.');
-  }
+  validateId(id, 'location');
 
   return auditedOperation(AuditAction.UPDATE, 'location', id, async () => {
-    const location = await patchOne<Location>(`/locations/locations/${id}`, input);
+    const location = await patchOne<Location>(endpointWithId(ENDPOINTS.locations, id), input);
     cache.invalidate(`location:${id}`);
     cache.invalidatePrefix('locations');
     return location;
@@ -683,12 +660,10 @@ export async function updateLocation(id: number, input: UpdateLocationInput): Pr
  * Delete a location
  */
 export async function deleteLocation(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid location ID. Please provide a positive number.');
-  }
+  validateId(id, 'location');
 
   return auditedOperation(AuditAction.DELETE, 'location', id, async () => {
-    await deleteOne(`/locations/locations/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.locations, id));
     cache.invalidate(`location:${id}`);
     cache.invalidatePrefix('locations');
   });
@@ -703,7 +678,7 @@ export async function deleteLocation(id: number): Promise<void> {
  */
 export async function createLeave(input: CreateLeaveInput): Promise<Leave> {
   return auditedOperation(AuditAction.CREATE, 'leave', undefined, async () => {
-    const leave = await postOne<Leave>('/timeoff/leaves', input);
+    const leave = await postOne<Leave>(ENDPOINTS.leaves, input);
     return leave;
   });
 }
@@ -712,12 +687,10 @@ export async function createLeave(input: CreateLeaveInput): Promise<Leave> {
  * Update a leave request
  */
 export async function updateLeave(id: number, input: UpdateLeaveInput): Promise<Leave> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid leave ID. Please provide a positive number.');
-  }
+  validateId(id, 'leave');
 
   return auditedOperation(AuditAction.UPDATE, 'leave', id, async () => {
-    const leave = await patchOne<Leave>(`/timeoff/leaves/${id}`, input);
+    const leave = await patchOne<Leave>(endpointWithId(ENDPOINTS.leaves, id), input);
     return leave;
   });
 }
@@ -726,12 +699,10 @@ export async function updateLeave(id: number, input: UpdateLeaveInput): Promise<
  * Cancel a leave request
  */
 export async function cancelLeave(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid leave ID. Please provide a positive number.');
-  }
+  validateId(id, 'leave');
 
   return auditedOperation(AuditAction.DELETE, 'leave', id, async () => {
-    await deleteOne(`/timeoff/leaves/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.leaves, id));
   });
 }
 
@@ -739,12 +710,13 @@ export async function cancelLeave(id: number): Promise<void> {
  * Approve a leave request
  */
 export async function approveLeave(id: number, input?: LeaveDecisionInput): Promise<Leave> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid leave ID. Please provide a positive number.');
-  }
+  validateId(id, 'leave');
 
   return auditedOperation(AuditAction.APPROVE, 'leave', id, async () => {
-    const leave = await postAction<Leave>(`/timeoff/leaves/${id}/approve`, input || {});
+    const leave = await postAction<Leave>(
+      endpointWithAction(ENDPOINTS.leaves, id, 'approve'),
+      input || {}
+    );
     return leave;
   });
 }
@@ -753,12 +725,13 @@ export async function approveLeave(id: number, input?: LeaveDecisionInput): Prom
  * Reject a leave request
  */
 export async function rejectLeave(id: number, input?: LeaveDecisionInput): Promise<Leave> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid leave ID. Please provide a positive number.');
-  }
+  validateId(id, 'leave');
 
   return auditedOperation(AuditAction.REJECT, 'leave', id, async () => {
-    const leave = await postAction<Leave>(`/timeoff/leaves/${id}/reject`, input || {});
+    const leave = await postAction<Leave>(
+      endpointWithAction(ENDPOINTS.leaves, id, 'reject'),
+      input || {}
+    );
     return leave;
   });
 }
@@ -772,7 +745,7 @@ export async function rejectLeave(id: number, input?: LeaveDecisionInput): Promi
  */
 export async function createShift(input: CreateShiftInput): Promise<Shift> {
   return auditedOperation(AuditAction.CREATE, 'shift', undefined, async () => {
-    const shift = await postOne<Shift>('/attendance/shifts', input);
+    const shift = await postOne<Shift>(ENDPOINTS.shifts, input);
     return shift;
   });
 }
@@ -781,12 +754,10 @@ export async function createShift(input: CreateShiftInput): Promise<Shift> {
  * Update a shift
  */
 export async function updateShift(id: number, input: UpdateShiftInput): Promise<Shift> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid shift ID. Please provide a positive number.');
-  }
+  validateId(id, 'shift');
 
   return auditedOperation(AuditAction.UPDATE, 'shift', id, async () => {
-    const shift = await patchOne<Shift>(`/attendance/shifts/${id}`, input);
+    const shift = await patchOne<Shift>(endpointWithId(ENDPOINTS.shifts, id), input);
     return shift;
   });
 }
@@ -795,12 +766,10 @@ export async function updateShift(id: number, input: UpdateShiftInput): Promise<
  * Delete a shift
  */
 export async function deleteShift(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid shift ID. Please provide a positive number.');
-  }
+  validateId(id, 'shift');
 
   return auditedOperation(AuditAction.DELETE, 'shift', id, async () => {
-    await deleteOne(`/attendance/shifts/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.shifts, id));
   });
 }
 
@@ -815,7 +784,7 @@ export async function listProjects(options?: PaginationInput): Promise<Paginated
   const params = buildPaginationParams(options);
   const projects = await cached(
     CacheManager.key('projects', options),
-    () => fetchList<Project>('/project_management/projects'),
+    () => fetchList<Project>(ENDPOINTS.projects),
     CACHE_TTL.default
   );
   return sliceForPagination(projects, params);
@@ -825,12 +794,10 @@ export async function listProjects(options?: PaginationInput): Promise<Paginated
  * Get a specific project by ID
  */
 export async function getProject(id: number): Promise<Project> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid project ID. Please provide a positive number.');
-  }
+  validateId(id, 'project');
   return cached(
     `project:${id}`,
-    () => fetchOne<Project>(`/project_management/projects/${id}`),
+    () => fetchOne<Project>(endpointWithId(ENDPOINTS.projects, id)),
     CACHE_TTL.default
   );
 }
@@ -846,7 +813,7 @@ export async function listProjectTasks(
   const queryParams: Record<string, string | number | undefined> = {};
   if (projectId) queryParams.project_ids = projectId;
 
-  const tasks = await fetchList<ProjectTask>('/project_management/project_tasks', {
+  const tasks = await fetchList<ProjectTask>(ENDPOINTS.projectTasks, {
     params: queryParams,
   });
   return sliceForPagination(tasks, params);
@@ -856,10 +823,8 @@ export async function listProjectTasks(
  * Get a specific project task by ID
  */
 export async function getProjectTask(id: number): Promise<ProjectTask> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid task ID. Please provide a positive number.');
-  }
-  return fetchOne<ProjectTask>(`/project_management/project_tasks/${id}`);
+  validateId(id, 'task');
+  return fetchOne<ProjectTask>(endpointWithId(ENDPOINTS.projectTasks, id));
 }
 
 /**
@@ -873,7 +838,7 @@ export async function listProjectWorkers(
   const queryParams: Record<string, string | number | undefined> = {};
   if (projectId) queryParams.project_ids = projectId;
 
-  const workers = await fetchList<ProjectWorker>('/project_management/project_workers', {
+  const workers = await fetchList<ProjectWorker>(ENDPOINTS.projectWorkers, {
     params: queryParams,
   });
   return sliceForPagination(workers, params);
@@ -883,10 +848,8 @@ export async function listProjectWorkers(
  * Get a specific project worker by ID
  */
 export async function getProjectWorker(id: number): Promise<ProjectWorker> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid project worker ID. Please provide a positive number.');
-  }
-  return fetchOne<ProjectWorker>(`/project_management/project_workers/${id}`);
+  validateId(id, 'project worker');
+  return fetchOne<ProjectWorker>(endpointWithId(ENDPOINTS.projectWorkers, id));
 }
 
 /**
@@ -900,7 +863,7 @@ export async function listTimeRecords(
   const queryParams: Record<string, string | number | undefined> = {};
   if (projectWorkerId) queryParams.project_workers_ids = projectWorkerId;
 
-  const records = await fetchList<TimeRecord>('/project_management/time_records', {
+  const records = await fetchList<TimeRecord>(ENDPOINTS.timeRecords, {
     params: queryParams,
   });
   return sliceForPagination(records, params);
@@ -910,10 +873,8 @@ export async function listTimeRecords(
  * Get a specific time record by ID
  */
 export async function getTimeRecord(id: number): Promise<TimeRecord> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid time record ID. Please provide a positive number.');
-  }
-  return fetchOne<TimeRecord>(`/project_management/time_records/${id}`);
+  validateId(id, 'time record');
+  return fetchOne<TimeRecord>(endpointWithId(ENDPOINTS.timeRecords, id));
 }
 
 // ============================================================================
@@ -925,7 +886,7 @@ export async function getTimeRecord(id: number): Promise<TimeRecord> {
  */
 export async function createProject(input: CreateProjectInput): Promise<Project> {
   return auditedOperation(AuditAction.CREATE, 'project', undefined, async () => {
-    const project = await postOne<Project>('/project_management/projects', input);
+    const project = await postOne<Project>(ENDPOINTS.projects, input);
     cache.invalidatePrefix('projects');
     return project;
   });
@@ -935,12 +896,10 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
  * Update a project
  */
 export async function updateProject(id: number, input: UpdateProjectInput): Promise<Project> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid project ID. Please provide a positive number.');
-  }
+  validateId(id, 'project');
 
   return auditedOperation(AuditAction.UPDATE, 'project', id, async () => {
-    const project = await patchOne<Project>(`/project_management/projects/${id}`, input);
+    const project = await patchOne<Project>(endpointWithId(ENDPOINTS.projects, id), input);
     cache.invalidate(`project:${id}`);
     cache.invalidatePrefix('projects');
     return project;
@@ -951,12 +910,10 @@ export async function updateProject(id: number, input: UpdateProjectInput): Prom
  * Delete a project
  */
 export async function deleteProject(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid project ID. Please provide a positive number.');
-  }
+  validateId(id, 'project');
 
   return auditedOperation(AuditAction.DELETE, 'project', id, async () => {
-    await deleteOne(`/project_management/projects/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.projects, id));
     cache.invalidate(`project:${id}`);
     cache.invalidatePrefix('projects');
   });
@@ -967,7 +924,7 @@ export async function deleteProject(id: number): Promise<void> {
  */
 export async function createProjectTask(input: CreateProjectTaskInput): Promise<ProjectTask> {
   return auditedOperation(AuditAction.CREATE, 'project_task', undefined, async () => {
-    return postOne<ProjectTask>('/project_management/project_tasks', input);
+    return postOne<ProjectTask>(ENDPOINTS.projectTasks, input);
   });
 }
 
@@ -978,12 +935,10 @@ export async function updateProjectTask(
   id: number,
   input: UpdateProjectTaskInput
 ): Promise<ProjectTask> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid task ID. Please provide a positive number.');
-  }
+  validateId(id, 'task');
 
   return auditedOperation(AuditAction.UPDATE, 'project_task', id, async () => {
-    return patchOne<ProjectTask>(`/project_management/project_tasks/${id}`, input);
+    return patchOne<ProjectTask>(endpointWithId(ENDPOINTS.projectTasks, id), input);
   });
 }
 
@@ -991,12 +946,10 @@ export async function updateProjectTask(
  * Delete a project task
  */
 export async function deleteProjectTask(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid task ID. Please provide a positive number.');
-  }
+  validateId(id, 'task');
 
   return auditedOperation(AuditAction.DELETE, 'project_task', id, async () => {
-    await deleteOne(`/project_management/project_tasks/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.projectTasks, id));
   });
 }
 
@@ -1005,7 +958,7 @@ export async function deleteProjectTask(id: number): Promise<void> {
  */
 export async function assignProjectWorker(input: AssignProjectWorkerInput): Promise<ProjectWorker> {
   return auditedOperation(AuditAction.ASSIGN, 'project_worker', undefined, async () => {
-    return postOne<ProjectWorker>('/project_management/project_workers', input);
+    return postOne<ProjectWorker>(ENDPOINTS.projectWorkers, input);
   });
 }
 
@@ -1013,12 +966,10 @@ export async function assignProjectWorker(input: AssignProjectWorkerInput): Prom
  * Remove a worker from a project
  */
 export async function removeProjectWorker(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid project worker ID. Please provide a positive number.');
-  }
+  validateId(id, 'project worker');
 
   return auditedOperation(AuditAction.UNASSIGN, 'project_worker', id, async () => {
-    await deleteOne(`/project_management/project_workers/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.projectWorkers, id));
   });
 }
 
@@ -1027,7 +978,7 @@ export async function removeProjectWorker(id: number): Promise<void> {
  */
 export async function createTimeRecord(input: CreateTimeRecordInput): Promise<TimeRecord> {
   return auditedOperation(AuditAction.CREATE, 'time_record', undefined, async () => {
-    return postOne<TimeRecord>('/project_management/time_records', input);
+    return postOne<TimeRecord>(ENDPOINTS.timeRecords, input);
   });
 }
 
@@ -1038,12 +989,10 @@ export async function updateTimeRecord(
   id: number,
   input: UpdateTimeRecordInput
 ): Promise<TimeRecord> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid time record ID. Please provide a positive number.');
-  }
+  validateId(id, 'time record');
 
   return auditedOperation(AuditAction.UPDATE, 'time_record', id, async () => {
-    return patchOne<TimeRecord>(`/project_management/time_records/${id}`, input);
+    return patchOne<TimeRecord>(endpointWithId(ENDPOINTS.timeRecords, id), input);
   });
 }
 
@@ -1051,12 +1000,10 @@ export async function updateTimeRecord(
  * Delete a time record
  */
 export async function deleteTimeRecord(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid time record ID. Please provide a positive number.');
-  }
+  validateId(id, 'time record');
 
   return auditedOperation(AuditAction.DELETE, 'time_record', id, async () => {
-    await deleteOne(`/project_management/time_records/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.timeRecords, id));
   });
 }
 
@@ -1073,7 +1020,7 @@ export async function listTrainings(
   const params = buildPaginationParams(options);
   const trainings = await cached(
     CacheManager.key('trainings', options),
-    () => fetchList<Training>('/trainings/trainings'),
+    () => fetchList<Training>(ENDPOINTS.trainings),
     CACHE_TTL.default
   );
   return sliceForPagination(trainings, params);
@@ -1083,12 +1030,10 @@ export async function listTrainings(
  * Get a specific training by ID
  */
 export async function getTraining(id: number): Promise<Training> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid training ID. Please provide a positive number.');
-  }
+  validateId(id, 'training');
   return cached(
     `training:${id}`,
-    () => fetchOne<Training>(`/trainings/trainings/${id}`),
+    () => fetchOne<Training>(endpointWithId(ENDPOINTS.trainings, id)),
     CACHE_TTL.default
   );
 }
@@ -1104,7 +1049,9 @@ export async function listTrainingSessions(
   const queryParams: Record<string, string | number | undefined> = {};
   if (trainingId) queryParams.training_id = trainingId;
 
-  const sessions = await fetchList<TrainingSession>('/trainings/sessions', { params: queryParams });
+  const sessions = await fetchList<TrainingSession>(ENDPOINTS.trainingSessions, {
+    params: queryParams,
+  });
   return sliceForPagination(sessions, params);
 }
 
@@ -1112,10 +1059,8 @@ export async function listTrainingSessions(
  * Get a specific training session by ID
  */
 export async function getTrainingSession(id: number): Promise<TrainingSession> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid session ID. Please provide a positive number.');
-  }
-  return fetchOne<TrainingSession>(`/trainings/sessions/${id}`);
+  validateId(id, 'session');
+  return fetchOne<TrainingSession>(endpointWithId(ENDPOINTS.trainingSessions, id));
 }
 
 /**
@@ -1129,7 +1074,7 @@ export async function listTrainingEnrollments(
   const queryParams: Record<string, string | number | undefined> = {};
   if (trainingId) queryParams.training_id = trainingId;
 
-  const enrollments = await fetchList<TrainingMembership>('/trainings/memberships', {
+  const enrollments = await fetchList<TrainingMembership>(ENDPOINTS.trainingMemberships, {
     params: queryParams,
   });
   return sliceForPagination(enrollments, params);
@@ -1139,10 +1084,8 @@ export async function listTrainingEnrollments(
  * Get a specific training enrollment by ID
  */
 export async function getTrainingEnrollment(id: number): Promise<TrainingMembership> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid enrollment ID. Please provide a positive number.');
-  }
-  return fetchOne<TrainingMembership>(`/trainings/memberships/${id}`);
+  validateId(id, 'enrollment');
+  return fetchOne<TrainingMembership>(endpointWithId(ENDPOINTS.trainingMemberships, id));
 }
 
 // ============================================================================
@@ -1154,7 +1097,7 @@ export async function getTrainingEnrollment(id: number): Promise<TrainingMembers
  */
 export async function createTraining(input: CreateTrainingInput): Promise<Training> {
   return auditedOperation(AuditAction.CREATE, 'training', undefined, async () => {
-    const training = await postOne<Training>('/trainings/trainings', input);
+    const training = await postOne<Training>(ENDPOINTS.trainings, input);
     cache.invalidatePrefix('trainings');
     return training;
   });
@@ -1164,12 +1107,10 @@ export async function createTraining(input: CreateTrainingInput): Promise<Traini
  * Update a training program
  */
 export async function updateTraining(id: number, input: UpdateTrainingInput): Promise<Training> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid training ID. Please provide a positive number.');
-  }
+  validateId(id, 'training');
 
   return auditedOperation(AuditAction.UPDATE, 'training', id, async () => {
-    const training = await patchOne<Training>(`/trainings/trainings/${id}`, input);
+    const training = await patchOne<Training>(endpointWithId(ENDPOINTS.trainings, id), input);
     cache.invalidate(`training:${id}`);
     cache.invalidatePrefix('trainings');
     return training;
@@ -1180,12 +1121,10 @@ export async function updateTraining(id: number, input: UpdateTrainingInput): Pr
  * Delete a training program
  */
 export async function deleteTraining(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid training ID. Please provide a positive number.');
-  }
+  validateId(id, 'training');
 
   return auditedOperation(AuditAction.DELETE, 'training', id, async () => {
-    await deleteOne(`/trainings/trainings/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.trainings, id));
     cache.invalidate(`training:${id}`);
     cache.invalidatePrefix('trainings');
   });
@@ -1198,7 +1137,7 @@ export async function createTrainingSession(
   input: CreateTrainingSessionInput
 ): Promise<TrainingSession> {
   return auditedOperation(AuditAction.CREATE, 'training_session', undefined, async () => {
-    return postOne<TrainingSession>('/trainings/sessions', input);
+    return postOne<TrainingSession>(ENDPOINTS.trainingSessions, input);
   });
 }
 
@@ -1209,12 +1148,10 @@ export async function updateTrainingSession(
   id: number,
   input: UpdateTrainingSessionInput
 ): Promise<TrainingSession> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid session ID. Please provide a positive number.');
-  }
+  validateId(id, 'session');
 
   return auditedOperation(AuditAction.UPDATE, 'training_session', id, async () => {
-    return patchOne<TrainingSession>(`/trainings/sessions/${id}`, input);
+    return patchOne<TrainingSession>(endpointWithId(ENDPOINTS.trainingSessions, id), input);
   });
 }
 
@@ -1222,12 +1159,10 @@ export async function updateTrainingSession(
  * Delete a training session
  */
 export async function deleteTrainingSession(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid session ID. Please provide a positive number.');
-  }
+  validateId(id, 'session');
 
   return auditedOperation(AuditAction.DELETE, 'training_session', id, async () => {
-    await deleteOne(`/trainings/sessions/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.trainingSessions, id));
   });
 }
 
@@ -1236,7 +1171,7 @@ export async function deleteTrainingSession(id: number): Promise<void> {
  */
 export async function enrollInTraining(input: EnrollTrainingInput): Promise<TrainingMembership> {
   return auditedOperation(AuditAction.ASSIGN, 'training_enrollment', undefined, async () => {
-    return postOne<TrainingMembership>('/trainings/memberships', input);
+    return postOne<TrainingMembership>(ENDPOINTS.trainingMemberships, input);
   });
 }
 
@@ -1244,12 +1179,10 @@ export async function enrollInTraining(input: EnrollTrainingInput): Promise<Trai
  * Remove enrollment from a training
  */
 export async function unenrollFromTraining(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid enrollment ID. Please provide a positive number.');
-  }
+  validateId(id, 'enrollment');
 
   return auditedOperation(AuditAction.UNASSIGN, 'training_enrollment', id, async () => {
-    await deleteOne(`/trainings/memberships/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.trainingMemberships, id));
   });
 }
 
@@ -1266,7 +1199,7 @@ export async function listWorkAreas(
   const params = buildPaginationParams(options);
   const workAreas = await cached(
     CacheManager.key('work_areas', options),
-    () => fetchList<WorkArea>('/locations/work_areas'),
+    () => fetchList<WorkArea>(ENDPOINTS.workAreas),
     CACHE_TTL.locations
   );
   return sliceForPagination(workAreas, params);
@@ -1276,12 +1209,10 @@ export async function listWorkAreas(
  * Get a specific work area by ID
  */
 export async function getWorkArea(id: number): Promise<WorkArea> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid work area ID. Please provide a positive number.');
-  }
+  validateId(id, 'work area');
   return cached(
     `work_area:${id}`,
-    () => fetchOne<WorkArea>(`/locations/work_areas/${id}`),
+    () => fetchOne<WorkArea>(endpointWithId(ENDPOINTS.workAreas, id)),
     CACHE_TTL.locations
   );
 }
@@ -1291,7 +1222,7 @@ export async function getWorkArea(id: number): Promise<WorkArea> {
  */
 export async function createWorkArea(input: CreateWorkAreaInput): Promise<WorkArea> {
   return auditedOperation(AuditAction.CREATE, 'work_area', undefined, async () => {
-    const workArea = await postOne<WorkArea>('/locations/work_areas', input);
+    const workArea = await postOne<WorkArea>(ENDPOINTS.workAreas, input);
     cache.invalidatePrefix('work_areas');
     return workArea;
   });
@@ -1301,12 +1232,10 @@ export async function createWorkArea(input: CreateWorkAreaInput): Promise<WorkAr
  * Update a work area
  */
 export async function updateWorkArea(id: number, input: UpdateWorkAreaInput): Promise<WorkArea> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid work area ID. Please provide a positive number.');
-  }
+  validateId(id, 'work area');
 
   return auditedOperation(AuditAction.UPDATE, 'work_area', id, async () => {
-    const workArea = await patchOne<WorkArea>(`/locations/work_areas/${id}`, input);
+    const workArea = await patchOne<WorkArea>(endpointWithId(ENDPOINTS.workAreas, id), input);
     cache.invalidate(`work_area:${id}`);
     cache.invalidatePrefix('work_areas');
     return workArea;
@@ -1317,12 +1246,12 @@ export async function updateWorkArea(id: number, input: UpdateWorkAreaInput): Pr
  * Archive a work area
  */
 export async function archiveWorkArea(id: number): Promise<WorkArea> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid work area ID. Please provide a positive number.');
-  }
+  validateId(id, 'work area');
 
   return auditedOperation(AuditAction.ARCHIVE, 'work_area', id, async () => {
-    const workArea = await postAction<WorkArea>(`/locations/work_areas/${id}/archive`);
+    const workArea = await postAction<WorkArea>(
+      endpointWithAction(ENDPOINTS.workAreas, id, 'archive')
+    );
     cache.invalidate(`work_area:${id}`);
     cache.invalidatePrefix('work_areas');
     return workArea;
@@ -1333,12 +1262,12 @@ export async function archiveWorkArea(id: number): Promise<WorkArea> {
  * Unarchive a work area
  */
 export async function unarchiveWorkArea(id: number): Promise<WorkArea> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid work area ID. Please provide a positive number.');
-  }
+  validateId(id, 'work area');
 
   return auditedOperation(AuditAction.UNARCHIVE, 'work_area', id, async () => {
-    const workArea = await postAction<WorkArea>(`/locations/work_areas/${id}/unarchive`);
+    const workArea = await postAction<WorkArea>(
+      endpointWithAction(ENDPOINTS.workAreas, id, 'unarchive')
+    );
     cache.invalidate(`work_area:${id}`);
     cache.invalidatePrefix('work_areas');
     return workArea;
@@ -1358,7 +1287,7 @@ export async function listJobPostings(
   const params = buildPaginationParams(options);
   const postings = await cached(
     CacheManager.key('job_postings', options),
-    () => fetchList<JobPosting>('/ats/job_postings'),
+    () => fetchList<JobPosting>(ENDPOINTS.jobPostings),
     CACHE_TTL.default
   );
   return sliceForPagination(postings, params);
@@ -1368,12 +1297,10 @@ export async function listJobPostings(
  * Get a specific job posting by ID
  */
 export async function getJobPosting(id: number): Promise<JobPosting> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid job posting ID. Please provide a positive number.');
-  }
+  validateId(id, 'job posting');
   return cached(
     `job_posting:${id}`,
-    () => fetchOne<JobPosting>(`/ats/job_postings/${id}`),
+    () => fetchOne<JobPosting>(endpointWithId(ENDPOINTS.jobPostings, id)),
     CACHE_TTL.default
   );
 }
@@ -1385,7 +1312,7 @@ export async function listCandidates(
   options?: PaginationInput
 ): Promise<PaginatedResponse<Candidate>> {
   const params = buildPaginationParams(options);
-  const candidates = await fetchList<Candidate>('/ats/candidates');
+  const candidates = await fetchList<Candidate>(ENDPOINTS.candidates);
   return sliceForPagination(candidates, params);
 }
 
@@ -1393,10 +1320,8 @@ export async function listCandidates(
  * Get a specific candidate by ID
  */
 export async function getCandidate(id: number): Promise<Candidate> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid candidate ID. Please provide a positive number.');
-  }
-  return fetchOne<Candidate>(`/ats/candidates/${id}`);
+  validateId(id, 'candidate');
+  return fetchOne<Candidate>(endpointWithId(ENDPOINTS.candidates, id));
 }
 
 /**
@@ -1410,7 +1335,9 @@ export async function listApplications(
   const queryParams: Record<string, string | number | undefined> = {};
   if (jobPostingId) queryParams.job_posting_id = jobPostingId;
 
-  const applications = await fetchList<Application>('/ats/applications', { params: queryParams });
+  const applications = await fetchList<Application>(ENDPOINTS.applications, {
+    params: queryParams,
+  });
   return sliceForPagination(applications, params);
 }
 
@@ -1418,10 +1345,8 @@ export async function listApplications(
  * Get a specific application by ID
  */
 export async function getApplication(id: number): Promise<Application> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid application ID. Please provide a positive number.');
-  }
-  return fetchOne<Application>(`/ats/applications/${id}`);
+  validateId(id, 'application');
+  return fetchOne<Application>(endpointWithId(ENDPOINTS.applications, id));
 }
 
 /**
@@ -1430,7 +1355,7 @@ export async function getApplication(id: number): Promise<Application> {
 export async function listHiringStages(): Promise<HiringStage[]> {
   return cached(
     'hiring_stages:all',
-    () => fetchList<HiringStage>('/ats/hiring_stages'),
+    () => fetchList<HiringStage>(ENDPOINTS.hiringStages),
     CACHE_TTL.default
   );
 }
@@ -1439,10 +1364,8 @@ export async function listHiringStages(): Promise<HiringStage[]> {
  * Get a specific hiring stage by ID
  */
 export async function getHiringStage(id: number): Promise<HiringStage> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid hiring stage ID. Please provide a positive number.');
-  }
-  return fetchOne<HiringStage>(`/ats/hiring_stages/${id}`);
+  validateId(id, 'hiring stage');
+  return fetchOne<HiringStage>(endpointWithId(ENDPOINTS.hiringStages, id));
 }
 
 // ============================================================================
@@ -1454,7 +1377,7 @@ export async function getHiringStage(id: number): Promise<HiringStage> {
  */
 export async function createJobPosting(input: CreateJobPostingInput): Promise<JobPosting> {
   return auditedOperation(AuditAction.CREATE, 'job_posting', undefined, async () => {
-    const posting = await postOne<JobPosting>('/ats/job_postings', input);
+    const posting = await postOne<JobPosting>(ENDPOINTS.jobPostings, input);
     cache.invalidatePrefix('job_postings');
     return posting;
   });
@@ -1467,12 +1390,10 @@ export async function updateJobPosting(
   id: number,
   input: UpdateJobPostingInput
 ): Promise<JobPosting> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid job posting ID. Please provide a positive number.');
-  }
+  validateId(id, 'job posting');
 
   return auditedOperation(AuditAction.UPDATE, 'job_posting', id, async () => {
-    const posting = await patchOne<JobPosting>(`/ats/job_postings/${id}`, input);
+    const posting = await patchOne<JobPosting>(endpointWithId(ENDPOINTS.jobPostings, id), input);
     cache.invalidate(`job_posting:${id}`);
     cache.invalidatePrefix('job_postings');
     return posting;
@@ -1483,12 +1404,10 @@ export async function updateJobPosting(
  * Delete a job posting
  */
 export async function deleteJobPosting(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid job posting ID. Please provide a positive number.');
-  }
+  validateId(id, 'job posting');
 
   return auditedOperation(AuditAction.DELETE, 'job_posting', id, async () => {
-    await deleteOne(`/ats/job_postings/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.jobPostings, id));
     cache.invalidate(`job_posting:${id}`);
     cache.invalidatePrefix('job_postings');
   });
@@ -1499,7 +1418,7 @@ export async function deleteJobPosting(id: number): Promise<void> {
  */
 export async function createCandidate(input: CreateCandidateInput): Promise<Candidate> {
   return auditedOperation(AuditAction.CREATE, 'candidate', undefined, async () => {
-    return postOne<Candidate>('/ats/candidates', input);
+    return postOne<Candidate>(ENDPOINTS.candidates, input);
   });
 }
 
@@ -1507,12 +1426,10 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
  * Update a candidate
  */
 export async function updateCandidate(id: number, input: UpdateCandidateInput): Promise<Candidate> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid candidate ID. Please provide a positive number.');
-  }
+  validateId(id, 'candidate');
 
   return auditedOperation(AuditAction.UPDATE, 'candidate', id, async () => {
-    return patchOne<Candidate>(`/ats/candidates/${id}`, input);
+    return patchOne<Candidate>(endpointWithId(ENDPOINTS.candidates, id), input);
   });
 }
 
@@ -1520,12 +1437,10 @@ export async function updateCandidate(id: number, input: UpdateCandidateInput): 
  * Delete a candidate
  */
 export async function deleteCandidate(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid candidate ID. Please provide a positive number.');
-  }
+  validateId(id, 'candidate');
 
   return auditedOperation(AuditAction.DELETE, 'candidate', id, async () => {
-    await deleteOne(`/ats/candidates/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.candidates, id));
   });
 }
 
@@ -1534,7 +1449,7 @@ export async function deleteCandidate(id: number): Promise<void> {
  */
 export async function createApplication(input: CreateApplicationInput): Promise<Application> {
   return auditedOperation(AuditAction.CREATE, 'application', undefined, async () => {
-    return postOne<Application>('/ats/applications', input);
+    return postOne<Application>(ENDPOINTS.applications, input);
   });
 }
 
@@ -1545,12 +1460,10 @@ export async function updateApplication(
   id: number,
   input: UpdateApplicationInput
 ): Promise<Application> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid application ID. Please provide a positive number.');
-  }
+  validateId(id, 'application');
 
   return auditedOperation(AuditAction.UPDATE, 'application', id, async () => {
-    return patchOne<Application>(`/ats/applications/${id}`, input);
+    return patchOne<Application>(endpointWithId(ENDPOINTS.applications, id), input);
   });
 }
 
@@ -1558,12 +1471,10 @@ export async function updateApplication(
  * Delete an application
  */
 export async function deleteApplication(id: number): Promise<void> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid application ID. Please provide a positive number.');
-  }
+  validateId(id, 'application');
 
   return auditedOperation(AuditAction.DELETE, 'application', id, async () => {
-    await deleteOne(`/ats/applications/${id}`);
+    await deleteOne(endpointWithId(ENDPOINTS.applications, id));
   });
 }
 
@@ -1571,12 +1482,10 @@ export async function deleteApplication(id: number): Promise<void> {
  * Advance an application to the next stage
  */
 export async function advanceApplication(id: number): Promise<Application> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid application ID. Please provide a positive number.');
-  }
+  validateId(id, 'application');
 
   return auditedOperation(AuditAction.UPDATE, 'application', id, async () => {
-    return postAction<Application>(`/ats/applications/${id}/apply`);
+    return postAction<Application>(endpointWithAction(ENDPOINTS.applications, id, 'apply'));
   });
 }
 
@@ -1595,7 +1504,7 @@ export async function listPayrollSupplements(
   const queryParams: Record<string, string | number | undefined> = {};
   if (employeeId) queryParams.employee_id = employeeId;
 
-  const supplements = await fetchList<PayrollSupplement>('/payroll/supplements', {
+  const supplements = await fetchList<PayrollSupplement>(ENDPOINTS.payrollSupplements, {
     params: queryParams,
   });
   return sliceForPagination(supplements, params);
@@ -1605,10 +1514,8 @@ export async function listPayrollSupplements(
  * Get a specific payroll supplement by ID
  */
 export async function getPayrollSupplement(id: number): Promise<PayrollSupplement> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid supplement ID. Please provide a positive number.');
-  }
-  return fetchOne<PayrollSupplement>(`/payroll/supplements/${id}`);
+  validateId(id, 'supplement');
+  return fetchOne<PayrollSupplement>(endpointWithId(ENDPOINTS.payrollSupplements, id));
 }
 
 /**
@@ -1622,7 +1529,7 @@ export async function listTaxIdentifiers(
   const queryParams: Record<string, string | number | undefined> = {};
   if (employeeId) queryParams.employee_id = employeeId;
 
-  const identifiers = await fetchList<TaxIdentifier>('/payroll_employees/identifiers', {
+  const identifiers = await fetchList<TaxIdentifier>(ENDPOINTS.taxIdentifiers, {
     params: queryParams,
   });
   return sliceForPagination(identifiers, params);
@@ -1632,10 +1539,8 @@ export async function listTaxIdentifiers(
  * Get a specific tax identifier by ID
  */
 export async function getTaxIdentifier(id: number): Promise<TaxIdentifier> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid tax identifier ID. Please provide a positive number.');
-  }
-  return fetchOne<TaxIdentifier>(`/payroll_employees/identifiers/${id}`);
+  validateId(id, 'tax identifier');
+  return fetchOne<TaxIdentifier>(endpointWithId(ENDPOINTS.taxIdentifiers, id));
 }
 
 /**
@@ -1649,7 +1554,7 @@ export async function listFamilySituations(
   const queryParams: Record<string, string | number | undefined> = {};
   if (employeeId) queryParams.employee_id = employeeId;
 
-  const situations = await fetchList<FamilySituation>('/payroll/family_situations', {
+  const situations = await fetchList<FamilySituation>(ENDPOINTS.familySituations, {
     params: queryParams,
   });
   return sliceForPagination(situations, params);
@@ -1659,8 +1564,6 @@ export async function listFamilySituations(
  * Get a specific family situation by ID
  */
 export async function getFamilySituation(id: number): Promise<FamilySituation> {
-  if (!id || id <= 0) {
-    throw new Error('Invalid family situation ID. Please provide a positive number.');
-  }
-  return fetchOne<FamilySituation>(`/payroll/family_situations/${id}`);
+  validateId(id, 'family situation');
+  return fetchOne<FamilySituation>(endpointWithId(ENDPOINTS.familySituations, id));
 }

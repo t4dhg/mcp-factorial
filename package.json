@@ -1,6 +1,6 @@
 {
   "name": "@t4dhg/mcp-factorial",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "The definitive MCP server for FactorialHR - Full CRUD operations for employees, teams, time off, projects, training, recruiting (ATS), and payroll. 80+ tools with safety guardrails.",
   "type": "module",
   "main": "dist/index.js",

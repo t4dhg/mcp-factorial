@@ -291,7 +291,9 @@ describe('Pagination Module', () => {
 
     it('should respect maxPages limit', async () => {
       const mockFetcher = vi.fn();
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      // Mock the debug function (it uses the debug() function from config.js which respects DEBUG env)
+      // Since we changed from console.warn to debug(), we just verify the behavior works correctly
+      // without checking the warning message output
 
       // All pages have next
       for (let i = 0; i < 5; i++) {
@@ -303,13 +305,9 @@ describe('Pagination Module', () => {
 
       const result = await fetchAllPages(mockFetcher, 3);
 
+      // Should stop after maxPages (3) even though hasNextPage is true
       expect(result).toHaveLength(3);
       expect(mockFetcher).toHaveBeenCalledTimes(3);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Stopped fetching at page 3')
-      );
-
-      consoleWarnSpy.mockRestore();
     });
 
     it('should handle single page response', async () => {

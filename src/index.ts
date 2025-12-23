@@ -25,6 +25,7 @@ loadEnv();
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import * as z from 'zod';
+import { cache } from './cache.js';
 
 import {
   // Employees - Read
@@ -147,6 +148,7 @@ import {
 } from './api.js';
 
 import { formatPaginationInfo } from './pagination.js';
+import { wrapHighRiskToolHandler, textResponse } from './tool-utils.js';
 
 const server = new McpServer({
   name: 'factorial-hr',
@@ -381,36 +383,20 @@ server.registerTool(
   {
     title: 'Terminate Employee',
     description:
-      'Terminate an employee (soft delete). This is a high-risk operation that sets the termination date.',
+      'Terminate an employee (soft delete). This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('The employee ID to terminate'),
       terminated_on: z.string().describe('Termination date (YYYY-MM-DD)'),
       reason: z.string().max(500).optional().describe('Termination reason'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id, terminated_on, reason }) => {
-    try {
-      const employee = await terminateEmployee(id, terminated_on, reason);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Employee terminated successfully. Termination date: ${terminated_on}\n\n${JSON.stringify(employee, null, 2)}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('terminate_employee', async ({ id, terminated_on, reason }) => {
+    const employee = await terminateEmployee(id, terminated_on, reason);
+    return textResponse(
+      `Employee terminated successfully. Termination date: ${terminated_on}\n\n${JSON.stringify(employee, null, 2)}`
+    );
+  })
 );
 
 // ============================================================================
@@ -571,34 +557,16 @@ server.registerTool(
   'delete_team',
   {
     title: 'Delete Team',
-    description: 'Delete a team. This is a high-risk operation.',
+    description: 'Delete a team. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('The team ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteTeam(id);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Team ${id} deleted successfully.`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_team', async ({ id }) => {
+    await deleteTeam(id);
+    return textResponse(`Team ${id} deleted successfully.`);
+  })
 );
 
 // ============================================================================
@@ -767,34 +735,16 @@ server.registerTool(
   'delete_location',
   {
     title: 'Delete Location',
-    description: 'Delete a location. This is a high-risk operation.',
+    description: 'Delete a location. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('The location ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteLocation(id);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Location ${id} deleted successfully.`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_location', async ({ id }) => {
+    await deleteLocation(id);
+    return textResponse(`Location ${id} deleted successfully.`);
+  })
 );
 
 // ============================================================================
@@ -1145,34 +1095,16 @@ server.registerTool(
   'cancel_leave',
   {
     title: 'Cancel Leave Request',
-    description: 'Cancel a leave request.',
+    description: 'Cancel a leave request. This operation requires confirmation.',
     inputSchema: {
       id: z.number().describe('The leave ID to cancel'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await cancelLeave(id);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Leave request ${id} cancelled successfully.`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('cancel_leave', async ({ id }) => {
+    await cancelLeave(id);
+    return textResponse(`Leave request ${id} cancelled successfully.`);
+  })
 );
 
 server.registerTool(
@@ -1214,35 +1146,17 @@ server.registerTool(
   'reject_leave',
   {
     title: 'Reject Leave Request',
-    description: 'Reject a pending leave request.',
+    description: 'Reject a pending leave request. This operation requires confirmation.',
     inputSchema: {
       id: z.number().describe('The leave ID to reject'),
       reason: z.string().max(500).optional().describe('Rejection reason'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this operation'),
     },
   },
-  async ({ id, reason }) => {
-    try {
-      const leave = await rejectLeave(id, reason ? { reason } : undefined);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Leave request rejected:\n\n${JSON.stringify(leave, null, 2)}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('reject_leave', async ({ id, reason }) => {
+    const leave = await rejectLeave(id, reason ? { reason } : undefined);
+    return textResponse(`Leave request rejected:\n\n${JSON.stringify(leave, null, 2)}`);
+  })
 );
 
 // ============================================================================
@@ -1418,34 +1332,16 @@ server.registerTool(
   'delete_shift',
   {
     title: 'Delete Shift',
-    description: 'Delete a shift record.',
+    description: 'Delete a shift record. This operation requires confirmation.',
     inputSchema: {
       id: z.number().describe('The shift ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteShift(id);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Shift ${id} deleted successfully.`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_shift', async ({ id }) => {
+    await deleteShift(id);
+    return textResponse(`Shift ${id} deleted successfully.`);
+  })
 );
 
 // ============================================================================
@@ -1890,29 +1786,16 @@ server.registerTool(
   'delete_project',
   {
     title: 'Delete Project',
-    description: 'Delete a project. This is a high-risk operation.',
+    description: 'Delete a project. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('The project ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteProject(id);
-      return {
-        content: [{ type: 'text', text: `Project ${id} deleted successfully.` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_project', async ({ id }) => {
+    await deleteProject(id);
+    return textResponse(`Project ${id} deleted successfully.`);
+  })
 );
 
 server.registerTool(
@@ -2414,29 +2297,17 @@ server.registerTool(
   'delete_training',
   {
     title: 'Delete Training',
-    description: 'Delete a training program.',
+    description:
+      'Delete a training program. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('The training ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteTraining(id);
-      return {
-        content: [{ type: 'text', text: `Training ${id} deleted successfully.` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_training', async ({ id }) => {
+    await deleteTraining(id);
+    return textResponse(`Training ${id} deleted successfully.`);
+  })
 );
 
 server.registerTool(
@@ -3015,29 +2886,16 @@ server.registerTool(
   'delete_job_posting',
   {
     title: 'Delete Job Posting',
-    description: 'Delete a job posting.',
+    description: 'Delete a job posting. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('Job posting ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteJobPosting(id);
-      return {
-        content: [{ type: 'text', text: `Job posting ${id} deleted successfully.` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_job_posting', async ({ id }) => {
+    await deleteJobPosting(id);
+    return textResponse(`Job posting ${id} deleted successfully.`);
+  })
 );
 
 server.registerTool(
@@ -3181,29 +3039,16 @@ server.registerTool(
   'delete_candidate',
   {
     title: 'Delete Candidate',
-    description: 'Delete a candidate.',
+    description: 'Delete a candidate. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('Candidate ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteCandidate(id);
-      return {
-        content: [{ type: 'text', text: `Candidate ${id} deleted successfully.` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_candidate', async ({ id }) => {
+    await deleteCandidate(id);
+    return textResponse(`Candidate ${id} deleted successfully.`);
+  })
 );
 
 server.registerTool(
@@ -3342,29 +3187,17 @@ server.registerTool(
   'delete_application',
   {
     title: 'Delete Application',
-    description: 'Delete a job application.',
+    description:
+      'Delete a job application. This is a HIGH-RISK operation that requires confirmation.',
     inputSchema: {
       id: z.number().describe('Application ID to delete'),
+      confirm: z.boolean().optional().describe('Set to true to confirm this high-risk operation'),
     },
   },
-  async ({ id }) => {
-    try {
-      await deleteApplication(id);
-      return {
-        content: [{ type: 'text', text: `Application ${id} deleted successfully.` }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
+  wrapHighRiskToolHandler('delete_application', async ({ id }) => {
+    await deleteApplication(id);
+    return textResponse(`Application ${id} deleted successfully.`);
+  })
 );
 
 server.registerTool(
@@ -4126,6 +3959,21 @@ Please provide:
     };
   }
 );
+
+// ============================================================================
+// Graceful Shutdown
+// ============================================================================
+
+/**
+ * Clean up resources on process termination
+ */
+function shutdown() {
+  cache.destroy();
+  process.exit(0);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // ============================================================================
 // Start Server
