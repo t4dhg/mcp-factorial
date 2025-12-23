@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-12-23
+
+### Added
+
+#### Codecov Integration
+- Bundle Analysis via `@codecov/vite-plugin` to track bundle size over time
+- Test Analytics with JUnit XML reporting to monitor test performance and identify flaky tests
+- Enhanced CI workflow to upload both coverage and test results to Codecov
+
+#### README Enhancements
+- CI status badge showing build health
+- Codecov coverage badge
+- Bundle analysis badge
+- TypeScript 5.x badge
+- npm downloads badge
+
+### Changed
+- Updated from deprecated `codecov/test-results-action@v1` to `codecov-action@v5` with `report_type: test_results`
+- Reorganized README badges for better visual flow
+
+### Infrastructure
+- Added `.gitignore` entry for `test-results/` directory
+- Updated CLAUDE.md with comprehensive Codecov integration documentation
+- Configured Vitest to output JUnit XML for test analytics
+
 ## [3.0.0] - 2025-12-22
 
 ### Added
