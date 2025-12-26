@@ -11,6 +11,7 @@ export type {
   Team,
   Location,
   Contract,
+  ContractSummary,
   Leave,
   LeaveType,
   Allowance,
