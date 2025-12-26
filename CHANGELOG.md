@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.0] - 2025-12-26
+
+### Added
+
+#### Expanded Contract Schema with Salary and Compensation Data
+
+The `ContractSchema` now includes salary and job catalog fields from the Factorial API:
+
+- `salary_amount`: Salary in cents (e.g., 7000000 = €70,000)
+- `salary_frequency`: 'yearly' | 'monthly' | 'weekly' | 'daily' | 'hourly'
+- `working_hours` and `working_hours_frequency`
+- `job_catalog_role_id` and `job_catalog_level_id`
+- `contract_type`, `trial_period_ends_on`, `ends_on`
+- `annual_working_time_distribution` (API 2025-07-01)
+
+#### New Tool: get_employee_with_contract
+
+Get an employee with their latest contract data including salary, job title, and job role. Combines employee data with compensation info from their most recent contract in one call.
+
+#### New Tool: list_employees_by_job_role
+
+Find all employees assigned to a specific job role. Uses contract data since job role assignment is stored in contracts (`job_catalog_role_id`), not on the employee object.
+
+#### New Tool: list_employees_by_job_level
+
+Find all employees at a specific job level. Uses contract data since job level is stored in contracts (`job_catalog_level_id`).
+
+#### API Quirks Documentation
+
+Added comprehensive "Factorial API Quirks and Limitations" section to README covering:
+
+- Data location quirks (team membership, job roles, salary stored differently than expected)
+- Endpoint quirks (404 fallbacks, empty response handling)
+- Field availability notes
+- Salary data format explanation
+- Best practices for common tasks
+
+### Changed
+
+- Updated tool count from 80+ to 85+ to reflect new contract tools
+- Contracts category now shows 4 tools instead of 1
+
 ## [7.0.1] - 2025-12-23
 
 ### Added

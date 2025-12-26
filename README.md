@@ -16,7 +16,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ## Why This MCP Server?
 
-- **Comprehensive Coverage**: 80+ tools spanning employees, teams, time off, attendance, projects, training, recruiting (ATS), and payroll
+- **Comprehensive Coverage**: 85+ tools spanning employees, teams, time off, attendance, projects, training, recruiting (ATS), and payroll
 - **Full CRUD Operations**: Create, read, update, and delete across all major entities
 - **Safety Guardrails**: High-risk operations require explicit confirmation
 - **Audit Logging**: All write operations are logged for compliance
@@ -24,7 +24,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ## Features
 
-### 80+ Tools
+### 85+ Tools
 
 | Category        | Tools | Operations                                                              |
 | --------------- | ----- | ----------------------------------------------------------------------- |
@@ -40,7 +40,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 | **Payroll**     | 6     | List/get supplements, tax identifiers, family situations (read-only)    |
 | **Documents**   | 5     | List/get/search folders and documents (read-only)                       |
 | **Job Catalog** | 3     | List/get job roles and levels (read-only)                               |
-| **Contracts**   | 1     | Get employee contract history (read-only)                               |
+| **Contracts**   | 4     | Get contracts, employee with contract, by job role/level (read-only)    |
 
 ### 5 MCP Resources
 
@@ -287,6 +287,55 @@ A: Version `2025-10-01` by default. Override with `FACTORIAL_API_VERSION` enviro
 
 **Q: Are write operations logged?**
 A: Yes, all write operations are logged via the audit module for compliance and debugging.
+
+## Factorial API Quirks and Limitations
+
+The FactorialHR API has some design patterns that differ from typical REST APIs. This MCP server handles these automatically, but understanding them helps when debugging or extending:
+
+### Data Location Quirks
+
+| Data                    | Expected Location                  | Actual Location                                          | Impact                                         |
+| ----------------------- | ---------------------------------- | -------------------------------------------------------- | ---------------------------------------------- |
+| **Team membership**     | On Employee object (`team_ids`)    | On Team object (`employee_ids`)                          | Use `list_teams` to find an employee's teams   |
+| **Job role assignment** | On Employee object (`job_role_id`) | In Contract object (`job_catalog_role_id`)               | Use `get_employee_with_contract` for role info |
+| **Salary information**  | On Employee object                 | In Contract object (`salary_amount`, `salary_frequency`) | Use `get_employee_with_contract` for salary    |
+| **Job title**           | On Employee object                 | In Contract object (`job_title`)                         | May be null if not set in Factorial            |
+
+### Endpoint Quirks
+
+| Endpoint                       | Quirk                                                | Workaround                                     |
+| ------------------------------ | ---------------------------------------------------- | ---------------------------------------------- |
+| `GET /employees/{id}`          | May return 404 for valid employees                   | Server falls back to listing all and filtering |
+| `GET /documents/{id}`          | May return 404 for valid documents                   | Server falls back to listing all and filtering |
+| `GET /contracts?employee_id=X` | Filtering unreliable                                 | Server fetches all and filters client-side     |
+| Empty results                  | Returns `{"errors": null}` instead of `{"data": []}` | Server handles both formats                    |
+
+### Field Availability
+
+Some fields may be null even when you expect data:
+
+- **`job_title`**: Only populated if set in employee's contract
+- **`manager_id`**: Only populated if reporting structure is configured
+- **`seniority_calculation_date`**: Use this instead of the non-existent `hired_on` field
+- **Document metadata** (`name`, `mime_type`, `size_bytes`): May be null for some documents
+
+### Salary Data
+
+Salary information is available in the **Contract** entity, not the Employee entity:
+
+```
+salary_amount: number (in cents, e.g., 7000000 = €70,000)
+salary_frequency: 'yearly' | 'monthly' | 'weekly' | 'daily' | 'hourly'
+```
+
+Use `get_employee_with_contract` to retrieve employee data with their latest salary information.
+
+### Best Practices
+
+1. **To get an employee's job role**: Use `get_employee_with_contract` instead of `get_employee`
+2. **To find employees by role**: Use `list_employees_by_job_role` with a job role ID
+3. **To find an employee's teams**: Query `list_teams` and check `employee_ids` arrays
+4. **For salary data**: Always use contract endpoints, not employee endpoints
 
 ## Contributing
 

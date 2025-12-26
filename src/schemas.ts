@@ -125,17 +125,56 @@ export type Location = z.infer<typeof LocationSchema>;
 
 /**
  * Contract schema
+ *
+ * Extended to include salary, job catalog, and compensation fields
+ * available in the /contracts/contract-versions endpoint.
  */
 export const ContractSchema = z.object({
   id: z.number(),
   employee_id: z.number(),
   job_title: z.string().nullable(),
   effective_on: z.string().nullable(),
+
+  // Salary and compensation fields
+  salary_amount: z.number().nullable().optional(),
+  salary_frequency: z
+    .enum(['yearly', 'monthly', 'weekly', 'daily', 'hourly'])
+    .nullable()
+    .optional(),
+  working_hours: z.number().nullable().optional(),
+  working_hours_frequency: z.enum(['day', 'week', 'month', 'year']).nullable().optional(),
+
+  // Job catalog references
+  job_catalog_level_id: z.number().nullable().optional(),
+  job_catalog_role_id: z.number().nullable().optional(),
+
+  // Contract type and status
+  contract_type: z.string().nullable().optional(),
+  trial_period_ends_on: z.string().nullable().optional(),
+  ends_on: z.string().nullable().optional(),
+
+  // Working time distribution (added in API 2025-07-01)
+  annual_working_time_distribution: z.string().nullable().optional(),
+
+  // Timestamps
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
 });
 
 export type Contract = z.infer<typeof ContractSchema>;
+
+/**
+ * Contract summary schema for list operations
+ * Returns minimal fields to reduce response size
+ */
+export const ContractSummarySchema = z.object({
+  id: z.number(),
+  employee_id: z.number(),
+  job_title: z.string().nullable(),
+  effective_on: z.string().nullable(),
+});
+
+export type ContractSummary = z.infer<typeof ContractSummarySchema>;
 
 /**
  * Leave schema

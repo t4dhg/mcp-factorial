@@ -52,6 +52,9 @@ import {
   deleteLocation,
   // Contracts
   listContracts,
+  getEmployeeWithContract,
+  listEmployeesByJobRole,
+  listEmployeesByJobLevel,
   // Time Off - Read
   listLeaves,
   getLeave,
@@ -782,6 +785,186 @@ server.registerTool(
           {
             type: 'text',
             text: `Found ${result.data.length} contracts for employee ${employee_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'get_employee_with_contract',
+  {
+    title: 'Get Employee with Contract',
+    description:
+      'Get an employee with their latest contract data including salary, job title, and job role. ' +
+      'This combines employee data with compensation info from their most recent contract. ' +
+      'Useful for getting complete employment details in one call.',
+    inputSchema: {
+      employee_id: z.number().describe('The employee ID'),
+    },
+  },
+  async ({ employee_id }) => {
+    try {
+      const result = await getEmployeeWithContract(employee_id);
+
+      const response = {
+        employee: {
+          id: result.employee.id,
+          full_name: result.employee.full_name,
+          email: result.employee.email,
+          manager_id: result.employee.manager_id,
+          location_id: result.employee.location_id,
+          active: result.employee.active,
+          terminated_on: result.employee.terminated_on,
+        },
+        contract: result.contract
+          ? {
+              id: result.contract.id,
+              job_title: result.contract.job_title,
+              effective_on: result.contract.effective_on,
+              salary_amount: result.contract.salary_amount,
+              salary_frequency: result.contract.salary_frequency,
+              working_hours: result.contract.working_hours,
+              working_hours_frequency: result.contract.working_hours_frequency,
+              job_catalog_role_id: result.contract.job_catalog_role_id,
+              job_catalog_level_id: result.contract.job_catalog_level_id,
+              contract_type: result.contract.contract_type,
+              trial_period_ends_on: result.contract.trial_period_ends_on,
+              ends_on: result.contract.ends_on,
+            }
+          : null,
+      };
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: result.contract
+              ? `Employee ${result.employee.full_name} with contract:\n\n${JSON.stringify(response, null, 2)}`
+              : `Employee ${result.employee.full_name} (no contract found):\n\n${JSON.stringify(response, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'list_employees_by_job_role',
+  {
+    title: 'List Employees by Job Role',
+    description:
+      'Get all employees assigned to a specific job role. ' +
+      'Uses contract data to find employees since job role assignment is stored in contracts. ' +
+      'Returns employees with their latest contract including salary and compensation.',
+    inputSchema: {
+      job_role_id: z.number().describe('The job role ID from job_catalog'),
+      page: z.number().optional().default(1).describe('Page number'),
+      limit: z.number().optional().default(100).describe('Items per page (max: 100)'),
+    },
+  },
+  async ({ job_role_id, page, limit }) => {
+    try {
+      const result = await listEmployeesByJobRole(job_role_id, { page, limit });
+
+      const summary = result.data.map(item => ({
+        employee: {
+          id: item.employee.id,
+          full_name: item.employee.full_name,
+          email: item.employee.email,
+        },
+        contract: item.contract
+          ? {
+              job_title: item.contract.job_title,
+              salary_amount: item.contract.salary_amount,
+              salary_frequency: item.contract.salary_frequency,
+              effective_on: item.contract.effective_on,
+            }
+          : null,
+      }));
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${result.data.length} employees with job role ID ${job_role_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'list_employees_by_job_level',
+  {
+    title: 'List Employees by Job Level',
+    description:
+      'Get all employees at a specific job level. ' +
+      'Uses contract data to find employees since job level is stored in contracts. ' +
+      'Returns employees with their latest contract including salary and compensation.',
+    inputSchema: {
+      job_level_id: z.number().describe('The job level ID from job_catalog'),
+      page: z.number().optional().default(1).describe('Page number'),
+      limit: z.number().optional().default(100).describe('Items per page (max: 100)'),
+    },
+  },
+  async ({ job_level_id, page, limit }) => {
+    try {
+      const result = await listEmployeesByJobLevel(job_level_id, { page, limit });
+
+      const summary = result.data.map(item => ({
+        employee: {
+          id: item.employee.id,
+          full_name: item.employee.full_name,
+          email: item.employee.email,
+        },
+        contract: item.contract
+          ? {
+              job_title: item.contract.job_title,
+              salary_amount: item.contract.salary_amount,
+              salary_frequency: item.contract.salary_frequency,
+              effective_on: item.contract.effective_on,
+            }
+          : null,
+      }));
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${result.data.length} employees with job level ID ${job_level_id} (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`,
           },
         ],
       };
