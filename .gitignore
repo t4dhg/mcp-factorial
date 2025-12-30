@@ -44,3 +44,6 @@ test-results/
 tmp/
 temp/
 *.tmp
+
+# MCP Registry tokens
+.mcpregistry_*
