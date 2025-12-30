@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.t4dhg/mcp-factorial",
   "title": "MCP FactorialHR",
-  "description": "Comprehensive MCP server for FactorialHR with 80+ tools for employees, teams, time off, attendance, documents, projects, training, recruiting (ATS), and payroll. Full CRUD support with safety guardrails.",
-  "version": "7.0.1",
+  "description": "Full CRUD MCP server for FactorialHR: employees, teams, time off, projects, ATS, payroll.",
+  "version": "7.1.0",
   "repository": {
     "url": "https://github.com/t4dhg/mcp-factorial",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@t4dhg/mcp-factorial",
-      "version": "7.0.1",
+      "version": "7.1.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
