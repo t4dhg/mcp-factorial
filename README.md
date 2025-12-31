@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/t4dhg/mcp-factorial/main/assets/factorial-logo.svg" alt="FactorialHR" height="48">
+</p>
+
 # MCP FactorialHR
 
-> **The definitive Model Context Protocol server for FactorialHR**
+> **The definitive Model Context Protocol server for [FactorialHR](https://factorialhr.com)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml/badge.svg)](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml)
@@ -10,7 +14,6 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen.svg)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![smithery badge](https://smithery.ai/badge/@t4dhg/mcp-factorial)](https://smithery.ai/server/@t4dhg/mcp-factorial)
 
 A comprehensive Model Context Protocol (MCP) server that provides AI assistants like Claude with full access to FactorialHR. Manage employees, teams, time off, projects, training, recruiting, and more - all with built-in safety guardrails.
 
