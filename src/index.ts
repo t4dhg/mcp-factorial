@@ -1880,7 +1880,7 @@ server.registerTool(
   {
     title: 'Download Payslip PDFs',
     description:
-      'Download all payslip PDFs for an employee. Specialized tool for payslips (Nómina folder). Downloads files to specified directory. NOTE: Requires OAuth2 authentication - will fail with API key auth. See https://apidoc.factorialhr.com/docs/authentication',
+      'Download all payslip PDFs for an employee. Specialized tool for payslips (Nómina folder). Downloads files to specified directory. Requires OAuth2 credentials (FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET, FACTORIAL_OAUTH_REFRESH_TOKEN).',
     inputSchema: {
       employee_id: z.number().describe('The employee ID'),
       output_dir: z
@@ -1926,7 +1926,7 @@ server.registerTool(
   {
     title: 'Download Employee Document',
     description:
-      'Download any employee document by its ID. Generic document downloader for any type of document (contracts, payslips, certificates, etc.). NOTE: Requires OAuth2 authentication - will fail with API key auth. See https://apidoc.factorialhr.com/docs/authentication',
+      'Download any employee document by its ID. Generic document downloader for any type of document (contracts, payslips, certificates, etc.). Requires OAuth2 credentials (FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET, FACTORIAL_OAUTH_REFRESH_TOKEN).',
     inputSchema: {
       document_id: z.number().describe('The document ID to download'),
       output_dir: z

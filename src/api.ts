@@ -6,7 +6,8 @@
 
 import { fetchList, fetchOne, postOne, patchOne, deleteOne, postAction } from './http-client.js';
 import { cache, cached, CACHE_TTL, CacheManager } from './cache.js';
-import { debug, getApiKey } from './config.js';
+import { debug } from './config.js';
+import { isOAuth2Configured, getOAuth2AccessToken } from './oauth.js';
 import {
   buildPaginationParams,
   paginateResponse,
@@ -700,23 +701,47 @@ interface DownloadUrlResponse {
 
 /**
  * Get download URLs for documents using the bulk-create endpoint
- * Note: This endpoint requires OAuth2 authentication and will fail with API key auth.
+ *
+ * This endpoint requires OAuth2 authentication. If OAuth2 credentials are configured
+ * (FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET, FACTORIAL_OAUTH_REFRESH_TOKEN),
+ * the function will use them automatically. Otherwise, it will fail with a helpful error.
  *
  * @param documentIds - Array of document IDs to get download URLs for
  * @returns Array of document IDs with their signed download URLs
- * @throws Error if the endpoint fails (likely due to API key auth limitations)
+ * @throws Error if OAuth2 is not configured or token refresh fails
  */
 export async function getDocumentDownloadUrls(
   documentIds: number[]
 ): Promise<DownloadUrlResponse[]> {
+  // Check if OAuth2 is configured
+  if (!isOAuth2Configured()) {
+    throw new Error(
+      'Document download requires OAuth2 authentication.\n\n' +
+        'To enable document downloads, configure OAuth2 credentials:\n' +
+        '  1. Create an OAuth2 application in Factorial (Settings → Integrations)\n' +
+        '  2. Complete the authorization flow to get a refresh token\n' +
+        '  3. Set environment variables:\n' +
+        '     - FACTORIAL_OAUTH_CLIENT_ID\n' +
+        '     - FACTORIAL_OAUTH_CLIENT_SECRET\n' +
+        '     - FACTORIAL_OAUTH_REFRESH_TOKEN\n\n' +
+        'See: https://apidoc.factorialhr.com/docs/authentication for OAuth2 setup.\n' +
+        `Document IDs requested: ${documentIds.join(', ')}`
+    );
+  }
+
+  // Get OAuth2 access token
+  const accessToken = await getOAuth2AccessToken();
+
   // The download-urls endpoint uses API version 2025-01-01
   const downloadUrlsEndpoint =
     'https://api.factorialhr.com/api/2025-01-01/resources/documents/download-urls/bulk-create';
 
+  debug('Requesting document download URLs with OAuth2', { documentIds });
+
   const response = await fetch(downloadUrlsEndpoint, {
     method: 'POST',
     headers: {
-      'x-api-key': getApiKey(),
+      Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
@@ -732,13 +757,17 @@ export async function getDocumentDownloadUrls(
       // Ignore parse errors
     }
 
-    // Check for the specific "Resource not found" error that indicates OAuth2 is required
+    // Handle specific errors
+    if (response.status === 401) {
+      throw new Error(
+        'OAuth2 authentication failed. The access token may have expired or been revoked.\n' +
+          'Try refreshing your credentials or re-authorizing the OAuth2 application.'
+      );
+    }
+
     if (errorData?.errors?.some(e => e.includes('not found'))) {
       throw new Error(
-        `Document download requires OAuth2 authentication. ` +
-          `The download-urls endpoint is not accessible with API key auth. ` +
-          `Document IDs requested: ${documentIds.join(', ')}. ` +
-          `See: https://apidoc.factorialhr.com/docs/authentication for OAuth2 setup.`
+        `Documents not found or not accessible. Document IDs: ${documentIds.join(', ')}`
       );
     }
 
@@ -746,6 +775,7 @@ export async function getDocumentDownloadUrls(
   }
 
   const data = (await response.json()) as { data: DownloadUrlResponse[] };
+  debug('Document download URLs retrieved successfully', { count: data.data.length });
   return data.data;
 }
 

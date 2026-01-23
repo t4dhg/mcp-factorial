@@ -138,6 +138,75 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
 > **Important**: API keys have full access to your FactorialHR data and never expire. Store them securely, never commit them to version control, and rotate them periodically.
 
+## OAuth2 Setup (For Document Downloads)
+
+Document download tools (`download_payslip_pdf`, `download_employee_document`) require OAuth2 authentication. API key authentication cannot access the download endpoints.
+
+### Step 1: Create an OAuth2 Application
+
+1. Log in to [FactorialHR](https://app.factorialhr.com) as an administrator
+2. Go to **Settings → Integrations → OAuth2 Applications**
+3. Click **"Create OAuth2 Application"**
+4. Fill in the required fields:
+   - **Name**: e.g., "MCP Server Downloads"
+   - **Redirect URI**: `http://localhost:3000/callback` (or any URL you control)
+5. Save and note your **Client ID** and **Client Secret**
+
+### Step 2: Get Authorization Code
+
+Open this URL in your browser (replace placeholders):
+
+```
+https://api.factorialhr.com/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=YOUR_REDIRECT_URI&response_type=code
+```
+
+After authorizing, you'll be redirected to your redirect URI with a `code` parameter.
+
+### Step 3: Exchange Code for Tokens
+
+```bash
+curl -X POST 'https://api.factorialhr.com/oauth/token' \
+  -d 'client_id=YOUR_CLIENT_ID' \
+  -d 'client_secret=YOUR_CLIENT_SECRET' \
+  -d 'code=AUTHORIZATION_CODE' \
+  -d 'grant_type=authorization_code' \
+  -d 'redirect_uri=YOUR_REDIRECT_URI'
+```
+
+This returns an `access_token` and `refresh_token`. Save the **refresh_token**.
+
+### Step 4: Configure MCP Server
+
+Add OAuth2 credentials to your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "factorial": {
+      "command": "npx",
+      "args": ["-y", "@t4dhg/mcp-factorial"],
+      "env": {
+        "FACTORIAL_API_KEY": "your-api-key",
+        "FACTORIAL_OAUTH_CLIENT_ID": "your-client-id",
+        "FACTORIAL_OAUTH_CLIENT_SECRET": "your-client-secret",
+        "FACTORIAL_OAUTH_REFRESH_TOKEN": "your-refresh-token"
+      }
+    }
+  }
+}
+```
+
+Or add to your `.env` file:
+
+```env
+FACTORIAL_API_KEY=your-api-key
+FACTORIAL_OAUTH_CLIENT_ID=your-client-id
+FACTORIAL_OAUTH_CLIENT_SECRET=your-client-secret
+FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
+```
+
+> **Note**: Refresh tokens expire after 1 week. If document downloads stop working, you'll need to re-authorize and get a new refresh token.
+
 ## Use Cases
 
 ### For Managers
@@ -165,13 +234,16 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
 ## Configuration Options
 
-| Environment Variable    | Description              | Default      |
-| ----------------------- | ------------------------ | ------------ |
-| `FACTORIAL_API_KEY`     | Your FactorialHR API key | Required     |
-| `FACTORIAL_API_VERSION` | API version              | `2025-10-01` |
-| `FACTORIAL_TIMEOUT_MS`  | Request timeout (ms)     | `30000`      |
-| `FACTORIAL_MAX_RETRIES` | Max retry attempts       | `3`          |
-| `DEBUG`                 | Enable debug logging     | `false`      |
+| Environment Variable            | Description                          | Default      |
+| ------------------------------- | ------------------------------------ | ------------ |
+| `FACTORIAL_API_KEY`             | Your FactorialHR API key             | Required     |
+| `FACTORIAL_API_VERSION`         | API version                          | `2025-10-01` |
+| `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                 | `30000`      |
+| `FACTORIAL_MAX_RETRIES`         | Max retry attempts                   | `3`          |
+| `DEBUG`                         | Enable debug logging                 | `false`      |
+| `FACTORIAL_OAUTH_CLIENT_ID`     | OAuth2 client ID (for downloads)     | -            |
+| `FACTORIAL_OAUTH_CLIENT_SECRET` | OAuth2 client secret (for downloads) | -            |
+| `FACTORIAL_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (for downloads) | -            |
 
 ## Safety & Security
 

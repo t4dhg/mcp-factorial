@@ -5,104 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.3.0] - 2026-01-23
+
+### Added
+
+#### OAuth2 Authentication Support
+
+Full OAuth2 support for document download operations:
+
+- **Token Management**: Automatic access token refresh using refresh tokens
+- **Token Caching**: In-memory caching with automatic refresh 5 minutes before expiry
+- **Error Handling**: Clear error messages for expired tokens, invalid credentials, and missing configuration
+
+New environment variables for OAuth2:
+- `FACTORIAL_OAUTH_CLIENT_ID` - OAuth2 application client ID
+- `FACTORIAL_OAUTH_CLIENT_SECRET` - OAuth2 application client secret
+- `FACTORIAL_OAUTH_REFRESH_TOKEN` - Refresh token for obtaining access tokens
+
+#### New Module: `src/oauth.ts`
+
+OAuth2 token management module with:
+- `isOAuth2Configured()` - Check if OAuth2 credentials are set
+- `getOAuth2AccessToken()` - Get valid access token (refreshes automatically)
+- `getOAuth2Status()` - Get OAuth2 configuration and token status for debugging
+- `clearOAuth2Cache()` - Clear cached tokens (useful for testing)
+
+### Changed
+
+- **Document download tools now work** when OAuth2 is configured
+- Updated `getDocumentDownloadUrls()` to use OAuth2 Bearer token authentication
+- Improved error messages when OAuth2 is not configured
+- Added comprehensive OAuth2 setup guide to README
+- Updated Configuration Options table with OAuth2 environment variables
+- Updated `.env.example` with OAuth2 configuration examples
+- Added OAuth2 test suite with 14 new tests (total: 463 tests)
+
 ## [7.2.0] - 2026-01-23
 
 ### Added
 
-#### Document Download Tools (WIP - Requires OAuth2)
+#### Document Download Tools (Requires OAuth2)
 
 Two new tools for downloading documents directly from FactorialHR:
 
-- **`download_payslip_pdf`**: Download all payslip PDFs for an employee. Automatically finds the Nómina/Payslips folder and downloads all payslips for the specified employee to a local directory.
+- **`download_payslip_pdf`**: Download all payslip PDFs for an employee
+- **`download_employee_document`**: Download any employee document by ID
 
-- **`download_employee_document`**: Download any employee document by its ID. Generic document downloader for contracts, certificates, payslips, or any other document type.
-
-Both tools:
-- Accept an `output_dir` parameter to specify where files should be saved
-- Create the output directory if it doesn't exist
-- Return detailed metadata about downloaded files (path, name, size, MIME type)
-
-**⚠️ IMPORTANT: These tools use the `download-urls/bulk-create` endpoint to generate signed download URLs, which is NOT available via API key authentication. See "API Discovery Notes" below for details.**
+**Note**: These tools require OAuth2 authentication. API key auth cannot access the `download-urls/bulk-create` endpoint.
 
 ### Changed
 
 - Updated tool count from 85+ to 87+ to reflect new document download tools
-- Documents category now shows 7 tools instead of 5
-
-### API Discovery Notes: Document File Downloads
-
-Investigation into downloading PDF payslips from Factorial revealed important API limitations:
-
-#### What Works (API Key Auth)
-
-1. **List documents**: `GET /api/2025-10-01/resources/documents/documents`
-   - Returns document metadata: `id`, `filename`, `file_size`, `content_type`, `folder_id`, `employee_id`
-   - Filter by employee: `?employee_ids[]=12345`
-   - Filter by folder: `?folder_id=99999`
-
-2. **Get single document**: `GET /api/2025-10-01/resources/documents/documents/{id}`
-   - Returns full metadata but **`file_url` is always `null`** with API key auth
-   - Fields returned: `author_id`, `company_id`, `content_type`, `created_at`, `employee_id`, `extension`, `file_size`, `filename`, `folder_id`, `id`, `is_company_document`, `is_management_document`, `is_pending_assignment`, `leave_id`, `public`, `signature_status`, `signees`, `space`, `updated_at`, `deleted_at`
-
-3. **List folders**: `GET /api/2025-10-01/resources/documents/folders`
-   - Payslips are typically in folder named "Nómina" (folder_id varies by company)
-
-#### What Doesn't Work (API Key Auth)
-
-1. **Download URLs endpoint**: `POST /api/2025-01-01/resources/documents/download-urls/bulk-create`
-   - Documented at: https://apidoc.factorialhr.com/v2025-01-01/reference/post_api-2025-01-01-resources-documents-download-urls-bulk-create
-   - Returns `{"errors": ["Resource #{id} not found"]}` with API key auth
-   - Likely requires OAuth2 with specific scopes
-
-2. **Direct download endpoints** (all return 404):
-   - `/documents/{id}/download`
-   - `/documents/{id}/file`
-   - `/documents/download-urls` (GET)
-
-#### Recommended Implementation Path
-
-To implement document downloads, the MCP server needs OAuth2 authentication:
-
-1. **Add OAuth2 support** alongside API key auth
-2. **Request appropriate scopes** for document downloads (scope TBD - check Factorial OAuth docs)
-3. **Use the download-urls/bulk-create endpoint** which generates temporary signed URLs:
-   ```
-   POST /api/2025-01-01/resources/documents/download-urls/bulk-create
-   Body: {"document_ids": [id1, id2, ...]}
-   Response: [{"document_id": 123, "url": "https://signed-url..."}]
-   ```
-4. **Fetch files from signed URLs** and save to disk
-
-#### Workaround: Browser Automation
-
-Until OAuth2 is implemented, documents can be downloaded via browser automation (e.g., Playwright):
-
-1. Log into Factorial web UI
-2. Navigate to document pages (`/documents/{id}`)
-3. Click download button or extract PDF URL from page
-4. Save files locally
-
-#### Document Metadata Sample
-
-```json
-{
-  "id": 12345678,
-  "filename": "N202512 COMPANY NAME.pdf",
-  "content_type": "application/pdf",
-  "file_size": 210642,
-  "folder_id": 99999,
-  "employee_id": 12345,
-  "signature_status": "pending",
-  "public": true,
-  "space": "employee_my_documents"
-}
-```
-
-#### References
-
-- Factorial API Docs: https://apidoc.factorialhr.com/
-- Download URLs endpoint: https://apidoc.factorialhr.com/v2025-01-01/reference/post_api-2025-01-01-resources-documents-download-urls-bulk-create
-- OAuth2 setup: https://apidoc.factorialhr.com/docs/authentication
 
 ## [7.1.0] - 2025-12-26
 
@@ -376,7 +329,13 @@ Summarize documents across a team:
 - TypeScript support with strict mode
 - Comprehensive README with setup instructions
 
-[7.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v6.0.0...v7.0.0
+[7.3.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.2.0...v7.3.0
+[7.2.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.1.0...v7.2.0
+[7.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.0.1...v7.1.0
+[7.0.1]: https://github.com/t4dhg/mcp-factorial/compare/v7.0.0...v7.0.1
+[7.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v4.0.0...v7.0.0
+[4.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v3.1.0...v4.0.0
+[3.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v1.0.0...v1.1.0
