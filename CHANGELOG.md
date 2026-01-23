@@ -11,18 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Document downloads**: Fixed `downloadEmployeePayslips` to pass document metadata directly instead of re-fetching, avoiding "Document not found" errors caused by Factorial API's unreliable individual document endpoint
 - **downloadDocument function**: Now accepts either document ID or Document object, allowing callers to skip redundant metadata fetches
-
-### Changed
-
-- **Download authentication**: `getDocumentDownloadUrls()` now tries API key authentication first, then falls back to OAuth2 if configured. This allows downloads to work on Factorial accounts that support API key downloads, without requiring OAuth2 setup
 - **Fallback filenames**: Documents without names now get a proper fallback filename with `.pdf` extension when mime type is PDF
 
 ### Improved
 
-- **Error messages**: `getDocument()` now provides helpful guidance when document lookup fails due to API limitations
+- **Error messages**:
+  - `getDocument()` now provides helpful guidance when document lookup fails due to API limitations
+  - `getDocumentDownloadUrls()` now clearly explains that OAuth2 is required (Factorial API limitation) and provides setup instructions
 - **README documentation**:
   - Updated OAuth2 setup instructions with correct Factorial URLs and scopes
-  - Clarified that API key is tried first for downloads, OAuth2 is fallback
+  - Clarified that OAuth2 is **required** for document downloads (not optional)
   - Added troubleshooting section for "Document with ID X not found" errors
   - Added troubleshooting section for download authentication
   - Updated Endpoint Quirks table with document-specific limitations

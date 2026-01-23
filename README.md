@@ -184,9 +184,9 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
 > **Important**: API keys have full access to your FactorialHR data and never expire. Store them securely, never commit them to version control, and rotate them periodically.
 
-## OAuth2 Setup (For Document Downloads)
+## OAuth2 Setup (Required for Document Downloads)
 
-Document download actions (`download_payslips`, `download`) will first try API key authentication. If that fails (some Factorial accounts require OAuth2 for downloads), you'll need to configure OAuth2 credentials.
+Document download actions (`download_payslips`, `download`) **require OAuth2 authentication**. This is a Factorial API limitation - the download endpoint does not accept API key authentication.
 
 > **Note**: You need admin access in Factorial to create OAuth applications.
 
@@ -441,13 +441,13 @@ The server implements exponential backoff for rate limits. If you're hitting lim
 
 ### Document Downloads Not Working
 
-Document downloads try API key authentication first. If that fails, OAuth2 is attempted (if configured).
+Document downloads **require OAuth2 authentication**. This is a Factorial API limitation - the download endpoint does not accept API key authentication.
 
 If you see an error like:
 
-> "Document download failed. API key authentication was unsuccessful and OAuth2 is not configured."
+> "Document download requires OAuth2 authentication"
 
-Your API key may not have download permissions. Try setting up OAuth2 credentials - see [OAuth2 Setup](#oauth2-setup-for-document-downloads) above.
+You need to set up OAuth2 credentials. See [OAuth2 Setup](#oauth2-setup-required-for-document-downloads) above.
 
 **Note**: OAuth2 refresh tokens expire after 1 week. If downloads suddenly stop working, re-authorize and get a new refresh token.
 
@@ -507,7 +507,7 @@ The FactorialHR API has some design patterns that differ from typical REST APIs.
 | `GET /documents/{id}`          | May return 404 for employee-specific documents      | Use `download_payslips` which bypasses this    |
 | `GET /contracts?employee_id=X` | Filtering unreliable                                | Server fetches all and filters client-side     |
 | Empty results                  | Returns `{"errors": null}` instead of `{"data": []} | Server handles both formats                    |
-| Document download URLs         | May require OAuth2 (API key tried first)            | Configure OAuth2 if API key fails              |
+| Document download URLs         | Requires OAuth2 (API key does not work)             | Configure OAuth2 credentials for downloads     |
 
 ### Field Availability
 
