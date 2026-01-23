@@ -186,29 +186,35 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
 ## OAuth2 Setup (For Document Downloads)
 
-Document download tools (`download_payslip_pdf`, `download_employee_document`) require OAuth2 authentication. API key authentication cannot access the download endpoints.
+Document download actions (`download_payslips`, `download`) require OAuth2 authentication. API key authentication cannot access the download endpoints.
+
+> **Note**: You need admin access in Factorial to create OAuth applications.
 
 ### Step 1: Create an OAuth2 Application
 
-1. Log in to [FactorialHR](https://app.factorialhr.com) as an administrator
-2. Go to **Settings → Integrations → OAuth2 Applications**
-3. Click **"Create OAuth2 Application"**
-4. Fill in the required fields:
-   - **Name**: e.g., "MCP Server Downloads"
-   - **Redirect URI**: `http://localhost:3000/callback` (or any URL you control)
-5. Save and note your **Client ID** and **Client Secret**
+1. Go to: **https://api.factorialhr.com/oauth/applications**
+2. Click **"New application"**
+3. Fill in:
+   - **Redirect URI**: `http://localhost:8080/callback` (or any URL you can access)
+   - **Confidentiality**: Yes (server application)
+   - **Scopes**: Select `read` and `write`
+4. Save and note your **Client ID** and **Client Secret**
 
 ### Step 2: Get Authorization Code
 
-Open this URL in your browser (replace placeholders):
+Open this URL in your browser (replace `YOUR_CLIENT_ID`):
 
 ```
-https://api.factorialhr.com/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=YOUR_REDIRECT_URI&response_type=code
+https://api.factorialhr.com/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=http://localhost:8080/callback&response_type=code
 ```
 
-After authorizing, you'll be redirected to your redirect URI with a `code` parameter.
+- Log in and authorize the app
+- You'll be redirected to your callback URL with `?code=AUTHORIZATION_CODE`
+- Copy that code from the URL (it expires quickly, so proceed to step 3 immediately)
 
 ### Step 3: Exchange Code for Tokens
+
+Run this curl command (replace placeholders):
 
 ```bash
 curl -X POST 'https://api.factorialhr.com/oauth/token' \
@@ -216,10 +222,10 @@ curl -X POST 'https://api.factorialhr.com/oauth/token' \
   -d 'client_secret=YOUR_CLIENT_SECRET' \
   -d 'code=AUTHORIZATION_CODE' \
   -d 'grant_type=authorization_code' \
-  -d 'redirect_uri=YOUR_REDIRECT_URI'
+  -d 'redirect_uri=http://localhost:8080/callback'
 ```
 
-This returns an `access_token` and `refresh_token`. Save the **refresh_token**.
+You'll get a response with `access_token` and `refresh_token`. Save the **refresh_token**.
 
 ### Step 4: Configure MCP Server
 
@@ -251,7 +257,11 @@ FACTORIAL_OAUTH_CLIENT_SECRET=your-client-secret
 FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 ```
 
-> **Note**: Refresh tokens expire after 1 week. If document downloads stop working, you'll need to re-authorize and get a new refresh token.
+### Important Notes
+
+- **Refresh tokens expire after 1 week** - you'll need to repeat steps 2-3 if it expires
+- The MCP server automatically refreshes access tokens using the refresh token
+- If document downloads suddenly stop working, your refresh token has likely expired
 
 ## Use Cases
 
