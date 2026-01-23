@@ -40,7 +40,7 @@ The MCP server uses a hierarchical tool structure for optimal context usage. Ins
 | `factorial_contracts`   | Contract/salary data          | list, get_with_employee, by_job_role, by_job_level |
 | `factorial_time_off`    | Leave management              | 10 actions                                         |
 | `factorial_attendance`  | Shift management              | list, get, create, update, delete                  |
-| `factorial_documents`   | Document management           | 8 actions including downloads                      |
+| `factorial_documents`   | Document management           | 8 actions (downloads require OAuth2 - see below)   |
 | `factorial_job_catalog` | Job roles/levels              | list_roles, get_role, list_levels                  |
 | `factorial_projects`    | Project management            | 16 actions for projects, tasks, workers, time      |
 | `factorial_training`    | Training management           | 12 actions for trainings, sessions, enrollments    |
@@ -87,7 +87,7 @@ factorial_discover({ category: 'employees' });
 | **Work Areas**  | list, get, create, update, archive, unarchive                                                          |
 | **ATS**         | 17 operations for job postings, candidates, applications, hiring stages                                |
 | **Payroll**     | list/get supplements, tax identifiers, family situations (read-only)                                   |
-| **Documents**   | 8 operations for folders, documents, and downloads                                                     |
+| **Documents**   | 8 operations for folders, documents, and downloads (⚠️ downloads require OAuth2)                       |
 | **Job Catalog** | list_roles, get_role, list_levels (read-only)                                                          |
 | **Contracts**   | list, get_with_employee, by_job_role, by_job_level (read-only)                                         |
 
@@ -427,6 +427,34 @@ The server implements exponential backoff for rate limits. If you're hitting lim
 - **Team membership**: Some employees may not be assigned to teams
 - **Empty responses**: Check if the resource exists in your Factorial account
 
+### Document Downloads Not Working
+
+Document downloads require OAuth2 authentication (API keys cannot access download endpoints). If you see an error like:
+
+> "Document download requires OAuth2 authentication"
+
+You need to set up OAuth2 credentials. See [OAuth2 Setup](#oauth2-setup-for-document-downloads) above.
+
+**Important**: OAuth2 refresh tokens expire after 1 week. If downloads suddenly stop working, re-authorize and get a new refresh token.
+
+### "Document with ID X not found" Error
+
+The Factorial API's individual document endpoint (`GET /documents/{id}`) has limitations accessing employee-specific documents. This happens because:
+
+1. `list_documents` with `employee_ids` filter correctly returns all employee documents
+2. `get_document` by ID cannot access those same documents individually
+
+**Workaround**: Use `download_payslips` action instead of `download` action. The `download_payslips` action uses the document metadata from the list operation directly, bypassing the problematic individual GET endpoint:
+
+```typescript
+// This works - uses document list internally
+factorial_documents({
+  action: 'download_payslips',
+  employee_id: 123,
+  output_dir: '/path/to/downloads',
+});
+```
+
 ## FAQ
 
 **Q: Does this expose salary/payroll data?**
@@ -459,12 +487,13 @@ The FactorialHR API has some design patterns that differ from typical REST APIs.
 
 ### Endpoint Quirks
 
-| Endpoint                       | Quirk                                                | Workaround                                     |
-| ------------------------------ | ---------------------------------------------------- | ---------------------------------------------- |
-| `GET /employees/{id}`          | May return 404 for valid employees                   | Server falls back to listing all and filtering |
-| `GET /documents/{id}`          | May return 404 for valid documents                   | Server falls back to listing all and filtering |
-| `GET /contracts?employee_id=X` | Filtering unreliable                                 | Server fetches all and filters client-side     |
-| Empty results                  | Returns `{"errors": null}` instead of `{"data": []}` | Server handles both formats                    |
+| Endpoint                       | Quirk                                               | Workaround                                     |
+| ------------------------------ | --------------------------------------------------- | ---------------------------------------------- |
+| `GET /employees/{id}`          | May return 404 for valid employees                  | Server falls back to listing all and filtering |
+| `GET /documents/{id}`          | May return 404 for employee-specific documents      | Use `download_payslips` which bypasses this    |
+| `GET /contracts?employee_id=X` | Filtering unreliable                                | Server fetches all and filters client-side     |
+| Empty results                  | Returns `{"errors": null}` instead of `{"data": []} | Server handles both formats                    |
+| Document download URLs         | Requires OAuth2 (API key auth does not work)        | Configure OAuth2 credentials for downloads     |
 
 ### Field Availability
 

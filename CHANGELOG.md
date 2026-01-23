@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.1.1] - 2026-01-23
+
+### Fixed
+
+- **Document downloads**: Fixed `downloadEmployeePayslips` to pass document metadata directly instead of re-fetching, avoiding "Document not found" errors caused by Factorial API's unreliable individual document endpoint
+- **downloadDocument function**: Now accepts either document ID or Document object, allowing callers to skip redundant metadata fetches
+
+### Improved
+
+- **Error messages**: `getDocument()` now provides helpful guidance when document lookup fails due to API limitations
+- **README documentation**:
+  - Made OAuth2 requirement for document downloads more prominent in feature tables
+  - Added troubleshooting section for "Document with ID X not found" errors
+  - Added troubleshooting section for OAuth2 download authentication
+  - Updated Endpoint Quirks table with document-specific limitations
+
 ## [8.1.0] - 2026-01-23
 
 ### Changed

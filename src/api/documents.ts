@@ -80,6 +80,11 @@ export async function listDocuments(
  * can be unreliable, similar to the employee endpoint. This function implements a fallback
  * to listing all documents and filtering if the direct endpoint fails or returns no data.
  *
+ * IMPORTANT: Due to Factorial API limitations, this function may not find employee-specific
+ * documents that were returned by listDocuments({ employee_ids: [...] }). This is because
+ * the fallback query cannot access all employee documents. For download operations,
+ * prefer using the document object directly (from listDocuments) rather than re-fetching by ID.
+ *
  * @param id - The document ID
  * @returns The document object
  * @throws Error if document is not found
@@ -104,13 +109,19 @@ export async function getDocument(id: number): Promise<Document> {
   }
 
   // Fallback: Fetch all documents and filter by ID
-  // This works around Factorial API limitations with the individual document endpoint
+  // Note: This may not return employee-specific documents due to API access limitations
   const allDocuments = await fetchList<Document>(ENDPOINTS.documents);
 
   const document = allDocuments.find(doc => doc.id === id);
 
   if (!document) {
-    throw new Error(`Document with ID ${id} not found.`);
+    throw new Error(
+      `Document with ID ${id} not found.\n\n` +
+        'This may happen when trying to access employee-specific documents. ' +
+        'The Factorial API has limitations retrieving individual documents by ID.\n\n' +
+        'Workaround: Use list_documents with employee_ids filter to get document metadata, ' +
+        'then use download_payslips or download action with the document ID from that list.'
+    );
   }
 
   return document;
@@ -206,16 +217,18 @@ export async function getDocumentDownloadUrls(
 
 /**
  * Download a document by getting its signed URL and fetching the content
- * @param id - The document ID
+ * @param idOrDocument - The document ID or a Document object (to avoid re-fetching metadata)
  * @param outputDir - Directory to save the file to
  * @returns Path to the downloaded file and metadata
  */
 export async function downloadDocument(
-  id: number,
+  idOrDocument: number | Document,
   outputDir: string
 ): Promise<{ path: string; document: Document }> {
-  // First get the document metadata for filename info
-  const document = await getDocument(id);
+  // Use provided document or fetch it
+  const document: Document =
+    typeof idOrDocument === 'number' ? await getDocument(idOrDocument) : idOrDocument;
+  const id = document.id;
 
   // Get the signed download URL
   const downloadUrls = await getDocumentDownloadUrls([id]);
@@ -282,11 +295,11 @@ export async function downloadEmployeePayslips(
     throw new Error(`No payslips found for employee ${employeeId}`);
   }
 
-  // Download each payslip
+  // Download each payslip - pass the document object to avoid re-fetching metadata
   const results: Array<{ path: string; document: Document }> = [];
   for (const doc of payslipDocs) {
     try {
-      const result = await downloadDocument(doc.id, outputDir);
+      const result = await downloadDocument(doc, outputDir);
       results.push(result);
     } catch (error) {
       debug(
