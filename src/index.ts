@@ -79,6 +79,8 @@ import {
   getFolder,
   listDocuments,
   getDocument,
+  downloadEmployeePayslips,
+  downloadEmployeeDocument,
   // Job Catalog
   listJobRoles,
   getJobRole,
@@ -1856,6 +1858,102 @@ server.registerTool(
           {
             type: 'text',
             text: `Found ${summary.length} documents${queryInfo} for employees matching "${employee_name}" (${employeeNames}):\n\n${JSON.stringify(summary, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'download_payslip_pdf',
+  {
+    title: 'Download Payslip PDFs',
+    description:
+      'Download all payslip PDFs for an employee. Specialized tool for payslips (Nómina folder). Downloads files to specified directory. NOTE: Requires OAuth2 authentication - will fail with API key auth. See https://apidoc.factorialhr.com/docs/authentication',
+    inputSchema: {
+      employee_id: z.number().describe('The employee ID'),
+      output_dir: z
+        .string()
+        .describe('Directory path to save the downloaded PDFs (e.g., /tmp/payslips)'),
+    },
+  },
+  async ({ employee_id, output_dir }) => {
+    try {
+      const results = await downloadEmployeePayslips(employee_id, output_dir);
+
+      const summary = results.map(r => ({
+        path: r.path,
+        name: r.document.name,
+        id: r.document.id,
+        size_bytes: r.document.size_bytes,
+      }));
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Downloaded ${results.length} payslip(s) for employee ${employee_id} to ${output_dir}:\n\n${JSON.stringify(summary, null, 2)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'download_employee_document',
+  {
+    title: 'Download Employee Document',
+    description:
+      'Download any employee document by its ID. Generic document downloader for any type of document (contracts, payslips, certificates, etc.). NOTE: Requires OAuth2 authentication - will fail with API key auth. See https://apidoc.factorialhr.com/docs/authentication',
+    inputSchema: {
+      document_id: z.number().describe('The document ID to download'),
+      output_dir: z
+        .string()
+        .describe('Directory path to save the downloaded file (e.g., /tmp/documents)'),
+    },
+  },
+  async ({ document_id, output_dir }) => {
+    try {
+      const result = await downloadEmployeeDocument(document_id, output_dir);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Downloaded document "${result.document.name}" to ${result.path}\n\nDocument details:\n${JSON.stringify(
+              {
+                id: result.document.id,
+                name: result.document.name,
+                mime_type: result.document.mime_type,
+                size_bytes: result.document.size_bytes,
+                folder_id: result.document.folder_id,
+                employee_id: result.document.employee_id,
+              },
+              null,
+              2
+            )}`,
           },
         ],
       };

@@ -6,7 +6,7 @@
 
 import { fetchList, fetchOne, postOne, patchOne, deleteOne, postAction } from './http-client.js';
 import { cache, cached, CACHE_TTL, CacheManager } from './cache.js';
-import { debug } from './config.js';
+import { debug, getApiKey } from './config.js';
 import {
   buildPaginationParams,
   paginateResponse,
@@ -688,6 +688,172 @@ export async function getDocument(id: number): Promise<Document> {
   }
 
   return document;
+}
+
+/**
+ * Response from the download-urls/bulk-create endpoint
+ */
+interface DownloadUrlResponse {
+  document_id: number;
+  url: string;
+}
+
+/**
+ * Get download URLs for documents using the bulk-create endpoint
+ * Note: This endpoint requires OAuth2 authentication and will fail with API key auth.
+ *
+ * @param documentIds - Array of document IDs to get download URLs for
+ * @returns Array of document IDs with their signed download URLs
+ * @throws Error if the endpoint fails (likely due to API key auth limitations)
+ */
+export async function getDocumentDownloadUrls(
+  documentIds: number[]
+): Promise<DownloadUrlResponse[]> {
+  // The download-urls endpoint uses API version 2025-01-01
+  const downloadUrlsEndpoint =
+    'https://api.factorialhr.com/api/2025-01-01/resources/documents/download-urls/bulk-create';
+
+  const response = await fetch(downloadUrlsEndpoint, {
+    method: 'POST',
+    headers: {
+      'x-api-key': getApiKey(),
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorData: { errors?: string[] } | null = null;
+    try {
+      errorData = JSON.parse(errorText) as { errors?: string[] };
+    } catch {
+      // Ignore parse errors
+    }
+
+    // Check for the specific "Resource not found" error that indicates OAuth2 is required
+    if (errorData?.errors?.some(e => e.includes('not found'))) {
+      throw new Error(
+        `Document download requires OAuth2 authentication. ` +
+          `The download-urls endpoint is not accessible with API key auth. ` +
+          `Document IDs requested: ${documentIds.join(', ')}. ` +
+          `See: https://apidoc.factorialhr.com/docs/authentication for OAuth2 setup.`
+      );
+    }
+
+    throw new Error(`Failed to get download URLs: ${response.status} ${errorText}`);
+  }
+
+  const data = (await response.json()) as { data: DownloadUrlResponse[] };
+  return data.data;
+}
+
+/**
+ * Download a document by getting its signed URL and fetching the content
+ * @param id - The document ID
+ * @param outputDir - Directory to save the file to
+ * @returns Path to the downloaded file and metadata
+ */
+export async function downloadDocument(
+  id: number,
+  outputDir: string
+): Promise<{ path: string; document: Document }> {
+  // First get the document metadata for filename info
+  const document = await getDocument(id);
+
+  // Get the signed download URL
+  const downloadUrls = await getDocumentDownloadUrls([id]);
+  const urlInfo = downloadUrls.find(u => u.document_id === id);
+
+  if (!urlInfo?.url) {
+    throw new Error(`No download URL returned for document ${id}`);
+  }
+
+  // Ensure output directory exists
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  await fs.mkdir(outputDir, { recursive: true });
+
+  // Generate filename from document name or ID
+  const filename = document.name || `document-${id}`;
+  const outputPath = path.join(outputDir, filename);
+
+  // Download the file from the signed URL
+  const response = await fetch(urlInfo.url);
+  if (!response.ok) {
+    throw new Error(`Failed to download document: ${response.status} ${response.statusText}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await fs.writeFile(outputPath, buffer);
+
+  debug(`Downloaded document ${id} to ${outputPath}`, {
+    size: buffer.length,
+    mime: document.mime_type,
+  });
+
+  return { path: outputPath, document };
+}
+
+/**
+ * Download all payslips for an employee
+ * @param employeeId - The employee ID
+ * @param outputDir - Directory to save files to
+ * @returns Array of downloaded file paths and metadata
+ */
+export async function downloadEmployeePayslips(
+  employeeId: number,
+  outputDir: string
+): Promise<Array<{ path: string; document: Document }>> {
+  // Find the Nómina (payslip) folder
+  const folders = await listFolders();
+  const payslipFolder = folders.find(
+    f =>
+      f.name.toLowerCase() === 'nómina' ||
+      f.name.toLowerCase() === 'nomina' ||
+      f.name.toLowerCase() === 'payslips'
+  );
+
+  if (!payslipFolder) {
+    throw new Error('Could not find payslip folder (Nómina) in Factorial');
+  }
+
+  // Get all documents for this employee in the payslip folder
+  const allDocs = await listDocuments({ employee_ids: [employeeId] });
+  const payslipDocs = allDocs.data.filter(d => d.folder_id === payslipFolder.id);
+
+  if (payslipDocs.length === 0) {
+    throw new Error(`No payslips found for employee ${employeeId}`);
+  }
+
+  // Download each payslip
+  const results: Array<{ path: string; document: Document }> = [];
+  for (const doc of payslipDocs) {
+    try {
+      const result = await downloadDocument(doc.id, outputDir);
+      results.push(result);
+    } catch (error) {
+      debug(
+        `Failed to download payslip ${doc.id}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Download any employee document by ID
+ * @param documentId - The document ID
+ * @param outputDir - Directory to save the file to
+ * @returns Path to the downloaded file and metadata
+ */
+export async function downloadEmployeeDocument(
+  documentId: number,
+  outputDir: string
+): Promise<{ path: string; document: Document }> {
+  return downloadDocument(documentId, outputDir);
 }
 
 // ============================================================================

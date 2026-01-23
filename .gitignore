@@ -28,6 +28,7 @@ Thumbs.db
 *.swo
 *~
 
+DOCUMENT_DOWNLOAD_INVESTIGATION.md
 
 # Test coverage
 coverage/

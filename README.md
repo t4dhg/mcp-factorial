@@ -19,7 +19,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ## Why This MCP Server?
 
-- **Comprehensive Coverage**: 85+ tools spanning employees, teams, time off, attendance, projects, training, recruiting (ATS), and payroll
+- **Comprehensive Coverage**: 87+ tools spanning employees, teams, time off, attendance, projects, training, recruiting (ATS), and payroll
 - **Full CRUD Operations**: Create, read, update, and delete across all major entities
 - **Safety Guardrails**: High-risk operations require explicit confirmation
 - **Audit Logging**: All write operations are logged for compliance
@@ -27,7 +27,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ## Features
 
-### 85+ Tools
+### 87+ Tools
 
 | Category        | Tools | Operations                                                              |
 | --------------- | ----- | ----------------------------------------------------------------------- |
@@ -41,7 +41,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 | **Work Areas**  | 6     | List, get, create, update, archive, unarchive                           |
 | **ATS**         | 16    | Job postings, candidates, applications, hiring stages, advance workflow |
 | **Payroll**     | 6     | List/get supplements, tax identifiers, family situations (read-only)    |
-| **Documents**   | 5     | List/get/search folders and documents (read-only)                       |
+| **Documents**   | 7     | List/get/search folders and documents, download files                   |
 | **Job Catalog** | 3     | List/get job roles and levels (read-only)                               |
 | **Contracts**   | 4     | Get contracts, employee with contract, by job role/level (read-only)    |
 
@@ -190,7 +190,7 @@ The following operations are marked as high-risk and should be used with care:
 Some categories are intentionally read-only for security:
 
 - **Payroll**: Supplements, tax identifiers, family situations
-- **Documents**: Folder and document metadata only
+- **Documents**: Folder and document metadata (download tools available for payslips and documents)
 - **Contracts**: Historical contract data
 
 ### Response Optimization for Employee Collections
