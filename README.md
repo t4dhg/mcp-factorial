@@ -197,7 +197,9 @@ Document download actions (`download_payslips`, `download`) require OAuth2 authe
 3. Fill in:
    - **Redirect URI**: `http://localhost:8080/callback` (or any URL you can access)
    - **Confidentiality**: Yes (server application)
-   - **Scopes**: Select `read` and `write`
+   - **Scopes**: Select the scopes you need:
+     - **Required for downloads**: Documents, Employees
+     - **Recommended for full MCP functionality**: Contracts, Payroll, Payroll supplements, Time off, Shift management, Trainings, Recruitment, Company locations, Job catalog
 4. Save and note your **Client ID** and **Client Secret**
 
 ### Step 2: Get Authorization Code
