@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.0.0] - 2026-01-23
+
+### Changed - BREAKING CHANGES
+
+#### Hierarchical Tool Discovery (88% Context Reduction)
+
+**BREAKING**: The MCP server now uses hierarchical tool discovery instead of individual tools.
+
+- **Before**: 117 individual tools (e.g., `list_employees`, `get_employee`, `create_employee`, etc.)
+- **After**: 14 category-based tools with an `action` parameter (e.g., `factorial_employees` with `action: "list"`)
+
+This change reduces context token usage by approximately 88% while maintaining full functionality.
+
+**New Tool Structure:**
+
+| Tool | Description | Actions |
+|------|-------------|---------|
+| `factorial_discover` | Discover available categories and actions | - |
+| `factorial_employees` | Employee management | list, get, search, create, update, terminate |
+| `factorial_teams` | Team management | list, get, create, update, delete |
+| `factorial_locations` | Location management | list, get, create, update, delete |
+| `factorial_contracts` | Contract and salary data | list, get_with_employee, by_job_role, by_job_level |
+| `factorial_time_off` | Leave management | list_leaves, get_leave, list_types, get_type, list_allowances, create, update, cancel, approve, reject |
+| `factorial_attendance` | Shift management | list, get, create, update, delete |
+| `factorial_documents` | Document management | list_folders, get_folder, list, get, get_by_employee, search, download_payslips, download |
+| `factorial_job_catalog` | Job roles and levels | list_roles, get_role, list_levels |
+| `factorial_projects` | Project management | 16 actions for projects, tasks, workers, time records |
+| `factorial_training` | Training management | 12 actions for trainings, sessions, enrollments |
+| `factorial_work_areas` | Work area management | list, get, create, update, archive, unarchive |
+| `factorial_ats` | Applicant tracking | 17 actions for postings, candidates, applications, stages |
+| `factorial_payroll` | Payroll data (read-only) | list_supplements, get_supplement, list_tax_ids, get_tax_id, list_family, get_family |
+
+**Migration Guide:**
+
+```typescript
+// Before (v7.x)
+mcp.call('list_employees', { page: 1, limit: 50 })
+mcp.call('get_employee', { id: 123 })
+mcp.call('create_leave', { employee_id: 123, ... })
+
+// After (v8.0.0)
+mcp.call('factorial_employees', { action: 'list', page: 1, limit: 50 })
+mcp.call('factorial_employees', { action: 'get', id: 123 })
+mcp.call('factorial_time_off', { action: 'create', employee_id: 123, ... })
+```
+
+**Why This Change:**
+
+MCP servers load all tool definitions into context upfront. With 117 individual tools, this was consuming significant context tokens (~7,500+) before any actual work began. The hierarchical approach:
+
+1. Reduces initial context load from ~7,500 tokens to ~900 tokens
+2. Maintains full functionality (all 117 operations still available)
+3. Groups related operations logically by category
+4. Provides discovery mechanism via `factorial_discover`
+
 ## [7.3.0] - 2026-01-23
 
 ### Added
@@ -329,6 +384,7 @@ Summarize documents across a team:
 - TypeScript support with strict mode
 - Comprehensive README with setup instructions
 
+[8.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.3.0...v8.0.0
 [7.3.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.2.0...v7.3.0
 [7.2.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.1.0...v7.2.0
 [7.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.0.1...v7.1.0

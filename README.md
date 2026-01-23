@@ -19,7 +19,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ## Why This MCP Server?
 
-- **Comprehensive Coverage**: 87+ tools spanning employees, teams, time off, attendance, projects, training, recruiting (ATS), and payroll
+- **Context-Optimized**: 14 hierarchical tools (117 operations) with 88% less context usage than individual tools
 - **Full CRUD Operations**: Create, read, update, and delete across all major entities
 - **Safety Guardrails**: High-risk operations require explicit confirmation
 - **Audit Logging**: All write operations are logged for compliance
@@ -27,23 +27,69 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ## Features
 
-### 87+ Tools
+### Hierarchical Tool Discovery (v8.0.0+)
 
-| Category        | Tools | Operations                                                              |
-| --------------- | ----- | ----------------------------------------------------------------------- |
-| **Employees**   | 6     | List, get, search, create, update, terminate                            |
-| **Teams**       | 5     | List, get, create, update, delete                                       |
-| **Locations**   | 5     | List, get, create, update, delete                                       |
-| **Time Off**    | 10    | List leaves/types/allowances, create, update, cancel, approve, reject   |
-| **Attendance**  | 5     | List shifts, create, update, delete                                     |
-| **Projects**    | 17    | Full CRUD for projects, tasks, workers, time records                    |
-| **Training**    | 14    | Full CRUD for trainings, sessions, enrollments                          |
-| **Work Areas**  | 6     | List, get, create, update, archive, unarchive                           |
-| **ATS**         | 16    | Job postings, candidates, applications, hiring stages, advance workflow |
-| **Payroll**     | 6     | List/get supplements, tax identifiers, family situations (read-only)    |
-| **Documents**   | 7     | List/get/search folders and documents, download files                   |
-| **Job Catalog** | 3     | List/get job roles and levels (read-only)                               |
-| **Contracts**   | 4     | Get contracts, employee with contract, by job role/level (read-only)    |
+The MCP server uses a hierarchical tool structure for optimal context usage. Instead of 117 individual tools, you get 14 category-based tools with an `action` parameter.
+
+| Tool                    | Description                   | Actions                                            |
+| ----------------------- | ----------------------------- | -------------------------------------------------- |
+| `factorial_discover`    | Discover available categories | -                                                  |
+| `factorial_employees`   | Employee management           | list, get, search, create, update, terminate       |
+| `factorial_teams`       | Team management               | list, get, create, update, delete                  |
+| `factorial_locations`   | Location management           | list, get, create, update, delete                  |
+| `factorial_contracts`   | Contract/salary data          | list, get_with_employee, by_job_role, by_job_level |
+| `factorial_time_off`    | Leave management              | 10 actions                                         |
+| `factorial_attendance`  | Shift management              | list, get, create, update, delete                  |
+| `factorial_documents`   | Document management           | 8 actions including downloads                      |
+| `factorial_job_catalog` | Job roles/levels              | list_roles, get_role, list_levels                  |
+| `factorial_projects`    | Project management            | 16 actions for projects, tasks, workers, time      |
+| `factorial_training`    | Training management           | 12 actions for trainings, sessions, enrollments    |
+| `factorial_work_areas`  | Work area management          | list, get, create, update, archive, unarchive      |
+| `factorial_ats`         | Applicant tracking            | 17 actions for recruiting                          |
+| `factorial_payroll`     | Payroll data (read-only)      | 6 actions                                          |
+
+**Example Usage:**
+
+```typescript
+// List all employees
+factorial_employees({ action: 'list', page: 1, limit: 50 });
+
+// Get a specific employee
+factorial_employees({ action: 'get', id: 123 });
+
+// Search employees
+factorial_employees({ action: 'search', query: 'john' });
+
+// Create a leave request
+factorial_time_off({
+  action: 'create',
+  employee_id: 123,
+  leave_type_id: 1,
+  start_on: '2026-02-01',
+  finish_on: '2026-02-05',
+});
+
+// Discover available actions for a category
+factorial_discover({ category: 'employees' });
+```
+
+### 117 Operations Across 14 Categories
+
+| Category        | Operations                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| **Employees**   | list, get, search, create, update, terminate                                                           |
+| **Teams**       | list, get, create, update, delete                                                                      |
+| **Locations**   | list, get, create, update, delete                                                                      |
+| **Time Off**    | list_leaves, get_leave, list_types, get_type, list_allowances, create, update, cancel, approve, reject |
+| **Attendance**  | list, get, create, update, delete                                                                      |
+| **Projects**    | 16 operations for projects, tasks, workers, time records                                               |
+| **Training**    | 12 operations for trainings, sessions, enrollments                                                     |
+| **Work Areas**  | list, get, create, update, archive, unarchive                                                          |
+| **ATS**         | 17 operations for job postings, candidates, applications, hiring stages                                |
+| **Payroll**     | list/get supplements, tax identifiers, family situations (read-only)                                   |
+| **Documents**   | 8 operations for folders, documents, and downloads                                                     |
+| **Job Catalog** | list_roles, get_role, list_levels (read-only)                                                          |
+| **Contracts**   | list, get_with_employee, by_job_role, by_job_level (read-only)                                         |
 
 ### 5 MCP Resources
 
@@ -249,13 +295,13 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ### High-Risk Operations
 
-The following operations are marked as high-risk and should be used with care:
+The following operations are marked as high-risk and require explicit confirmation (`confirm: true`):
 
-- `terminate_employee` - Terminates an employee (sets termination date)
-- `delete_team` - Permanently deletes a team
-- `delete_location` - Permanently deletes a location
-- `delete_project` - Permanently deletes a project
-- `delete_candidate` - Permanently deletes a candidate
+- `factorial_employees({ action: 'terminate' })` - Terminates an employee
+- `factorial_teams({ action: 'delete' })` - Permanently deletes a team
+- `factorial_locations({ action: 'delete' })` - Permanently deletes a location
+- `factorial_projects({ action: 'delete' })` - Permanently deletes a project
+- `factorial_ats({ action: 'delete_candidate' })` - Permanently deletes a candidate
 
 ### Read-Only Categories
 
@@ -265,23 +311,22 @@ Some categories are intentionally read-only for security:
 - **Documents**: Folder and document metadata (download tools available for payslips and documents)
 - **Contracts**: Historical contract data
 
-### Response Optimization for Employee Collections
+### Response Optimization
 
-Employee collection tools (`get_employee_documents`, `get_employee_contracts`) return **summary format** by default to prevent token overflow:
+Document and contract list operations return **summary format** by default to prevent token overflow:
 
-**Documents** (`get_employee_documents`):
+**Documents** (`factorial_documents({ action: 'list' })`):
 
-- Returns: `id`, `name`, `folder_id`, `employee_id`, `author_id`, `mime_type`, `size_bytes` (7 fields)
-- Default limit: 20 documents per page
-- For full details: Use `get_document(id)` to retrieve complete document metadata including `file_url`, timestamps, etc.
+- Returns: `id`, `name`, `folder_id`, `employee_id`, `mime_type` (5 fields)
+- Default limit: 100 documents per page
+- For full details: Use `factorial_documents({ action: 'get', id: X })` for complete metadata
 
-**Contracts** (`get_employee_contracts`):
+**Contracts** (`factorial_contracts({ action: 'list' })`):
 
 - Returns: `id`, `employee_id`, `job_title`, `effective_on` (4 fields)
-- Default limit: 20 contracts per page
-- For full details: Timestamps (`created_at`, `updated_at`) excluded from summary
+- Default limit: 100 contracts per page
 
-Both tools accept `page` and `limit` parameters (max: 100) for pagination control.
+All list operations accept `page` and `limit` parameters for pagination control.
 
 ### Audit Logging
 
