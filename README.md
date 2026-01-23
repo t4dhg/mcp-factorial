@@ -186,7 +186,7 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
 ## OAuth2 Setup (For Document Downloads)
 
-Document download actions (`download_payslips`, `download`) require OAuth2 authentication. API key authentication cannot access the download endpoints.
+Document download actions (`download_payslips`, `download`) will first try API key authentication. If that fails (some Factorial accounts require OAuth2 for downloads), you'll need to configure OAuth2 credentials.
 
 > **Note**: You need admin access in Factorial to create OAuth applications.
 
@@ -441,13 +441,15 @@ The server implements exponential backoff for rate limits. If you're hitting lim
 
 ### Document Downloads Not Working
 
-Document downloads require OAuth2 authentication (API keys cannot access download endpoints). If you see an error like:
+Document downloads try API key authentication first. If that fails, OAuth2 is attempted (if configured).
 
-> "Document download requires OAuth2 authentication"
+If you see an error like:
 
-You need to set up OAuth2 credentials. See [OAuth2 Setup](#oauth2-setup-for-document-downloads) above.
+> "Document download failed. API key authentication was unsuccessful and OAuth2 is not configured."
 
-**Important**: OAuth2 refresh tokens expire after 1 week. If downloads suddenly stop working, re-authorize and get a new refresh token.
+Your API key may not have download permissions. Try setting up OAuth2 credentials - see [OAuth2 Setup](#oauth2-setup-for-document-downloads) above.
+
+**Note**: OAuth2 refresh tokens expire after 1 week. If downloads suddenly stop working, re-authorize and get a new refresh token.
 
 ### "Document with ID X not found" Error
 
@@ -505,7 +507,7 @@ The FactorialHR API has some design patterns that differ from typical REST APIs.
 | `GET /documents/{id}`          | May return 404 for employee-specific documents      | Use `download_payslips` which bypasses this    |
 | `GET /contracts?employee_id=X` | Filtering unreliable                                | Server fetches all and filters client-side     |
 | Empty results                  | Returns `{"errors": null}` instead of `{"data": []} | Server handles both formats                    |
-| Document download URLs         | Requires OAuth2 (API key auth does not work)        | Configure OAuth2 credentials for downloads     |
+| Document download URLs         | May require OAuth2 (API key tried first)            | Configure OAuth2 if API key fails              |
 
 ### Field Availability
 

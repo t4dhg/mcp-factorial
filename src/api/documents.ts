@@ -138,81 +138,98 @@ interface DownloadUrlResponse {
 /**
  * Get download URLs for documents using the bulk-create endpoint
  *
- * This endpoint requires OAuth2 authentication. If OAuth2 credentials are configured
- * (FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET, FACTORIAL_OAUTH_REFRESH_TOKEN),
- * the function will use them automatically. Otherwise, it will fail with a helpful error.
+ * This function tries API key authentication first, then falls back to OAuth2 if configured.
+ * Some Factorial accounts may require OAuth2 for downloads, while others work with API keys.
  *
  * @param documentIds - Array of document IDs to get download URLs for
  * @returns Array of document IDs with their signed download URLs
- * @throws Error if OAuth2 is not configured or token refresh fails
+ * @throws Error if both authentication methods fail
  */
 export async function getDocumentDownloadUrls(
   documentIds: number[]
 ): Promise<DownloadUrlResponse[]> {
-  // Check if OAuth2 is configured
-  if (!isOAuth2Configured()) {
-    throw new Error(
-      'Document download requires OAuth2 authentication.\n\n' +
-        'To enable document downloads, configure OAuth2 credentials:\n' +
-        '  1. Create an OAuth2 application in Factorial (Settings → Integrations)\n' +
-        '  2. Complete the authorization flow to get a refresh token\n' +
-        '  3. Set environment variables:\n' +
-        '     - FACTORIAL_OAUTH_CLIENT_ID\n' +
-        '     - FACTORIAL_OAUTH_CLIENT_SECRET\n' +
-        '     - FACTORIAL_OAUTH_REFRESH_TOKEN\n\n' +
-        'See: https://apidoc.factorialhr.com/docs/authentication for OAuth2 setup.\n' +
-        `Document IDs requested: ${documentIds.join(', ')}`
-    );
-  }
-
-  // Get OAuth2 access token
-  const accessToken = await getOAuth2AccessToken();
-
   // The download-urls endpoint uses API version 2025-01-01
   const downloadUrlsEndpoint =
     'https://api.factorialhr.com/api/2025-01-01/resources/documents/download-urls/bulk-create';
 
-  debug('Requesting document download URLs with OAuth2', { documentIds });
+  // Try API key authentication first
+  const apiKey = process.env.FACTORIAL_API_KEY;
+  if (apiKey) {
+    debug('Attempting document download URLs with API key', { documentIds });
 
-  const response = await fetch(downloadUrlsEndpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({ document_ids: documentIds }),
-  });
+    const apiKeyResponse = await fetch(downloadUrlsEndpoint, {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ document_ids: documentIds }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorData: { errors?: string[] } | null = null;
-    try {
-      errorData = JSON.parse(errorText) as { errors?: string[] };
-    } catch {
-      // Ignore parse errors
+    if (apiKeyResponse.ok) {
+      const data = (await apiKeyResponse.json()) as { data: DownloadUrlResponse[] };
+      debug('Document download URLs retrieved with API key', { count: data.data.length });
+      return data.data;
     }
 
-    // Handle specific errors
-    if (response.status === 401) {
-      throw new Error(
-        'OAuth2 authentication failed. The access token may have expired or been revoked.\n' +
-          'Try refreshing your credentials or re-authorizing the OAuth2 application.'
-      );
-    }
-
-    if (errorData?.errors?.some(e => e.includes('not found'))) {
-      throw new Error(
-        `Documents not found or not accessible. Document IDs: ${documentIds.join(', ')}`
-      );
-    }
-
-    throw new Error(`Failed to get download URLs: ${response.status} ${errorText}`);
+    debug('API key authentication failed for download URLs, status: ' + apiKeyResponse.status);
   }
 
-  const data = (await response.json()) as { data: DownloadUrlResponse[] };
-  debug('Document download URLs retrieved successfully', { count: data.data.length });
-  return data.data;
+  // Fall back to OAuth2 if configured
+  if (isOAuth2Configured()) {
+    debug('Attempting document download URLs with OAuth2', { documentIds });
+
+    const accessToken = await getOAuth2AccessToken();
+
+    const response = await fetch(downloadUrlsEndpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ document_ids: documentIds }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData: { errors?: string[] } | null = null;
+      try {
+        errorData = JSON.parse(errorText) as { errors?: string[] };
+      } catch {
+        // Ignore parse errors
+      }
+
+      if (response.status === 401) {
+        throw new Error(
+          'OAuth2 authentication failed. The access token may have expired or been revoked.\n' +
+            'Try refreshing your credentials or re-authorizing the OAuth2 application.'
+        );
+      }
+
+      if (errorData?.errors?.some(e => e.includes('not found'))) {
+        throw new Error(
+          `Documents not found or not accessible. Document IDs: ${documentIds.join(', ')}`
+        );
+      }
+
+      throw new Error(`Failed to get download URLs: ${response.status} ${errorText}`);
+    }
+
+    const data = (await response.json()) as { data: DownloadUrlResponse[] };
+    debug('Document download URLs retrieved with OAuth2', { count: data.data.length });
+    return data.data;
+  }
+
+  // Neither method available/worked
+  throw new Error(
+    'Document download failed. API key authentication was unsuccessful and OAuth2 is not configured.\n\n' +
+      'To enable document downloads, try one of:\n' +
+      '  1. Ensure your API key has document download permissions\n' +
+      '  2. Configure OAuth2 credentials (see README for setup instructions)\n\n' +
+      `Document IDs requested: ${documentIds.join(', ')}`
+  );
 }
 
 /**
@@ -243,8 +260,13 @@ export async function downloadDocument(
   const path = await import('path');
   await fs.mkdir(outputDir, { recursive: true });
 
-  // Generate filename from document name or ID
-  const filename = document.name || `document-${id}`;
+  // Generate filename from document name or ID with appropriate extension
+  let filename = document.name;
+  if (!filename) {
+    // Use fallback filename with extension based on mime type
+    const ext = document.mime_type === 'application/pdf' ? '.pdf' : '';
+    filename = `document-${id}${ext}`;
+  }
   const outputPath = path.join(outputDir, filename);
 
   // Download the file from the signed URL
