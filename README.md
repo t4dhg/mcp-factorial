@@ -369,6 +369,42 @@ FACTORIAL_API_KEY=your-key npm start
 npx @modelcontextprotocol/inspector
 ```
 
+### Project Structure
+
+The codebase is organized into domain-based modules for maintainability:
+
+```
+src/
+├── schemas/           # Zod schemas by domain
+│   ├── employees.ts   # Employee, Team, Location, Contract schemas
+│   ├── time-off.ts    # Leave, LeaveType, Allowance, Shift schemas
+│   ├── projects.ts    # Project, Task, Worker, TimeRecord schemas
+│   ├── training.ts    # Training, Session, Membership schemas
+│   ├── ats.ts         # JobPosting, Candidate, Application schemas
+│   └── ...
+├── api/               # API functions by domain
+│   ├── employees.ts   # listEmployees, getEmployee, createEmployee, etc.
+│   ├── time-off.ts    # listLeaves, createLeave, approveLeave, etc.
+│   ├── projects.ts    # listProjects, createProject, etc.
+│   └── ...
+├── tools/             # MCP tool registrations by domain
+│   ├── employees.ts   # factorial_employees tool registration
+│   ├── time-off.ts    # factorial_time_off tool registration
+│   ├── index.ts       # Server setup, discovery tool, resources, prompts
+│   └── ...
+├── index.ts           # Entry point (re-exports from tools/)
+├── api.ts             # Re-exports from api/
+└── schemas.ts         # Re-exports from schemas/
+```
+
+**Adding a new feature:**
+
+1. Add schemas to `src/schemas/{domain}.ts`
+2. Add API functions to `src/api/{domain}.ts`
+3. Add tool actions to `src/tools/{domain}.ts`
+4. Update `src/schemas/index.ts`, `src/api/index.ts` exports if needed
+5. Run `npm test` to verify
+
 ## Troubleshooting
 
 ### API Key Not Working

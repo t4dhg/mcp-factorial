@@ -28,7 +28,6 @@ Thumbs.db
 *.swo
 *~
 
-DOCUMENT_DOWNLOAD_INVESTIGATION.md
 
 # Test coverage
 coverage/
@@ -45,4 +44,4 @@ temp/
 
 # MCP Registry tokens
 .mcpregistry_*
-/feedback
+/feedback/*

@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.1.0] - 2026-01-23
+
+### Changed
+
+#### Modular Architecture Refactoring
+
+Refactored the codebase into domain-based modules for better maintainability and faster development:
+
+**New Module Structure:**
+
+```
+src/
+├── schemas/          # Zod schemas by domain (11 files)
+│   ├── employees.ts  # Employee, Team, Location, Contract
+│   ├── time-off.ts   # Leave, LeaveType, Allowance, Shift
+│   ├── projects.ts   # Project, Task, Worker, TimeRecord
+│   └── ...
+├── api/              # API functions by domain (15 files)
+│   ├── employees.ts  # listEmployees, getEmployee, etc.
+│   ├── time-off.ts   # listLeaves, createLeave, etc.
+│   ├── projects.ts   # listProjects, createProject, etc.
+│   └── ...
+└── tools/            # MCP tool registrations by domain (15 files)
+    ├── employees.ts  # factorial_employees tool
+    ├── time-off.ts   # factorial_time_off tool
+    ├── projects.ts   # factorial_projects tool
+    └── ...
+```
+
+**Benefits:**
+
+- **Faster context loading**: Read only the files relevant to your task
+- **Easier navigation**: Find code by domain (employees, projects, training, etc.)
+- **Smaller files**: Largest file is ~320 lines (down from 2,073 lines)
+- **Backward compatible**: Original imports still work via re-exports
+
+**For Contributors:**
+
+- Add new schemas to `src/schemas/{domain}.ts`
+- Add new API functions to `src/api/{domain}.ts`
+- Add new tool actions to `src/tools/{domain}.ts`
+- Run `npm test` to verify all 463 tests still pass
+
 ## [8.0.0] - 2026-01-23
 
 ### Changed - BREAKING CHANGES
@@ -384,6 +427,7 @@ Summarize documents across a team:
 - TypeScript support with strict mode
 - Comprehensive README with setup instructions
 
+[8.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.3.0...v8.0.0
 [7.3.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.2.0...v7.3.0
 [7.2.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.1.0...v7.2.0
