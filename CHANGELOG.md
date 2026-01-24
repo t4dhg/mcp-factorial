@@ -447,6 +447,7 @@ Summarize documents across a team:
 - TypeScript support with strict mode
 - Comprehensive README with setup instructions
 
+[8.1.1]: https://github.com/t4dhg/mcp-factorial/compare/v8.1.0...v8.1.1
 [8.1.0]: https://github.com/t4dhg/mcp-factorial/compare/v8.0.0...v8.1.0
 [8.0.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.3.0...v8.0.0
 [7.3.0]: https://github.com/t4dhg/mcp-factorial/compare/v7.2.0...v7.3.0
