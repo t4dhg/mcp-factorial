@@ -37,6 +37,11 @@ A second review of that work found two more ungated deletes and a data-loss bug:
 - **Audit logging**: the README described the audit trail as being "for compliance". The log is in-process, in-memory, capped at 1000 entries, and not retrievable through any tool, so the README now says exactly that and points to FactorialHR's own activity log as the system of record. Also reported by Syed Anas Mohiuddin.
 - **High-risk operations**: the README listed 5 of the 14 operations that require `confirm: true`. The list is now complete.
 - **Added `SECURITY.md`** with a private reporting route, scope, and response expectations.
+
+### Release pipeline
+
+- **Publishing to npm has been failing silently since January.** The `NPM_TOKEN` used by the publish workflow was a granular token that expired 30 days after it was issued, and the registry reports that as `E404 Not Found` on the upload rather than an auth error, so it did not read as a credential problem. Every release from 7.2.0 onward was tagged and never published: **7.2.0, 7.3.0, 8.0.0, 8.1.0 and 8.1.1 do not exist on npm.** Anyone installing from npm has been on 7.1.0 since December.
+- **Switched to npm trusted publishing.** The workflow now authenticates with an OIDC token minted by GitHub Actions and matched against a trusted publisher registered for this package, so there is no long-lived credential left to expire. This required Node 24 on the publish job, because trusted publishing needs npm 11.5.1 or later and Node 20 and 22 both ship npm 10.x. Node 24 has been added to the CI test matrix so the release runtime is covered by tests.
 - **Document downloads**: the README now describes how untrusted document names are handled, including that downloads never overwrite.
 - **`llms.txt`** carried the same overstated safety and audit claims as the README and has been corrected to match.
 - **`requiresPreview`** in `OperationPolicy` is documented as not currently consumed by any code path.
