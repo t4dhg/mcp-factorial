@@ -136,16 +136,21 @@ export function registerDocumentsTool(server: McpServer) {
             if (!args.employee_id) return textResponse('Error: employee_id is required');
             if (!args.output_dir)
               return textResponse('Error: output_dir is required for downloads');
-            const payslipResults = await downloadEmployeePayslips(
+            const { downloaded, failures } = await downloadEmployeePayslips(
               args.employee_id,
               args.output_dir
             );
+            const paths = JSON.stringify(
+              downloaded.map(r => r.path),
+              null,
+              2
+            );
+            const failureNote =
+              failures.length > 0
+                ? `\n\n${failures.length} payslip(s) could not be downloaded:\n${failures.join('\n')}`
+                : '';
             return textResponse(
-              `Downloaded ${payslipResults.length} payslips:\n\n${JSON.stringify(
-                payslipResults.map(r => r.path),
-                null,
-                2
-              )}`
+              `Downloaded ${downloaded.length} payslips:\n\n${paths}${failureNote}`
             );
           }
 

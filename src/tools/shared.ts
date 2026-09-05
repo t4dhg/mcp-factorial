@@ -2,7 +2,7 @@
  * Shared tool utilities and constants
  */
 
-import { getOperationPolicy, getWarningMessage } from '../write-safety.js';
+import { getOperationPolicy, getWarningMessage, type OperationName } from '../write-safety.js';
 
 /**
  * Category definitions for tool discovery
@@ -154,7 +154,7 @@ export const CATEGORIES = {
  * Check if confirmation is required for a high-risk operation
  */
 export function checkConfirmation(
-  operationName: string,
+  operationName: OperationName,
   confirm?: boolean
 ): { needsConfirmation: true; message: string } | { needsConfirmation: false } {
   const policy = getOperationPolicy(operationName);

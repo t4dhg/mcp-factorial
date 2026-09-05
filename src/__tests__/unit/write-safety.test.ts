@@ -17,6 +17,31 @@ describe('Write Safety Module', () => {
   });
 
   describe('OPERATION_POLICIES', () => {
+    it('should require confirmation for every destructive operation tools gate', () => {
+      // Regression guard: a delete handler that calls checkConfirmation() with a
+      // name missing from OPERATION_POLICIES silently falls through to the
+      // permissive default policy, making its `confirm` parameter inert.
+      const gatedOperations = [
+        'terminate_employee',
+        'delete_team',
+        'delete_location',
+        'delete_shift',
+        'delete_project',
+        'delete_task',
+        'delete_time',
+        'delete_job_posting',
+        'delete_candidate',
+        'delete_application',
+        'delete_training',
+        'delete_session',
+      ];
+
+      for (const operation of gatedOperations) {
+        expect(OPERATION_POLICIES[operation], `missing policy for ${operation}`).toBeDefined();
+        expect(requiresConfirmation(operation), `${operation} is not gated`).toBe(true);
+      }
+    });
+
     it('should have policies for high-risk operations', () => {
       expect(OPERATION_POLICIES.terminate_employee).toBeDefined();
       expect(OPERATION_POLICIES.terminate_employee.risk).toBe(OperationRisk.HIGH);
@@ -157,12 +182,16 @@ describe('Write Safety Module', () => {
     });
 
     it('should mark delete and terminate operations as high risk', () => {
+      // Deletes of small child records are medium risk, but still confirmed.
+      const mediumRiskDeletes = ['delete_shift', 'delete_task', 'delete_time', 'delete_session'];
+
       for (const [key, policy] of Object.entries(OPERATION_POLICIES)) {
-        // Most delete operations and terminate are high risk (delete_shift is medium)
-        if ((key.startsWith('delete_') && key !== 'delete_shift') || key === 'terminate_employee') {
-          expect(policy.risk).toBe(OperationRisk.HIGH);
-          expect(policy.requiresConfirmation).toBe(true);
+        if (!key.startsWith('delete_') && key !== 'terminate_employee') continue;
+
+        if (!mediumRiskDeletes.includes(key)) {
+          expect(policy.risk, key).toBe(OperationRisk.HIGH);
         }
+        expect(policy.requiresConfirmation, key).toBe(true);
       }
     });
   });
@@ -213,9 +242,18 @@ describe('Write Safety Module', () => {
       expect(message).toBeNull();
     });
 
-    it('should return null for medium-risk operations', () => {
+    it('should return null for medium-risk operations that need no confirmation', () => {
       const message = getWarningMessage('create_employee');
       expect(message).toBeNull();
+    });
+
+    it('should return a real message for medium-risk operations that require confirmation', () => {
+      for (const operation of ['delete_shift', 'delete_task', 'delete_time', 'delete_session']) {
+        const message = getWarningMessage(operation);
+        expect(message, operation).toBeTruthy();
+        expect(message, operation).toContain('**Warning:**');
+        expect(message, operation).toContain('confirm: true');
+      }
     });
 
     it('should include impact description in message', () => {

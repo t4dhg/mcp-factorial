@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest';
-import { validateId, validatePositiveNumber, validateNonEmptyString } from '../../utils.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import {
+  validateId,
+  validatePositiveNumber,
+  validateNonEmptyString,
+  resolveSafeOutputPath,
+  writeWithoutOverwriting,
+} from '../../utils.js';
 
 describe('Utils', () => {
   describe('validateId', () => {
@@ -155,6 +164,141 @@ describe('Utils', () => {
       expect(() => validateNonEmptyString('', 'custom_field')).toThrow(
         'Invalid custom_field. Please provide a non-empty string.'
       );
+    });
+  });
+
+  describe('resolveSafeOutputPath', () => {
+    const outputDir = '/tmp/downloads';
+
+    it('joins a plain filename onto the output directory', () => {
+      expect(resolveSafeOutputPath(outputDir, 'payslip.pdf', 'fallback.pdf')).toBe(
+        path.resolve(outputDir, 'payslip.pdf')
+      );
+    });
+
+    it('strips traversal segments from tenant-controlled names', () => {
+      expect(resolveSafeOutputPath(outputDir, '../../../.ssh/authorized_keys', 'fallback')).toBe(
+        path.resolve(outputDir, 'authorized_keys')
+      );
+    });
+
+    it('strips a leading absolute path', () => {
+      expect(resolveSafeOutputPath(outputDir, '/etc/passwd', 'fallback')).toBe(
+        path.resolve(outputDir, 'passwd')
+      );
+    });
+
+    it('treats a backslash as a separator on every platform', () => {
+      expect(resolveSafeOutputPath(outputDir, '..\\..\\evil.exe', 'fallback')).toBe(
+        path.resolve(outputDir, 'evil.exe')
+      );
+    });
+
+    it('keeps names that merely start with dots', () => {
+      expect(resolveSafeOutputPath(outputDir, '..archive.pdf', 'fallback')).toBe(
+        path.resolve(outputDir, '..archive.pdf')
+      );
+      expect(resolveSafeOutputPath(outputDir, '.hidden.pdf', 'fallback')).toBe(
+        path.resolve(outputDir, '.hidden.pdf')
+      );
+    });
+
+    it('falls back when the name sanitizes to nothing usable', () => {
+      for (const name of ['..', '.', '', '   ', 'a/b/..']) {
+        expect(resolveSafeOutputPath(outputDir, name, 'document-7.pdf')).toBe(
+          path.resolve(outputDir, 'document-7.pdf')
+        );
+      }
+    });
+
+    it('drops control characters that the filesystem would reject', () => {
+      const withNul = `safe${String.fromCharCode(0)}.pdf`;
+      expect(resolveSafeOutputPath(outputDir, withNul, 'fallback')).toBe(
+        path.resolve(outputDir, 'safe.pdf')
+      );
+
+      const withNewline = 'line\nbreak.pdf';
+      expect(resolveSafeOutputPath(outputDir, withNewline, 'fallback')).toBe(
+        path.resolve(outputDir, 'linebreak.pdf')
+      );
+    });
+
+    it('caps names that exceed the filesystem component limit, keeping the extension', () => {
+      const long = `${'a'.repeat(5000)}.pdf`;
+      const result = path.basename(resolveSafeOutputPath(outputDir, long, 'fallback'));
+
+      expect(Buffer.byteLength(result, 'utf8')).toBeLessThanOrEqual(200);
+      expect(result.endsWith('.pdf')).toBe(true);
+    });
+
+    it('caps multi-byte names by bytes, not characters', () => {
+      const long = `${'\u00e9'.repeat(500)}.pdf`;
+      const result = path.basename(resolveSafeOutputPath(outputDir, long, 'fallback'));
+
+      expect(Buffer.byteLength(result, 'utf8')).toBeLessThanOrEqual(200);
+      expect(result.endsWith('.pdf')).toBe(true);
+    });
+
+    it('throws if the fallback name would itself escape the directory', () => {
+      expect(() => resolveSafeOutputPath(outputDir, '..', '../escape')).toThrow(
+        /outside the output directory/
+      );
+    });
+  });
+
+  describe('writeWithoutOverwriting', () => {
+    let dir: string;
+
+    beforeEach(() => {
+      dir = mkdtempSync(path.join(tmpdir(), 'mcp-factorial-test-'));
+    });
+
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('writes to the preferred path when nothing is there', async () => {
+      const target = path.join(dir, 'payslip.pdf');
+      const written = await writeWithoutOverwriting(target, Buffer.from('first'));
+
+      expect(written).toBe(target);
+      expect(readFileSync(target, 'utf8')).toBe('first');
+    });
+
+    it('never overwrites an existing file', async () => {
+      const target = path.join(dir, '.env');
+      writeFileSync(target, 'SECRET=keep-me');
+
+      const written = await writeWithoutOverwriting(target, Buffer.from('tenant content'));
+
+      expect(written).not.toBe(target);
+      expect(readFileSync(target, 'utf8')).toBe('SECRET=keep-me');
+      expect(readFileSync(written, 'utf8')).toBe('tenant content');
+    });
+
+    it('keeps both documents when two share a name', async () => {
+      const target = path.join(dir, 'payslip.pdf');
+
+      const first = await writeWithoutOverwriting(target, Buffer.from('january'));
+      const second = await writeWithoutOverwriting(target, Buffer.from('february'));
+      const third = await writeWithoutOverwriting(target, Buffer.from('march'));
+
+      expect([first, second, third].map(p => path.basename(p))).toEqual([
+        'payslip.pdf',
+        'payslip (1).pdf',
+        'payslip (2).pdf',
+      ]);
+      expect(readFileSync(first, 'utf8')).toBe('january');
+      expect(readFileSync(second, 'utf8')).toBe('february');
+      expect(readFileSync(third, 'utf8')).toBe('march');
+    });
+
+    it('handles names with no extension', async () => {
+      const target = path.join(dir, 'README');
+      await writeWithoutOverwriting(target, Buffer.from('one'));
+      const second = await writeWithoutOverwriting(target, Buffer.from('two'));
+
+      expect(path.basename(second)).toBe('README (1)');
     });
   });
 });

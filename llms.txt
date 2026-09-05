@@ -9,8 +9,8 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 ## Key Features
 
 - **80+ Tools**: Full CRUD operations for all major HR entities
-- **Safety Guardrails**: High-risk operations (terminate, delete) require confirmation
-- **Audit Logging**: All write operations are logged
+- **Safety Guardrails**: Every operation that deletes a record, or terminates an employee, requires `confirm: true`. See the README for the full list.
+- **Audit Logging**: All write operations are logged in-process for debugging. The log is in-memory, capped at 1000 entries, and not retrievable through any tool.
 - **Read-only Payroll**: Payroll data is accessible but read-only for security
 - **Pagination**: All list operations support pagination
 - **Caching**: TTL-based caching for performance

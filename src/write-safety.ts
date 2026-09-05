@@ -27,7 +27,12 @@ export interface OperationPolicy {
   risk: OperationRisk;
   /** Whether explicit confirmation is required */
   requiresConfirmation: boolean;
-  /** Whether to show a preview before executing */
+  /**
+   * Whether to show a preview before executing
+   *
+   * Not currently consumed anywhere: no code path reads this field. It records
+   * an intent for a preview step that does not exist yet.
+   */
   requiresPreview: boolean;
   /** Maximum number of records that can be affected in batch */
   maxBatchSize?: number;
@@ -40,7 +45,7 @@ export interface OperationPolicy {
 /**
  * Default policies for write operations
  */
-export const OPERATION_POLICIES: Record<string, OperationPolicy> = {
+const POLICIES = {
   // Employee operations
   create_employee: {
     risk: OperationRisk.MEDIUM,
@@ -204,6 +209,25 @@ export const OPERATION_POLICIES: Record<string, OperationPolicy> = {
     requiresPreview: true,
     impactDescription: 'Deletes the project and all associated tasks/time records',
   },
+  delete_task: {
+    risk: OperationRisk.MEDIUM,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription: 'Deletes the project task',
+  },
+  delete_time: {
+    risk: OperationRisk.MEDIUM,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription: 'Deletes the time record',
+  },
+  remove_project_worker: {
+    risk: OperationRisk.MEDIUM,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription:
+      "Deletes the employee's assignment to the project. Time records are recorded against this assignment",
+  },
 
   // ATS operations
   create_job_posting: {
@@ -224,6 +248,13 @@ export const OPERATION_POLICIES: Record<string, OperationPolicy> = {
     requiresPreview: true,
     impactDescription: 'Permanently deletes the candidate record',
   },
+  delete_application: {
+    risk: OperationRisk.HIGH,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription:
+      "Permanently deletes the application, removing the candidate from the job posting's pipeline",
+  },
 
   // Training operations
   delete_training: {
@@ -232,7 +263,30 @@ export const OPERATION_POLICIES: Record<string, OperationPolicy> = {
     requiresPreview: true,
     impactDescription: 'Deletes the training program and all enrollments',
   },
-};
+  delete_session: {
+    risk: OperationRisk.MEDIUM,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription: 'Deletes the training session',
+  },
+  remove_enrollment: {
+    risk: OperationRisk.MEDIUM,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription: "Deletes the employee's enrollment record for the training",
+  },
+} satisfies Record<string, OperationPolicy>;
+
+/**
+ * Names of operations that have an explicit policy defined above
+ *
+ * Confirmation gates take this type rather than a bare string, so gating an
+ * operation that has no policy entry is a compile error instead of a silent
+ * fall-through to the permissive default policy.
+ */
+export type OperationName = keyof typeof POLICIES;
+
+export const OPERATION_POLICIES: Record<string, OperationPolicy> = POLICIES;
 
 /**
  * Get the policy for an operation
@@ -256,12 +310,15 @@ export function requiresConfirmation(operationName: string): boolean {
 }
 
 /**
- * Get a warning message for high-risk operations
+ * Get a warning message for high-risk operations, and for any operation that
+ * requires confirmation regardless of its risk level
  */
 export function getWarningMessage(operationName: string): string | null {
   const policy = getOperationPolicy(operationName);
 
-  if (policy.risk === OperationRisk.HIGH || policy.risk === OperationRisk.CRITICAL) {
+  const isHighRisk = policy.risk === OperationRisk.HIGH || policy.risk === OperationRisk.CRITICAL;
+
+  if (isHighRisk || policy.requiresConfirmation) {
     return (
       `**Warning:** This is a ${policy.risk}-risk operation. ${policy.impactDescription}. ` +
       (policy.requiresConfirmation

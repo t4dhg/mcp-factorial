@@ -142,6 +142,8 @@ export function registerTrainingTool(server: McpServer) {
 
           case 'delete_session': {
             if (!args.id) return textResponse('Error: id is required');
+            const check = checkConfirmation('delete_session', args.confirm);
+            if (check.needsConfirmation) return textResponse(check.message);
             await deleteTrainingSession(args.id);
             return textResponse(`Session ${args.id} deleted successfully.`);
           }
@@ -169,6 +171,8 @@ export function registerTrainingTool(server: McpServer) {
 
           case 'unenroll': {
             if (!args.id) return textResponse('Error: id (enrollment_id) is required');
+            const check = checkConfirmation('remove_enrollment', args.confirm);
+            if (check.needsConfirmation) return textResponse(check.message);
             await unenrollFromTraining(args.id);
             return textResponse(`Enrollment ${args.id} removed.`);
           }
