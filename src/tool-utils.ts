@@ -4,8 +4,6 @@
  * Provides helper functions for consistent tool handler implementation.
  */
 
-import { getOperationPolicy, getWarningMessage } from './write-safety.js';
-
 /**
  * Text content item in a tool response
  */
@@ -61,35 +59,11 @@ export function wrapToolHandler<T>(
   };
 }
 
-/**
- * Arguments for high-risk operations that require confirmation
- */
-export interface ConfirmableArgs {
-  confirm?: boolean;
-}
-
-/**
- * Wrap a high-risk tool handler with confirmation requirement
- *
- * @param operationName - The operation name (e.g., 'delete_team') for policy lookup
- * @param handler - The async handler function
- * @returns A wrapped handler that requires confirmation for high-risk operations
- */
-export function wrapHighRiskToolHandler<T extends ConfirmableArgs>(
-  operationName: string,
-  handler: (args: T) => Promise<ToolResult>
-): (args: T) => Promise<ToolResult> {
-  return wrapToolHandler(async (args: T) => {
-    const policy = getOperationPolicy(operationName);
-
-    if (policy.requiresConfirmation && !args.confirm) {
-      const warning = getWarningMessage(operationName);
-      return textResponse(`${warning}\n\nTo proceed, call this tool again with \`confirm: true\`.`);
-    }
-
-    return handler(args);
-  });
-}
+// Add confirmation gates through `checkConfirmation` in tools/shared.ts, which
+// is what every tool handler uses. A second wrapper used to live here, unused,
+// holding its own copy of the same policy lookup and the same two defects.
+// Note that confirmation.ts holds a third, richer mechanism (token-based,
+// two-phase) that nothing currently imports.
 
 /**
  * Format JSON data for display in a tool response

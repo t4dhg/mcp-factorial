@@ -152,6 +152,8 @@ export function registerProjectsTool(server: McpServer) {
 
           case 'delete_task': {
             if (!args.id) return textResponse('Error: id is required');
+            const check = checkConfirmation('delete_task', args.confirm);
+            if (check.needsConfirmation) return textResponse(check.message);
             await deleteProjectTask(args.id);
             return textResponse(`Task ${args.id} deleted successfully.`);
           }
@@ -179,6 +181,8 @@ export function registerProjectsTool(server: McpServer) {
 
           case 'remove_worker': {
             if (!args.id) return textResponse('Error: id (project_worker_id) is required');
+            const check = checkConfirmation('remove_project_worker', args.confirm);
+            if (check.needsConfirmation) return textResponse(check.message);
             await removeProjectWorker(args.id);
             return textResponse(`Worker ${args.id} removed from project.`);
           }
@@ -218,6 +222,8 @@ export function registerProjectsTool(server: McpServer) {
 
           case 'delete_time': {
             if (!args.id) return textResponse('Error: id is required');
+            const check = checkConfirmation('delete_time', args.confirm);
+            if (check.needsConfirmation) return textResponse(check.message);
             await deleteTimeRecord(args.id);
             return textResponse(`Time record ${args.id} deleted successfully.`);
           }
