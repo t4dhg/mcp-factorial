@@ -39,7 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        # 24 is included because releases publish on Node 24 (trusted
+        # publishing needs npm >= 11.5.1), so the release runtime must be tested.
+        node-version: [18, 20, 22, 24]
     steps:
       - uses: actions/checkout@v4
 
