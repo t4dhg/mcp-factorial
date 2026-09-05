@@ -117,37 +117,37 @@ describe('API Error Handling and Edge Cases', () => {
     it('should filter employees by location ID', async () => {
       const employees = [
         {
-          id: 1,
+          id: '1',
           first_name: 'John',
           last_name: 'Doe',
           email: 'john@example.com',
           full_name: 'John Doe',
-          location_id: 1,
+          location_id: '1',
           birthday_on: null,
           terminated_on: null,
           gender: null,
           nationality: null,
           manager_id: null,
           timeoff_manager_id: null,
-          company_id: 1,
+          company_id: '1',
           legal_entity_id: null,
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
         {
-          id: 2,
+          id: '2',
           first_name: 'Jane',
           last_name: 'Smith',
           email: 'jane@example.com',
           full_name: 'Jane Smith',
-          location_id: 2,
+          location_id: '2',
           birthday_on: null,
           terminated_on: null,
           gender: null,
           nationality: null,
           manager_id: null,
           timeoff_manager_id: null,
-          company_id: 1,
+          company_id: '1',
           legal_entity_id: null,
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
@@ -163,7 +163,7 @@ describe('API Error Handling and Edge Cases', () => {
       const result = await listEmployees({ location_id: 1 });
 
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].id).toBe(1);
+      expect(result.data[0].id).toBe('1');
     });
 
     it('should handle pagination with custom page and limit', async () => {

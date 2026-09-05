@@ -14,7 +14,7 @@ import { join } from 'path';
 export interface FactorialConfig {
   /** FactorialHR API key (required) */
   apiKey: string;
-  /** API version (e.g., '2025-10-01') */
+  /** API version (e.g., '2026-07-01') */
   apiVersion: string;
   /** Base URL for the Factorial API */
   baseUrl: string;
@@ -27,7 +27,10 @@ export interface FactorialConfig {
 }
 
 // Default configuration values
-const DEFAULT_API_VERSION = '2025-10-01';
+// Factorial supports each quarterly version for one year and then serves it with
+// the oldest schema, so this must be bumped at least yearly. 2026-07-01 changed
+// every resource identifier from a number to a string; see schemas/shared.ts.
+const DEFAULT_API_VERSION = '2026-07-01';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const DEFAULT_MAX_RETRIES = 3;
 

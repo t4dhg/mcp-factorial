@@ -38,7 +38,7 @@ export async function listContracts(
 
   const filtered =
     employeeId !== undefined
-      ? allContracts.filter(c => c.employee_id === employeeId)
+      ? allContracts.filter(c => c.employee_id === String(employeeId))
       : allContracts;
 
   return sliceForPagination(filtered, params);
@@ -57,7 +57,7 @@ export async function getLatestContract(employeeId: number): Promise<Contract | 
     CACHE_TTL.contracts
   );
 
-  const employeeContracts = allContracts.filter(c => c.employee_id === employeeId);
+  const employeeContracts = allContracts.filter(c => c.employee_id === String(employeeId));
 
   if (employeeContracts.length === 0) {
     return null;
@@ -119,10 +119,10 @@ export async function listEmployeesByJobRole(
   );
 
   // Find contracts with this job role, grouped by employee (latest contract per employee)
-  const latestContractsByEmployee = new Map<number, Contract>();
+  const latestContractsByEmployee = new Map<string, Contract>();
 
   for (const contract of allContracts) {
-    if (contract.job_catalog_role_id === jobRoleId) {
+    if (contract.job_catalog_role_id === String(jobRoleId)) {
       const existing = latestContractsByEmployee.get(contract.employee_id);
       if (!existing) {
         latestContractsByEmployee.set(contract.employee_id, contract);
@@ -181,10 +181,10 @@ export async function listEmployeesByJobLevel(
   );
 
   // Find contracts with this job level, grouped by employee (latest contract per employee)
-  const latestContractsByEmployee = new Map<number, Contract>();
+  const latestContractsByEmployee = new Map<string, Contract>();
 
   for (const contract of allContracts) {
-    if (contract.job_catalog_level_id === jobLevelId) {
+    if (contract.job_catalog_level_id === String(jobLevelId)) {
       const existing = latestContractsByEmployee.get(contract.employee_id);
       if (!existing) {
         latestContractsByEmployee.set(contract.employee_id, contract);

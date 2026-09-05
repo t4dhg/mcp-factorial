@@ -1,38 +1,67 @@
 {
   "data": [
     {
-      "id": 1,
-      "employee_id": 2,
-      "leave_type_id": 1,
+      "id": "1",
+      "company_id": "1",
+      "employee_id": "2",
       "start_on": "2024-12-23",
       "finish_on": "2024-12-27",
-      "half_day": "all_day",
-      "status": "approved",
+      "half_day": null,
       "description": "Holiday vacation",
+      "reason": null,
+      "leave_type_id": "1",
+      "leave_type_name": null,
+      "approved": true,
+      "employee_full_name": "John Smith",
+      "start_time": null,
+      "hours_amount_in_cents": null,
+      "updated_at": "2024-11-20T10:00:00.000Z",
+      "created_at": "2024-11-15T10:00:00.000Z",
       "deleted_at": null,
-      "duration_attributes": {
-        "days": 5,
-        "hours": 40
-      },
-      "created_at": "2024-11-15T00:00:00Z",
-      "updated_at": "2024-11-20T00:00:00Z"
+      "duration_attributes": null,
+      "days_taken": 5.0
     },
     {
-      "id": 2,
-      "employee_id": 3,
-      "leave_type_id": 2,
+      "id": "2",
+      "company_id": "1",
+      "employee_id": "3",
       "start_on": "2024-12-20",
       "finish_on": "2024-12-20",
-      "half_day": "start",
-      "status": "pending",
+      "half_day": null,
       "description": null,
+      "reason": null,
+      "leave_type_id": "2",
+      "leave_type_name": null,
+      "approved": null,
+      "employee_full_name": "Robin Doe",
+      "start_time": null,
+      "hours_amount_in_cents": null,
+      "updated_at": "2024-12-18T08:30:00.000Z",
+      "created_at": "2024-12-18T08:30:00.000Z",
       "deleted_at": null,
-      "duration_attributes": {
-        "days": 0.5,
-        "hours": 4
-      },
-      "created_at": "2024-12-18T00:00:00Z",
-      "updated_at": "2024-12-18T00:00:00Z"
+      "duration_attributes": null,
+      "days_taken": 1.0
+    },
+    {
+      "id": "3",
+      "company_id": "1",
+      "employee_id": "1",
+      "start_on": "2024-11-04",
+      "finish_on": "2024-11-08",
+      "half_day": null,
+      "description": null,
+      "reason": "Overlaps with team coverage",
+      "leave_type_id": "3",
+      "leave_type_name": null,
+      "approved": false,
+      "employee_full_name": "Jane Doe",
+      "start_time": null,
+      "hours_amount_in_cents": null,
+      "updated_at": "2024-10-21T12:00:00.000Z",
+      "created_at": "2024-10-20T12:00:00.000Z",
+      "deleted_at": null,
+      "duration_attributes": null,
+      "days_taken": 5.0
     }
   ]
 }

@@ -57,7 +57,7 @@ export async function listDocuments(
 
     debug(`listDocuments returned ${documents.length} documents`, {
       sampleDocument: documents[0],
-      missingNames: documents.filter(d => !d.name).length,
+      missingNames: documents.filter(d => !d.filename).length,
     });
 
     return paginateResponse(documents, params.page, params.limit);
@@ -67,7 +67,7 @@ export async function listDocuments(
 
   debug(`listDocuments returned ${documents.length} documents`, {
     sampleDocument: documents[0],
-    missingNames: documents.filter(d => !d.name).length,
+    missingNames: documents.filter(d => !d.filename).length,
   });
 
   return paginateResponse(documents, params.page, params.limit);
@@ -112,7 +112,7 @@ export async function getDocument(id: number): Promise<Document> {
   // Note: This may not return employee-specific documents due to API access limitations
   const allDocuments = await fetchList<Document>(ENDPOINTS.documents);
 
-  const document = allDocuments.find(doc => doc.id === id);
+  const document = allDocuments.find(doc => doc.id === String(id));
 
   if (!document) {
     throw new Error(
@@ -131,7 +131,9 @@ export async function getDocument(id: number): Promise<Document> {
  * Response from the download-urls/bulk-create endpoint
  */
 interface DownloadUrlResponse {
-  document_id: number;
+  // The download-urls endpoint is pinned to API 2025-01-01, which still
+  // serialises identifiers as numbers. Compare with String().
+  document_id: number | string;
   url: string;
 }
 
@@ -146,7 +148,7 @@ interface DownloadUrlResponse {
  * @throws Error if OAuth2 is not configured or authentication fails
  */
 export async function getDocumentDownloadUrls(
-  documentIds: number[]
+  documentIds: string[]
 ): Promise<DownloadUrlResponse[]> {
   // Check if OAuth2 is configured - required for downloads
   if (!isOAuth2Configured()) {
@@ -234,7 +236,7 @@ export async function downloadDocument(
 
   // Get the signed download URL
   const downloadUrls = await getDocumentDownloadUrls([id]);
-  const urlInfo = downloadUrls.find(u => u.document_id === id);
+  const urlInfo = downloadUrls.find(u => String(u.document_id) === id);
 
   if (!urlInfo?.url) {
     throw new Error(`No download URL returned for document ${id}`);
@@ -247,9 +249,13 @@ export async function downloadDocument(
   // Generate filename from document name or ID with appropriate extension.
   // The document name is tenant-controlled metadata, so it is sanitized before
   // being joined onto the output directory.
-  const ext = document.mime_type === 'application/pdf' ? '.pdf' : '';
+  const ext = document.content_type === 'application/pdf' ? '.pdf' : '';
   const fallbackName = `document-${id}${ext}`;
-  const outputPath = resolveSafeOutputPath(outputDir, document.name ?? fallbackName, fallbackName);
+  const outputPath = resolveSafeOutputPath(
+    outputDir,
+    document.filename || fallbackName,
+    fallbackName
+  );
 
   // Download the file from the signed URL
   const response = await fetch(urlInfo.url);
@@ -267,7 +273,7 @@ export async function downloadDocument(
 
   debug(`Downloaded document ${id} to ${writtenPath}`, {
     size: buffer.length,
-    mime: document.mime_type,
+    mime: document.content_type,
   });
 
   return { path: writtenPath, document };

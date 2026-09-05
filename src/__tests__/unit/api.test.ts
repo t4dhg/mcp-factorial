@@ -47,7 +47,7 @@ describe('API Client', () => {
 
       expect(mockFetch).toHaveBeenCalledOnce();
       expect(result.data).toHaveLength(3);
-      expect(result.data[0].full_name).toBe('John Doe');
+      expect(result.data[0].full_name).toBe('Jane Doe');
     });
 
     // Note: team_id filtering is no longer supported because team_ids is not on Employee
@@ -61,7 +61,8 @@ describe('API Client', () => {
 
       const result = await listEmployees({ location_id: 1 });
 
-      expect(result.data.every(e => e.location_id === 1)).toBe(true);
+      expect(result.data).toHaveLength(2);
+      expect(result.data.every(e => e.location_id === '1')).toBe(true);
     });
 
     it('should include pagination metadata', async () => {
@@ -88,8 +89,8 @@ describe('API Client', () => {
       const employee = await getEmployee(1);
 
       expect(mockFetch).toHaveBeenCalledOnce();
-      expect(employee.id).toBe(1);
-      expect(employee.full_name).toBe('John Doe');
+      expect(employee.id).toBe('1');
+      expect(employee.full_name).toBe('Jane Doe');
     });
 
     it('should throw error for invalid ID', async () => {
@@ -108,7 +109,7 @@ describe('API Client', () => {
       const results = await searchEmployees('jane');
 
       expect(results).toHaveLength(1);
-      expect(results[0].full_name).toBe('Jane Smith');
+      expect(results[0].full_name).toBe('Jane Doe');
     });
 
     it('should search employees by email', async () => {
@@ -117,10 +118,10 @@ describe('API Client', () => {
         json: async () => employeesFixture,
       });
 
-      const results = await searchEmployees('bob.johnson');
+      const results = await searchEmployees('john.smith');
 
       expect(results).toHaveLength(1);
-      expect(results[0].email).toBe('bob.johnson@example.com');
+      expect(results[0].email).toBe('john.smith@example.com');
     });
 
     it('should be case-insensitive', async () => {
@@ -129,9 +130,9 @@ describe('API Client', () => {
         json: async () => employeesFixture,
       });
 
-      const results = await searchEmployees('JOHN');
+      const results = await searchEmployees('DOE');
 
-      expect(results).toHaveLength(2); // John Doe and Bob Johnson
+      expect(results).toHaveLength(2); // Jane Doe and Robin Doe
     });
 
     it('should throw error for short query', async () => {
@@ -163,7 +164,7 @@ describe('API Client', () => {
 
       const team = await getTeam(1);
 
-      expect(team.id).toBe(1);
+      expect(team.id).toBe('1');
       expect(team.name).toBe('Engineering');
     });
 
@@ -196,7 +197,7 @@ describe('API Client', () => {
 
       const location = await getLocation(2);
 
-      expect(location.id).toBe(2);
+      expect(location.id).toBe('2');
       expect(location.city).toBe('Toronto');
     });
 
@@ -226,7 +227,7 @@ describe('API Client', () => {
       const result = await listContracts(1);
 
       expect(result.data).toHaveLength(2);
-      expect(result.data.every(c => c.employee_id === 1)).toBe(true);
+      expect(result.data.every(c => c.employee_id === '1')).toBe(true);
     });
 
     it('should throw error for invalid employee ID', async () => {
@@ -324,38 +325,40 @@ describe('API Client', () => {
   });
 
   describe('Document API', () => {
+    // Shape of a /documents/documents record on API 2026-07-01
+    const documentRecord = {
+      id: '1',
+      filename: 'Contract.pdf',
+      extension: 'pdf',
+      content_type: 'application/pdf',
+      file_size: 12345,
+      folder_id: '1',
+      employee_id: '123',
+      author_id: '456',
+      company_id: '1',
+      leave_id: null,
+      public: false,
+      space: 'employee_my_documents',
+      is_company_document: false,
+      is_management_document: false,
+      is_pending_assignment: false,
+      signature_status: null,
+      signees: [],
+      deleted_at: null,
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+    };
+
     describe('listDocuments', () => {
-      it('should handle documents with null name field', async () => {
+      it('should pass document metadata through untouched', async () => {
         const documents = [
+          { ...documentRecord, id: '1', filename: 'Contract.pdf' },
           {
-            id: 1,
-            name: null,
-            folder_id: 1,
-            employee_id: 123,
-            author_id: 456,
-            mime_type: null,
-            size_bytes: null,
-            company_id: null,
-            public: false,
-            space: null,
-            file_url: null,
-            created_at: null,
-            updated_at: null,
-          },
-          {
-            id: 2,
-            name: 'Valid.pdf',
-            folder_id: 1,
-            employee_id: 123,
-            author_id: 456,
-            mime_type: 'application/pdf',
-            size_bytes: 12345,
-            company_id: null,
-            public: false,
-            space: null,
-            file_url: 'https://example.com/file.pdf',
-            created_at: '2024-01-01',
-            updated_at: '2024-01-01',
+            ...documentRecord,
+            id: '2',
+            filename: 'Valid.pdf',
+            content_type: null,
+            file_size: null,
           },
         ];
 
@@ -368,28 +371,12 @@ describe('API Client', () => {
         const result = await listDocuments();
 
         expect(result.data).toHaveLength(2);
-        expect(result.data[0].name).toBeNull();
-        expect(result.data[1].name).toBe('Valid.pdf');
+        expect(result.data[0].filename).toBe('Contract.pdf');
+        expect(result.data[1].filename).toBe('Valid.pdf');
       });
 
-      it('should handle documents with missing metadata fields', async () => {
-        const documents = [
-          {
-            id: 1,
-            name: 'Contract.pdf',
-            folder_id: 1,
-            employee_id: 123,
-            author_id: 456,
-            mime_type: null,
-            size_bytes: null,
-            company_id: null,
-            public: false,
-            space: null,
-            file_url: null,
-            created_at: null,
-            updated_at: null,
-          },
-        ];
+      it('should handle documents with null content type and size', async () => {
+        const documents = [{ ...documentRecord, content_type: null, file_size: null }];
 
         mockFetch.mockResolvedValueOnce({
           ok: true,
@@ -399,28 +386,14 @@ describe('API Client', () => {
 
         const result = await listDocuments();
 
-        expect(result.data[0].mime_type).toBeNull();
-        expect(result.data[0].size_bytes).toBeNull();
+        expect(result.data[0].content_type).toBeNull();
+        expect(result.data[0].file_size).toBeNull();
       });
     });
 
     describe('getDocument', () => {
       it('should fetch a document by ID', async () => {
-        const document = {
-          id: 1,
-          name: 'Contract.pdf',
-          folder_id: 1,
-          employee_id: 123,
-          author_id: 456,
-          mime_type: 'application/pdf',
-          size_bytes: 12345,
-          company_id: null,
-          public: false,
-          space: null,
-          file_url: 'https://example.com/file.pdf',
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        };
+        const document = { ...documentRecord };
 
         mockFetch.mockResolvedValueOnce({
           ok: true,
@@ -430,42 +403,14 @@ describe('API Client', () => {
 
         const result = await getDocument(1);
 
-        expect(result.id).toBe(1);
-        expect(result.name).toBe('Contract.pdf');
+        expect(result.id).toBe('1');
+        expect(result.filename).toBe('Contract.pdf');
       });
 
       it('should use fallback when direct endpoint returns 404', async () => {
         const documents = [
-          {
-            id: 1,
-            name: 'Contract.pdf',
-            folder_id: 1,
-            employee_id: 123,
-            author_id: 456,
-            mime_type: 'application/pdf',
-            size_bytes: 12345,
-            company_id: null,
-            public: false,
-            space: null,
-            file_url: 'https://example.com/file.pdf',
-            created_at: '2024-01-01',
-            updated_at: '2024-01-01',
-          },
-          {
-            id: 2,
-            name: 'Policy.pdf',
-            folder_id: 1,
-            employee_id: 123,
-            author_id: 456,
-            mime_type: 'application/pdf',
-            size_bytes: 67890,
-            company_id: null,
-            public: false,
-            space: null,
-            file_url: 'https://example.com/file2.pdf',
-            created_at: '2024-01-01',
-            updated_at: '2024-01-01',
-          },
+          { ...documentRecord },
+          { ...documentRecord, id: '2', filename: 'Policy.pdf', file_size: 67890 },
         ];
 
         // First call (direct endpoint) returns 404
@@ -485,28 +430,12 @@ describe('API Client', () => {
         const result = await getDocument(1);
 
         expect(mockFetch).toHaveBeenCalledTimes(2);
-        expect(result.id).toBe(1);
-        expect(result.name).toBe('Contract.pdf');
+        expect(result.id).toBe('1');
+        expect(result.filename).toBe('Contract.pdf');
       });
 
       it('should throw error when document not found in fallback', async () => {
-        const documents = [
-          {
-            id: 2,
-            name: 'Policy.pdf',
-            folder_id: 1,
-            employee_id: 123,
-            author_id: 456,
-            mime_type: 'application/pdf',
-            size_bytes: 67890,
-            company_id: null,
-            public: false,
-            space: null,
-            file_url: 'https://example.com/file2.pdf',
-            created_at: '2024-01-01',
-            updated_at: '2024-01-01',
-          },
-        ];
+        const documents = [{ ...documentRecord, id: '2', filename: 'Policy.pdf' }];
 
         // First call (direct endpoint) returns 404
         mockFetch.mockResolvedValueOnce({

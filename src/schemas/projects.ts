@@ -3,21 +3,31 @@
  */
 
 import { z } from 'zod';
-import { dateString } from './shared.js';
+import { dateString, resourceId } from './shared.js';
 
 /**
  * Project schema
+ *
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no projects, so it could not be checked against a live record.
  */
 export const ProjectSchema = z.object({
-  id: z.number(),
+  id: resourceId,
   name: z.string(),
   code: z.string().nullable(),
   description: z.string().nullable(),
-  status: z.enum(['active', 'inactive', 'archived']).nullable(),
-  employees_assignment: z.enum(['manual', 'company']).nullable(),
-  company_id: z.number().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  status: z.enum(['active', 'closed', 'draft', 'processing']),
+  employees_assignment: z.enum(['manual', 'company']),
+  legal_entity_id: resourceId.optional(),
+  client_id: resourceId.nullable().optional(),
+  start_date: z.string().nullable().optional(),
+  due_date: z.string().nullable().optional(),
+  is_billable: z.boolean().optional(),
+  inputed_minutes: z.number().nullable().optional(),
+  fixed_cost_cents: z.number().nullable().optional(),
+  labor_cost_cents: z.number().nullable().optional(),
+  spending_cost_cents: z.number().nullable().optional(),
+  total_cost_cents: z.number().nullable().optional(),
 });
 
 export type Project = z.infer<typeof ProjectSchema>;
@@ -45,18 +55,18 @@ export type UpdateProjectInput = z.infer<typeof UpdateProjectInputSchema>;
 
 /**
  * Project Task schema
+ *
+ * A project task links a project (or subproject) to a task in the tasks
+ * module; the task's own name, description and due date live on that task.
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no project tasks, so it could not be checked against a live record.
  */
 export const ProjectTaskSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  project_id: z.number(),
-  subproject_id: z.number().nullable(),
-  description: z.string().nullable(),
-  completed: z.boolean().default(false),
-  due_on: z.string().nullable(),
-  due_status: z.string().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  id: resourceId,
+  project_id: resourceId,
+  subproject_id: resourceId.nullable(),
+  task_id: resourceId,
+  follow_up: z.boolean(),
 });
 
 export type ProjectTask = z.infer<typeof ProjectTaskSchema>;
@@ -86,14 +96,19 @@ export type UpdateProjectTaskInput = z.infer<typeof UpdateProjectTaskInputSchema
 
 /**
  * Project Worker schema
+ *
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no project workers, so it could not be checked against a live record.
  */
 export const ProjectWorkerSchema = z.object({
-  id: z.number(),
-  project_id: z.number(),
-  employee_id: z.number(),
-  company_labor_cost_cents: z.number().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  id: resourceId,
+  project_id: resourceId,
+  employee_id: resourceId,
+  assigned: z.boolean().optional(),
+  inputed_minutes: z.number().nullable().optional(),
+  labor_cost_cents: z.number().nullable().optional(),
+  company_labor_cost_cents: z.number().nullable().optional(),
+  spending_cost_cents: z.number().nullable().optional(),
 });
 
 export type ProjectWorker = z.infer<typeof ProjectWorkerSchema>;
@@ -110,17 +125,21 @@ export type AssignProjectWorkerInput = z.infer<typeof AssignProjectWorkerInputSc
 
 /**
  * Time Record schema
+ *
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no time records, so it could not be checked against a live record.
  */
 export const TimeRecordSchema = z.object({
-  id: z.number(),
-  project_worker_id: z.number(),
-  subproject_id: z.number().nullable(),
-  attendance_shift_id: z.number().nullable(),
-  minutes: z.number(),
-  date: z.string(),
-  description: z.string().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  id: resourceId,
+  project_worker_id: resourceId,
+  subproject_id: resourceId.nullable().optional(),
+  attendance_shift_id: resourceId.nullable().optional(),
+  date: z.string().nullable().optional(),
+  imputed_minutes: z.number().nullable().optional(),
+  clock_in: z.string().nullable().optional(),
+  clock_out: z.string().nullable().optional(),
+  // Added in API 2026-07-01: comment for the time record
+  observations: z.string().nullable().optional(),
 });
 
 export type TimeRecord = z.infer<typeof TimeRecordSchema>;

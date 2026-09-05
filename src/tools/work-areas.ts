@@ -40,13 +40,13 @@ export function registerWorkAreasTool(server: McpServer) {
             // Filter by location_id client-side if specified
             let data = result.data;
             if (args.location_id) {
-              data = data.filter(w => w.location_id === args.location_id);
+              data = data.filter(w => w.location_id === String(args.location_id));
             }
             const summary = data.map(w => ({
               id: w.id,
               name: w.name,
               location_id: w.location_id,
-              archived: w.archived,
+              archived: Boolean(w.archived_at),
             }));
             return textResponse(
               `Found ${summary.length} work areas:\n\n${JSON.stringify(summary, null, 2)}`
