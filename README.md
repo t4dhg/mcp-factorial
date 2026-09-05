@@ -22,7 +22,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 - **Context-Optimized**: 14 hierarchical tools (117 operations) with 88% less context usage than individual tools
 - **Full CRUD Operations**: Create, read, update, and delete across all major entities
 - **Safety Guardrails**: High-risk operations require explicit confirmation
-- **Audit Logging**: All write operations are logged for compliance
+- **Audit Logging**: All write operations are logged with timestamps and context for debugging
 - **Enterprise Ready**: Built for companies who need AI integration with proper controls
 
 ## Features
@@ -113,7 +113,7 @@ factorial_discover({ category: 'employees' });
 ### Architecture Features
 
 - **Safety Guardrails**: High-risk operations (terminate, delete) marked for confirmation
-- **Audit Logging**: All write operations logged with timestamps and context
+- **Audit Logging**: All write operations logged in-process with timestamps and context
 - **Caching**: In-memory TTL-based caching (configurable by resource type)
 - **Pagination**: All list operations support pagination
 - **Retry Logic**: Exponential backoff with rate limit handling
@@ -305,15 +305,36 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ## Safety & Security
 
-### High-Risk Operations
+### Operations That Require Confirmation
 
-The following operations are marked as high-risk and require explicit confirmation (`confirm: true`):
+The following operations require explicit confirmation (`confirm: true`). Called without it, the tool returns a warning describing the impact and makes no change. Risk is classified per operation in `src/write-safety.ts`; everything below is gated regardless of whether it is rated high or medium:
 
 - `factorial_employees({ action: 'terminate' })` - Terminates an employee
 - `factorial_teams({ action: 'delete' })` - Permanently deletes a team
 - `factorial_locations({ action: 'delete' })` - Permanently deletes a location
 - `factorial_projects({ action: 'delete' })` - Permanently deletes a project
+- `factorial_projects({ action: 'delete_task' })` - Deletes a project task
+- `factorial_projects({ action: 'delete_time' })` - Deletes a time record
+- `factorial_projects({ action: 'remove_worker' })` - Deletes an employee's assignment to a project
+- `factorial_attendance({ action: 'delete' })` - Deletes a shift record
+- `factorial_time_off({ action: 'cancel' })` - Cancels a leave request
+- `factorial_time_off({ action: 'reject' })` - Rejects a leave request
+- `factorial_training({ action: 'delete' })` - Deletes a training program and its enrollments
+- `factorial_training({ action: 'delete_session' })` - Deletes a training session
+- `factorial_training({ action: 'unenroll' })` - Deletes an employee's training enrollment
+- `factorial_ats({ action: 'delete_posting' })` - Deletes a job posting and its applications
 - `factorial_ats({ action: 'delete_candidate' })` - Permanently deletes a candidate
+- `factorial_ats({ action: 'delete_application' })` - Permanently deletes an application
+
+### Document Downloads
+
+Document names come from Factorial metadata rather than from the caller, so downloads treat them as untrusted:
+
+- The name is reduced to a single path segment, so a name containing path separators cannot redirect the download outside `output_dir`.
+- Control characters are dropped and over-long names are shortened, keeping the extension.
+- **Nothing is ever overwritten.** If the target name is already taken, the file is saved as `name (1).ext`, `name (2).ext` and so on. This protects existing files in `output_dir` and stops two documents that share a name from collapsing into one.
+
+Downloads still write wherever you point `output_dir`, so point it at a directory meant for downloads rather than a source tree or your home directory.
 
 ### Read-Only Categories
 
@@ -342,12 +363,15 @@ All list operations accept `page` and `limit` parameters for pagination control.
 
 ### Audit Logging
 
-All write operations (create, update, delete, approve, reject) are logged with:
+All write operations (create, update, delete, approve, reject) are recorded with:
 
 - Timestamp
 - Operation type
 - Entity type and ID
 - Changes made
+- Success or failure, and duration
+
+**Scope of this log.** The trail is held in memory in the running server process, capped at the most recent 1000 entries, and is not exposed through any tool or resource. It is lost when the process exits. Set `DEBUG=true` to have each entry written to the server's stderr, which is the only way to retain it today. It is a debugging aid, not a compliance record: if you need a durable, queryable audit trail, use FactorialHR's own activity log as the system of record.
 
 ## Development
 
@@ -484,7 +508,7 @@ A: Data is cached in-memory with TTLs: employees (5 min), teams (10 min), locati
 A: Version `2025-10-01` by default. Override with `FACTORIAL_API_VERSION` environment variable.
 
 **Q: Are write operations logged?**
-A: Yes, all write operations are logged via the audit module for compliance and debugging.
+A: Yes, every write is recorded by the audit module with a timestamp, entity, changes, and outcome. The log lives in memory in the running process (last 1000 entries) and is not retrievable through the MCP interface, so treat it as a debugging aid rather than a compliance record. See [Audit Logging](#audit-logging).
 
 ## Factorial API Quirks and Limitations
 

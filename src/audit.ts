@@ -1,8 +1,13 @@
 /**
  * Audit logging for write operations
  *
- * Logs all write operations for compliance and debugging.
- * In production, this could be extended to log to external systems.
+ * Records every write operation with its entity, changes, outcome and duration.
+ *
+ * Scope: the trail is held in memory in this process, capped at the most recent
+ * 1000 entries, and is not exposed through any tool or resource. It is lost when
+ * the process exits. With DEBUG=true each entry is also written to stderr, which
+ * is currently the only way to retain it. Treat this as a debugging aid, not a
+ * compliance record; FactorialHR's own activity log is the system of record.
  */
 
 import { debug } from './config.js';
@@ -42,7 +47,7 @@ export interface AuditEntry {
  * Audit logger class
  *
  * Maintains an in-memory log of recent write operations for debugging.
- * In production, this could be extended to persist logs to external systems.
+ * See the note on scope at the top of this file before relying on it.
  */
 class AuditLogger {
   private logs: AuditEntry[] = [];

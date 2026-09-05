@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Confirmation gate for `delete_application`**: `factorial_ats({ action: 'delete_application' })` checked for confirmation against a policy that did not exist, so the lookup fell through to the permissive default and the documented `confirm` parameter had no effect. The delete went through unconditionally. A `delete_application` policy is now defined and the gate works as advertised.
+- **Confirmation gate for `delete_task`, `delete_time` and `delete_session`**: these three delete operations accepted a `confirm` parameter but never checked it. They are now gated like the other destructive operations.
+- **Path traversal in document downloads**: `downloadDocument()` joined the Factorial-supplied document name straight onto the caller's `output_dir`. A document named with `..` segments could write outside that directory. Names are now reduced to a single path segment and the resolved path is verified to stay inside `output_dir`.
+
+The three issues above were reported by Syed Anas Mohiuddin. Fixing them surfaced three more, found in the course of the fix:
+
+- **Confirmation warnings read "null"**: `getWarningMessage()` returned `null` for medium-risk operations, but the confirmation gate interpolates the result into the message it shows. `delete_shift`, `cancel_leave` and `reject_leave` were prompting with the literal text "null" in place of the impact description. It now returns a message for any operation requiring confirmation, whatever its risk level.
+- **Gating an operation with no policy is now a compile error**: `checkConfirmation()` took a plain `string`, so a name absent from `OPERATION_POLICIES` fell silently through to the permissive default. That is the root cause of the `delete_application` bug. It now takes an `OperationName` union derived from the policy table, so the same mistake fails the build.
+- **Removed a duplicate confirmation gate**: `wrapHighRiskToolHandler()` in `tool-utils.ts` held a second, unused copy of the same policy lookup, carrying the same two defects. Every tool handler now reaches the gate through `checkConfirmation`. Note that `confirmation.ts` still holds a third, token-based mechanism that nothing imports; it has not been removed here.
+
+A second review of that work found two more ungated deletes and a data-loss bug:
+
+- **Confirmation gate for `remove_worker` and `unenroll`**: `factorial_projects({ action: 'remove_worker' })` and `factorial_training({ action: 'unenroll' })` both issue an irreversible DELETE and neither checked the `confirm` parameter their tool schema declares. Both are now gated. These were missed on the first pass because they were judged to be association removals in the style of `remove_team_member`, which is deliberately ungated; that comparison was wrong, since `remove_team_member` has no API implementation at all while both of these delete a real record.
+- **Downloads no longer overwrite**: `downloadDocument()` wrote with an unconditional `fs.writeFile`. A tenant-controlled document name matching a file already in `output_dir` replaced it, and two documents sharing a name silently collapsed into one. Files are now written with the `wx` flag and fall back to `name (1).ext`, so nothing is replaced and no document is lost.
+- **Partial payslip downloads no longer report as complete**: `downloadEmployeePayslips()` caught per-document failures into `debug()`, which is silent unless `DEBUG` is set, and returned only the successes. A hostile or over-long document name could therefore drop a payslip with no visible error. It now returns failures alongside the downloads, the tool reports them, and a download where every document failed throws.
+- **Hostile filenames no longer crash a download**: names containing control characters or exceeding the filesystem's per-component limit reached `fs.writeFile` and threw. They are now stripped and shortened, keeping the extension.
+
+### Tests
+
+- A structural test asserts that every tool action reaching a destructive API call is gated. What counts as destructive is derived from the API layer, by finding the functions that issue a `deleteOne()`, rather than from a list of action names; a name-based predicate would only ever rediscover the names already thought of, which is how the first version of this test passed while `remove_worker` and `unenroll` were ungated. Deliberate exceptions go in an exemption registry that requires a written reason.
+- A test compares the README's list of operations requiring confirmation against the gates present in the handler sources, so the two cannot drift apart.
+- Every fix in this release was mutation-tested: the corresponding production code was reverted and the test confirmed to fail.
+
+### Documentation
+
+- **Audit logging**: the README described the audit trail as being "for compliance". The log is in-process, in-memory, capped at 1000 entries, and not retrievable through any tool, so the README now says exactly that and points to FactorialHR's own activity log as the system of record. Also reported by Syed Anas Mohiuddin.
+- **High-risk operations**: the README listed 5 of the 14 operations that require `confirm: true`. The list is now complete.
+- **Added `SECURITY.md`** with a private reporting route, scope, and response expectations.
+- **Document downloads**: the README now describes how untrusted document names are handled, including that downloads never overwrite.
+- **`llms.txt`** carried the same overstated safety and audit claims as the README and has been corrected to match.
+- **`requiresPreview`** in `OperationPolicy` is documented as not currently consumed by any code path.
+
 ## [8.1.1] - 2026-01-23
 
 ### Fixed

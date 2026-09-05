@@ -8,7 +8,7 @@ import { debug } from '../config.js';
 import { isOAuth2Configured, getOAuth2AccessToken } from '../oauth.js';
 import { buildPaginationParams, paginateResponse, type PaginatedResponse } from '../pagination.js';
 import type { Folder, Document } from '../schemas.js';
-import { validateId } from '../utils.js';
+import { validateId, resolveSafeOutputPath, writeWithoutOverwriting } from '../utils.js';
 import { ENDPOINTS, endpointWithId } from '../endpoints.js';
 import { NotFoundError } from '../errors.js';
 import type { ListDocumentsOptions } from '../types.js';
@@ -242,17 +242,14 @@ export async function downloadDocument(
 
   // Ensure output directory exists
   const fs = await import('fs/promises');
-  const path = await import('path');
   await fs.mkdir(outputDir, { recursive: true });
 
-  // Generate filename from document name or ID with appropriate extension
-  let filename = document.name;
-  if (!filename) {
-    // Use fallback filename with extension based on mime type
-    const ext = document.mime_type === 'application/pdf' ? '.pdf' : '';
-    filename = `document-${id}${ext}`;
-  }
-  const outputPath = path.join(outputDir, filename);
+  // Generate filename from document name or ID with appropriate extension.
+  // The document name is tenant-controlled metadata, so it is sanitized before
+  // being joined onto the output directory.
+  const ext = document.mime_type === 'application/pdf' ? '.pdf' : '';
+  const fallbackName = `document-${id}${ext}`;
+  const outputPath = resolveSafeOutputPath(outputDir, document.name ?? fallbackName, fallbackName);
 
   // Download the file from the signed URL
   const response = await fetch(urlInfo.url);
@@ -261,26 +258,42 @@ export async function downloadDocument(
   }
 
   const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(outputPath, buffer);
 
-  debug(`Downloaded document ${id} to ${outputPath}`, {
+  // Never overwrite. The document name is tenant-controlled, so a download can
+  // otherwise land on an existing file the caller cares about, and two documents
+  // sharing a name would silently collapse into one. The `wx` flag fails if the
+  // path exists, so the loop settles on the first free "name (n).ext".
+  const writtenPath = await writeWithoutOverwriting(outputPath, buffer);
+
+  debug(`Downloaded document ${id} to ${writtenPath}`, {
     size: buffer.length,
     mime: document.mime_type,
   });
 
-  return { path: outputPath, document };
+  return { path: writtenPath, document };
+}
+
+/**
+ * Outcome of a bulk payslip download
+ *
+ * Failures are returned rather than swallowed, so a partial download cannot be
+ * reported as a complete one.
+ */
+export interface PayslipDownloadResult {
+  downloaded: Array<{ path: string; document: Document }>;
+  failures: string[];
 }
 
 /**
  * Download all payslips for an employee
  * @param employeeId - The employee ID
  * @param outputDir - Directory to save files to
- * @returns Array of downloaded file paths and metadata
+ * @returns The payslips downloaded, and a description of any that failed
  */
 export async function downloadEmployeePayslips(
   employeeId: number,
   outputDir: string
-): Promise<Array<{ path: string; document: Document }>> {
+): Promise<PayslipDownloadResult> {
   // Find the Nómina (payslip) folder
   const folders = await listFolders();
   const payslipFolder = folders.find(
@@ -304,18 +317,33 @@ export async function downloadEmployeePayslips(
 
   // Download each payslip - pass the document object to avoid re-fetching metadata
   const results: Array<{ path: string; document: Document }> = [];
+  const failures: string[] = [];
+
   for (const doc of payslipDocs) {
     try {
       const result = await downloadDocument(doc, outputDir);
       results.push(result);
     } catch (error) {
-      debug(
-        `Failed to download payslip ${doc.id}: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      debug(`Failed to download payslip ${doc.id}: ${reason}`);
+      failures.push(`document ${doc.id}: ${reason}`);
     }
   }
 
-  return results;
+  // A partial download used to look identical to a complete one: failures went
+  // to debug(), which is silent unless DEBUG is set, and the missing payslips
+  // simply did not appear in the results.
+  if (failures.length > 0 && results.length === 0) {
+    throw new Error(
+      `All ${failures.length} payslip downloads failed for employee ${employeeId}:\n${failures.join('\n')}`
+    );
+  }
+
+  if (failures.length > 0) {
+    debug(`Partial payslip download for employee ${employeeId}`, { failures });
+  }
+
+  return { downloaded: results, failures };
 }
 
 /**
