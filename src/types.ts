@@ -87,7 +87,7 @@ export interface ListShiftsOptions {
  */
 export interface ListDocumentsOptions {
   folder_id?: number;
-  employee_ids?: number[]; // Filter by employee IDs
+  employee_ids?: Array<number | string>; // Filter by employee IDs
   page?: number;
   limit?: number;
 }

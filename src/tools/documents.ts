@@ -74,10 +74,10 @@ export function registerDocumentsTool(server: McpServer) {
             });
             const summary = result.data.map(d => ({
               id: d.id,
-              name: d.name,
+              name: d.filename,
               folder_id: d.folder_id,
               employee_id: d.employee_id,
-              mime_type: d.mime_type,
+              mime_type: d.content_type,
             }));
             return textResponse(
               `Found ${result.data.length} documents:\n\n${JSON.stringify(summary, null, 2)}`
@@ -95,9 +95,9 @@ export function registerDocumentsTool(server: McpServer) {
             const result = await listDocuments({ employee_ids: [args.employee_id] });
             const summary = result.data.map(d => ({
               id: d.id,
-              name: d.name,
+              name: d.filename,
               folder_id: d.folder_id,
-              mime_type: d.mime_type,
+              mime_type: d.content_type,
             }));
             return textResponse(
               `Found ${result.data.length} documents for employee ${args.employee_id}:\n\n${JSON.stringify(summary, null, 2)}`
@@ -116,12 +116,12 @@ export function registerDocumentsTool(server: McpServer) {
               let docs = result.data;
               if (args.document_pattern) {
                 const pattern = args.document_pattern.toLowerCase();
-                docs = docs.filter(d => d.name?.toLowerCase().includes(pattern));
+                docs = docs.filter(d => d.filename.toLowerCase().includes(pattern));
               }
               allDocs.push(
                 ...docs.map(d => ({
                   id: d.id,
-                  name: d.name,
+                  name: d.filename,
                   employee: emp.full_name,
                   folder_id: d.folder_id,
                 }))

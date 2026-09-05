@@ -129,7 +129,7 @@ describe('Config Module', () => {
 
     it('should return default version if not set', () => {
       delete process.env.FACTORIAL_API_VERSION;
-      expect(getApiVersion()).toBe('2025-10-01');
+      expect(getApiVersion()).toBe('2026-07-01');
     });
   });
 
@@ -148,7 +148,7 @@ describe('Config Module', () => {
     it('should use default API version if not specified', () => {
       delete process.env.FACTORIAL_BASE_URL;
       delete process.env.FACTORIAL_API_VERSION;
-      expect(getBaseUrl()).toBe('https://api.factorialhr.com/api/2025-10-01/resources');
+      expect(getBaseUrl()).toBe('https://api.factorialhr.com/api/2026-07-01/resources');
     });
   });
 

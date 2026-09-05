@@ -8,6 +8,7 @@
 
 // Shared utilities
 export {
+  resourceId,
   dateString,
   createApiResponseSchema,
   createApiListResponseSchema,

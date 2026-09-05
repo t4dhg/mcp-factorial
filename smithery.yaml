@@ -12,8 +12,8 @@ startCommand:
         description: API key from FactorialHR (Settings > API Keys)
       factorialApiVersion:
         type: string
-        description: API version (default 2025-10-01)
-        default: "2025-10-01"
+        description: API version (default 2026-07-01)
+        default: "2026-07-01"
       factorialTimeoutMs:
         type: number
         description: Request timeout in milliseconds

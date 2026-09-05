@@ -295,7 +295,7 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 | Environment Variable            | Description                          | Default      |
 | ------------------------------- | ------------------------------------ | ------------ |
 | `FACTORIAL_API_KEY`             | Your FactorialHR API key             | Required     |
-| `FACTORIAL_API_VERSION`         | API version                          | `2025-10-01` |
+| `FACTORIAL_API_VERSION`         | API version                          | `2026-07-01` |
 | `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                 | `30000`      |
 | `FACTORIAL_MAX_RETRIES`         | Max retry attempts                   | `3`          |
 | `DEBUG`                         | Enable debug logging                 | `false`      |
@@ -505,7 +505,7 @@ A: Yes! Full CRUD operations are available for employees, teams, locations, time
 A: Data is cached in-memory with TTLs: employees (5 min), teams (10 min), locations (15 min), contracts (3 min).
 
 **Q: What FactorialHR API version is used?**
-A: Version `2025-10-01` by default. Override with `FACTORIAL_API_VERSION` environment variable.
+A: Version `2026-07-01` by default. Override with `FACTORIAL_API_VERSION` environment variable. Since that version every Factorial identifier (`id` and `*_id` fields) is a string, not a number; treat them as opaque strings.
 
 **Q: Are write operations logged?**
 A: Yes, every write is recorded by the audit module with a timestamp, entity, changes, and outcome. The log lives in memory in the running process (last 1000 entries) and is not retrievable through the MCP interface, so treat it as a debugging aid rather than a compliance record. See [Audit Logging](#audit-logging).

@@ -1,21 +1,23 @@
 /**
  * Work Area schemas
+ *
+ * Response field set taken from the 2026-07-01 reference for
+ * /locations/work_areas; the verification tenant has no work areas, so it
+ * could not be checked against a live record.
  */
 
 import { z } from 'zod';
+import { resourceId } from './shared.js';
 
 /**
  * Work Area schema
  */
 export const WorkAreaSchema = z.object({
-  id: z.number(),
+  id: resourceId,
+  location_id: resourceId,
   name: z.string(),
-  description: z.string().nullable(),
-  location_id: z.number().nullable(),
-  company_id: z.number().nullable(),
-  archived: z.boolean().default(false),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  /** Set when the work area is archived; null while it is active */
+  archived_at: z.string().nullable().optional(),
 });
 
 export type WorkArea = z.infer<typeof WorkAreaSchema>;
