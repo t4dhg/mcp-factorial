@@ -137,7 +137,46 @@ This project is security-focused:
 - **No sensitive data in tests**: Use mock data only
 - **API keys**: Never commit .env files
 - **Privacy**: Do not add payroll/compensation endpoints
-- **Read-only**: No write operations to Factorial API
+- **Destructive operations are gated**: every action that deletes a record, or terminates an employee, requires `confirm: true`. Adding one means adding both a `checkConfirmation` call and an `OPERATION_POLICIES` entry; a structural test fails the build if either is missing.
+
+## Releasing
+
+Releases are **staged by CI and promoted by a human**. Pushing a tag does not put anything in front of users.
+
+1. Update the version in `package.json` and give the `CHANGELOG.md` heading a version and date.
+2. Commit, then tag and push:
+
+   ```bash
+   git tag vX.Y.Z
+   git push origin main vX.Y.Z
+   ```
+
+3. The `Publish to npm` workflow runs tests, builds, and then runs `npm stage publish`. It authenticates over OIDC as a trusted publisher, so there is no npm token anywhere in the repository or its secrets. The tarball is uploaded but **is not installable yet**.
+
+4. Inspect what CI produced, then promote it. This step needs npm 11.19.0 or later locally (`npm install -g npm@latest`):
+
+   ```bash
+   npm stage list @t4dhg/mcp-factorial   # find the stage id
+   npm stage view <stage-id>             # inspect the metadata
+   npm stage download <stage-id>         # optional: fetch the exact tarball
+   npm stage approve <stage-id>          # publish it, proving 2FA here
+   ```
+
+   `npm stage reject <stage-id>` discards it instead.
+
+5. Confirm it landed:
+
+   ```bash
+   npm view @t4dhg/mcp-factorial version
+   ```
+
+Two-factor authentication is proved at the approve step, not in CI. That is the point of the arrangement: the workflow can build and stage a release, but it cannot ship one, so a compromised workflow cannot reach users without a maintainer approving the exact artifact.
+
+If a tag was pushed and the version turns out to be wrong, delete the tag before re-tagging, so the repository does not accumulate tags with no published release behind them:
+
+```bash
+git tag -d vX.Y.Z && git push origin --delete vX.Y.Z
+```
 
 ## Getting Help
 

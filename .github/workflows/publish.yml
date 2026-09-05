@@ -37,9 +37,14 @@ jobs:
       - name: Build
         run: npm run build
 
-      # No NODE_AUTH_TOKEN. The publish authenticates with the OIDC token minted
-      # by the id-token permission above, matched against the trusted publisher
-      # configured for this package on npmjs.com. Provenance is generated
-      # automatically, so --provenance is no longer passed explicitly.
-      - name: Publish to npm
-        run: npm publish --access public
+      # No NODE_AUTH_TOKEN. This authenticates with the OIDC token minted by the
+      # id-token permission above, matched against the trusted publisher
+      # configured for this package on npmjs.com. Provenance is automatic.
+      #
+      # `stage publish` uploads the tarball but does NOT make it installable.
+      # A human then inspects it and runs `npm stage approve <stage-id>`, which
+      # is where 2FA is proved. CI therefore cannot ship a release on its own,
+      # so a compromised workflow cannot put a version in front of users.
+      # Promoting a staged release is documented in CONTRIBUTING.md.
+      - name: Stage the release
+        run: npm stage publish --access public
