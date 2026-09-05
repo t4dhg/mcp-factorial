@@ -3,25 +3,43 @@
  */
 
 import { z } from 'zod';
+import { resourceId } from './shared.js';
 
 /**
  * Job Posting schema
+ *
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no job postings, so it could not be checked against a live record.
  */
 export const JobPostingSchema = z.object({
-  id: z.number(),
+  id: resourceId,
+  company_id: resourceId.optional(),
+  ats_company_id: resourceId.optional(),
   title: z.string(),
   description: z.string().nullable(),
-  department: z.string().nullable(),
-  location_id: z.number().nullable(),
-  team_id: z.number().nullable(),
-  status: z.enum(['draft', 'published', 'closed', 'archived']).nullable(),
-  employment_type: z.string().nullable(),
-  remote_status: z.string().nullable(),
-  company_id: z.number().nullable(),
+  status: z.enum(['draft', 'published', 'unlisted', 'archived', 'cancelled', 'deleted']),
+  contract_type: z.string().nullable().optional(),
+  // Added in API 2026-07-01
+  category: z.string().nullable().optional(),
+  workplace_type: z.enum(['onsite', 'remote', 'hybrid']).nullable().optional(),
+  remote: z.boolean().optional(),
+  schedule_type: z.enum(['full_time', 'part_time']).nullable().optional(),
+  team_id: resourceId.nullable(),
+  location_id: resourceId.nullable(),
+  legal_entity_id: resourceId.nullable().optional(),
+  salary_format: z.enum(['fixed_amount', 'range']).nullable().optional(),
+  salary_from_amount_in_cents: z.number().nullable().optional(),
+  salary_to_amount_in_cents: z.number().nullable().optional(),
+  salary_period: z.enum(['annual', 'monthly', 'daily']).nullable().optional(),
+  hide_salary: z.boolean().nullable().optional(),
+  cv_requirement: z.enum(['mandatory', 'optional', 'do_not_ask']).optional(),
+  cover_letter_requirement: z.enum(['mandatory', 'optional', 'do_not_ask']).optional(),
+  phone_requirement: z.enum(['mandatory', 'optional', 'do_not_ask']).optional(),
+  photo_requirement: z.enum(['mandatory', 'optional', 'do_not_ask']).optional(),
+  personal_url_requirement: z.enum(['mandatory', 'optional', 'do_not_ask']).optional(),
+  url: z.string().nullable().optional(),
   published_at: z.string().nullable(),
-  closed_at: z.string().nullable(),
   created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
 });
 
 export type JobPosting = z.infer<typeof JobPostingSchema>;
@@ -52,18 +70,29 @@ export type UpdateJobPostingInput = z.infer<typeof UpdateJobPostingInputSchema>;
 
 /**
  * Candidate schema
+ *
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no candidates, so it could not be checked against a live record.
  */
 export const CandidateSchema = z.object({
-  id: z.number(),
-  first_name: z.string().nullable(),
-  last_name: z.string().nullable(),
-  full_name: z.string().nullable(),
+  id: resourceId,
+  company_id: resourceId.nullable().optional(),
+  first_name: z.string(),
+  last_name: z.string(),
+  full_name: z.string(),
   email: z.string().nullable(),
-  phone: z.string().nullable(),
-  source: z.string().nullable(),
-  resume_url: z.string().nullable(),
-  linkedin_url: z.string().nullable(),
-  company_id: z.number().nullable(),
+  phone_number: z.string().nullable().optional(),
+  personal_url: z.string().nullable().optional(),
+  gender: z.enum(['female', 'male', 'unanswered', 'other']).nullable().optional(),
+  talent_pool: z.boolean().optional(),
+  consent_to_talent_pool: z.boolean().nullable().optional(),
+  consent_given_at: z.string().nullable().optional(),
+  consent_expiration_date: z.string().nullable().optional(),
+  inactive_since: z.string().nullable().optional(),
+  medium: z.string().nullable().optional(),
+  source_id: resourceId.nullable().optional(),
+  score: z.number().nullable().optional(),
+  ats_job_posting_ids: z.array(resourceId).optional(),
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
 });
@@ -93,21 +122,30 @@ export type UpdateCandidateInput = z.infer<typeof UpdateCandidateInputSchema>;
 
 /**
  * Application schema
+ *
+ * Response field set taken from the 2026-07-01 reference; the verification
+ * tenant has no applications, so it could not be checked against a live record.
+ * Foreign keys are prefixed `ats_` (ats_job_posting_id, ats_candidate_id) and
+ * the pipeline position is `ats_application_phase_id`.
  */
 export const ApplicationSchema = z.object({
-  id: z.number(),
-  job_posting_id: z.number(),
-  candidate_id: z.number(),
-  hiring_stage_id: z.number().nullable(),
-  ats_application_phase_id: z.number().nullable(),
-  status: z.string().nullable(),
-  rating: z.number().nullable(),
-  notes: z.string().nullable(),
-  applied_at: z.string().nullable(),
-  rejected_at: z.string().nullable(),
-  hired_at: z.string().nullable(),
+  id: resourceId,
+  company_id: resourceId.optional(),
+  ats_job_posting_id: resourceId,
+  ats_candidate_id: resourceId,
+  ats_application_phase_id: resourceId.nullable(),
+  ats_conversation_id: resourceId.nullable().optional(),
+  ats_rejection_reason_id: resourceId.nullable().optional(),
+  employee_id: resourceId.nullable().optional(),
+  source_id: resourceId.nullable().optional(),
+  qualified: z.boolean().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  medium: z.string().nullable().optional(),
+  cover_letter: z.string().nullable().optional(),
+  // Added in API 2026-07-01: CV attachment (filename, url, byte_size, content_type, created_at)
+  cv: z.record(z.string(), z.unknown()).nullable().optional(),
+  rating_average: z.number().nullable().optional(),
   created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
 });
 
 export type Application = z.infer<typeof ApplicationSchema>;
@@ -136,16 +174,16 @@ export type UpdateApplicationInput = z.infer<typeof UpdateApplicationInputSchema
 
 /**
  * Hiring Stage schema
+ *
+ * Field set verified against live /ats/hiring_stages responses on API
+ * version 2026-07-01. Hiring stages carry no timestamps.
  */
 export const HiringStageSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  label: z.string().nullable(),
-  ats_application_phase_id: z.number().nullable(),
-  position: z.number().nullable(),
-  company_id: z.number().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  id: resourceId,
+  name: z.enum(['new', 'screening', 'interview', 'assessment', 'offer', 'hired']),
+  label: z.string(),
+  position: z.number(),
+  company_id: resourceId.nullable(),
 });
 
 export type HiringStage = z.infer<typeof HiringStageSchema>;

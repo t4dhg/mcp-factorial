@@ -124,15 +124,15 @@ server.registerResource(
     const employees = result.data;
 
     interface OrgNode {
-      id: number;
+      id: string;
       name: string | null;
       email: string | null;
-      manager_id: number | null;
+      manager_id: string | null;
       reports: OrgNode[];
     }
 
     const buildOrgChart = (): OrgNode[] => {
-      const employeeMap = new Map<number, OrgNode>();
+      const employeeMap = new Map<string, OrgNode>();
       employees.forEach(e => {
         employeeMap.set(e.id, {
           id: e.id,
@@ -216,7 +216,7 @@ server.registerPrompt(
   async ({ team_id }) => {
     const team = await getTeam(Number(team_id));
     const members = team.employee_ids || [];
-    const employeeDetails = await Promise.all(members.map(id => getEmployee(id)));
+    const employeeDetails = await Promise.all(members.map(id => getEmployee(Number(id))));
 
     return {
       messages: [

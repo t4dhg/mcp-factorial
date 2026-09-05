@@ -28,7 +28,7 @@
         },
         {
           "name": "FACTORIAL_API_VERSION",
-          "description": "API version (default: 2025-10-01)",
+          "description": "API version (default: 2026-07-01)",
           "isRequired": false,
           "isSecret": false
         },

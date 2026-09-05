@@ -6,6 +6,20 @@ import { z } from 'zod';
 import { SchemaValidationError } from '../errors.js';
 
 /**
+ * Resource identifier.
+ *
+ * Since API version 2026-07-01 every `id` and `*_id` field is serialised as a
+ * string, in responses as well as in request parameters and webhook payloads,
+ * because identifiers have outgrown the range a JSON number can carry without
+ * precision loss. Records created before the migration keep their old value
+ * with the new type (3243 becomes "3243"); new records get large values.
+ * Treat identifiers as opaque strings: never parse them, compare them
+ * numerically or do arithmetic on them.
+ * See https://apidoc.factorialhr.com/changelog/string-migration-of-resource-identifiers
+ */
+export const resourceId = z.string();
+
+/**
  * Date string pattern (YYYY-MM-DD)
  */
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;

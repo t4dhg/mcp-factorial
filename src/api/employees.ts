@@ -39,7 +39,7 @@ export async function listEmployees(
     // Note: team_id filtering requires fetching teams separately (not on Employee object)
     // TODO: Implement team filtering via teams endpoint if needed
     if (options.location_id) {
-      filtered = filtered.filter(e => e.location_id === options.location_id);
+      filtered = filtered.filter(e => e.location_id === String(options.location_id));
     }
 
     return sliceForPagination(filtered, params);
@@ -93,7 +93,7 @@ export async function getEmployee(id: number): Promise<Employee> {
     CACHE_TTL.employees
   );
 
-  const employee = allEmployees.find(emp => emp.id === id);
+  const employee = allEmployees.find(emp => emp.id === String(id));
 
   if (!employee) {
     throw new Error(`Employee with ID ${id} not found.`);

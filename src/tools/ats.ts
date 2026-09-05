@@ -177,9 +177,9 @@ export function registerAtsTool(server: McpServer) {
             });
             const summary = result.data.map(a => ({
               id: a.id,
-              job_posting_id: a.job_posting_id,
-              candidate_id: a.candidate_id,
-              hiring_stage_id: a.hiring_stage_id,
+              ats_job_posting_id: a.ats_job_posting_id,
+              ats_candidate_id: a.ats_candidate_id,
+              ats_application_phase_id: a.ats_application_phase_id,
             }));
             return textResponse(
               `Found ${result.data.length} applications (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`

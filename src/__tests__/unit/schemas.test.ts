@@ -1,4 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import type { z } from 'zod';
+import employeesFixture from '../fixtures/employees.json' with { type: 'json' };
+import teamsFixture from '../fixtures/teams.json' with { type: 'json' };
+import locationsFixture from '../fixtures/locations.json' with { type: 'json' };
+import contractsFixture from '../fixtures/contracts.json' with { type: 'json' };
+import leaveTypesFixture from '../fixtures/leave-types.json' with { type: 'json' };
+import allowancesFixture from '../fixtures/allowances.json' with { type: 'json' };
 import {
   EmployeeSchema,
   TeamSchema,
@@ -20,70 +27,60 @@ import {
 } from '../../schemas.js';
 
 describe('Zod Schemas', () => {
-  describe('EmployeeSchema', () => {
-    it('should validate a complete employee object', () => {
-      const employee = {
-        id: 1,
-        first_name: 'John',
-        last_name: 'Doe',
-        full_name: 'John Doe',
-        email: 'john.doe@example.com',
-        birthday_on: '1990-01-15',
-        hired_on: '2023-03-01',
-        start_date: '2023-03-15',
-        terminated_on: null,
-        gender: 'male',
-        nationality: 'US',
-        manager_id: 5,
-        role: 'Engineer',
-        timeoff_manager_id: 5,
-        company_id: 1,
-        legal_entity_id: 1,
-        team_ids: [1, 2],
-        location_id: 3,
-        created_at: '2023-03-01T00:00:00Z',
-        updated_at: '2023-03-01T00:00:00Z',
-      };
+  // The fixtures are captured from live API 2026-07-01 responses (personal
+  // data replaced by placeholders), so parsing them is the schema-vs-reality
+  // check. Leave and Shift are excluded on purpose: their field sets are still
+  // the pre-2026 ones and are reworked with the attendance feature.
+  describe('fixtures captured from API 2026-07-01', () => {
+    const cases: Array<[string, z.ZodTypeAny, unknown[]]> = [
+      ['EmployeeSchema', EmployeeSchema, employeesFixture.data],
+      ['TeamSchema', TeamSchema, teamsFixture.data],
+      ['LocationSchema', LocationSchema, locationsFixture.data],
+      ['ContractSchema', ContractSchema, contractsFixture.data],
+      ['LeaveTypeSchema', LeaveTypeSchema, leaveTypesFixture.data],
+      ['AllowanceSchema', AllowanceSchema, allowancesFixture.data],
+    ];
 
-      const result = EmployeeSchema.safeParse(employee);
+    for (const [name, schema, records] of cases) {
+      it(`${name} accepts every fixture record`, () => {
+        expect(records.length).toBeGreaterThan(0);
+        for (const record of records) {
+          const result = schema.safeParse(record);
+          if (!result.success) {
+            throw new Error(`${name} rejected a fixture record: ${result.error.message}`);
+          }
+        }
+      });
+    }
+  });
+
+  describe('identifiers are strings since API 2026-07-01', () => {
+    it('should accept string identifiers', () => {
+      const result = TeamSchema.safeParse({ ...teamsFixture.data[0], id: '36893488147419100' });
       expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.id).toBe(1);
-        expect(result.data.full_name).toBe('John Doe');
+    });
+
+    it('should reject numeric identifiers', () => {
+      const schemas: Array<[z.ZodTypeAny, Record<string, unknown>]> = [
+        [EmployeeSchema, employeesFixture.data[0]],
+        [TeamSchema, teamsFixture.data[0]],
+        [LocationSchema, locationsFixture.data[0]],
+        [ContractSchema, contractsFixture.data[0]],
+        [LeaveTypeSchema, leaveTypesFixture.data[0]],
+        [AllowanceSchema, allowancesFixture.data[0]],
+      ];
+      for (const [schema, record] of schemas) {
+        expect(schema.safeParse({ ...record, id: 1 }).success).toBe(false);
       }
+      expect(LeaveSchema.safeParse({ ...leave, employee_id: 5 }).success).toBe(false);
+      expect(ShiftSchema.safeParse({ ...shift, id: 1 }).success).toBe(false);
     });
+  });
 
-    it('should validate employee with nullable fields as null', () => {
+  describe('EmployeeSchema', () => {
+    it('should accept a record with only the required fields', () => {
       const employee = {
-        id: 2,
-        first_name: null,
-        last_name: null,
-        full_name: null,
-        email: null,
-        birthday_on: null,
-        hired_on: null,
-        start_date: null,
-        terminated_on: null,
-        gender: null,
-        nationality: null,
-        manager_id: null,
-        role: null,
-        timeoff_manager_id: null,
-        company_id: null,
-        legal_entity_id: null,
-        team_ids: [],
-        location_id: null,
-        created_at: null,
-        updated_at: null,
-      };
-
-      const result = EmployeeSchema.safeParse(employee);
-      expect(result.success).toBe(true);
-    });
-
-    it('should accept optional fields', () => {
-      const employee = {
-        id: 3,
+        id: '3',
         first_name: 'Jane',
         last_name: 'Doe',
         full_name: 'Jane Doe',
@@ -117,25 +114,9 @@ describe('Zod Schemas', () => {
   });
 
   describe('TeamSchema', () => {
-    it('should validate a team object', () => {
-      const team = {
-        id: 1,
-        name: 'Engineering',
-        description: 'Engineering team',
-        company_id: 1,
-        employee_ids: [1, 2, 3],
-        lead_ids: [1],
-        created_at: '2023-01-01T00:00:00Z',
-        updated_at: '2023-01-01T00:00:00Z',
-      };
-
-      const result = TeamSchema.safeParse(team);
-      expect(result.success).toBe(true);
-    });
-
     it('should require name field', () => {
       const team = {
-        id: 1,
+        id: '1',
         description: 'Missing name',
       };
 
@@ -145,12 +126,10 @@ describe('Zod Schemas', () => {
 
     it('should default employee_ids and lead_ids to empty arrays', () => {
       const team = {
-        id: 1,
+        id: '1',
         name: 'Minimal Team',
         description: null,
         company_id: null,
-        created_at: null,
-        updated_at: null,
       };
 
       const result = TeamSchema.safeParse(team);
@@ -162,212 +141,167 @@ describe('Zod Schemas', () => {
     });
   });
 
-  describe('LocationSchema', () => {
-    it('should validate a location object', () => {
-      const location = {
-        id: 1,
-        name: 'New York Office',
-        country: 'US',
-        phone_number: '+1-555-0100',
-        state: 'NY',
-        city: 'New York',
-        address_line_1: '123 Broadway',
-        address_line_2: 'Floor 5',
-        postal_code: '10001',
-        company_id: 1,
-        created_at: '2023-01-01T00:00:00Z',
-        updated_at: '2023-01-01T00:00:00Z',
-      };
-
-      const result = LocationSchema.safeParse(location);
-      expect(result.success).toBe(true);
-    });
-  });
+  const leave = {
+    id: '1',
+    employee_id: '5',
+    leave_type_id: '2',
+    start_on: '2024-01-15',
+    finish_on: '2024-01-20',
+    half_day: 'all_day',
+    status: 'pending',
+    description: 'Vacation',
+    deleted_at: null,
+    duration_attributes: { days: 5, hours: 40 },
+    days_taken: 5,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  };
 
   describe('LeaveSchema', () => {
     it('should validate a leave request', () => {
-      const leave = {
-        id: 1,
-        employee_id: 5,
-        leave_type_id: 2,
-        start_on: '2024-01-15',
-        finish_on: '2024-01-20',
-        half_day: 'all_day',
-        status: 'pending',
-        description: 'Vacation',
-        deleted_at: null,
-        duration_attributes: { days: 5, hours: 40 },
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      };
-
       const result = LeaveSchema.safeParse(leave);
       expect(result.success).toBe(true);
+    });
+
+    it('should accept a record without days_taken (pre-2026-01-01 shape)', () => {
+      const { days_taken: _omitted, ...withoutDaysTaken } = leave;
+      expect(LeaveSchema.safeParse(withoutDaysTaken).success).toBe(true);
     });
 
     it('should validate leave status enum', () => {
       const validStatuses = ['pending', 'approved', 'declined'];
 
       for (const status of validStatuses) {
-        const leave = {
-          id: 1,
-          employee_id: 5,
-          leave_type_id: 2,
-          start_on: '2024-01-15',
-          finish_on: '2024-01-20',
-          half_day: null,
-          status,
-          description: null,
-          deleted_at: null,
-          duration_attributes: null,
-          created_at: null,
-          updated_at: null,
-        };
-
-        const result = LeaveSchema.safeParse(leave);
+        const result = LeaveSchema.safeParse({ ...leave, status });
         expect(result.success).toBe(true);
       }
     });
 
     it('should reject invalid status', () => {
-      const leave = {
-        id: 1,
-        employee_id: 5,
-        leave_type_id: 2,
-        start_on: '2024-01-15',
-        finish_on: '2024-01-20',
-        half_day: null,
-        status: 'invalid_status',
-        description: null,
-        deleted_at: null,
-        duration_attributes: null,
-        created_at: null,
-        updated_at: null,
-      };
-
-      const result = LeaveSchema.safeParse(leave);
+      const result = LeaveSchema.safeParse({ ...leave, status: 'invalid_status' });
       expect(result.success).toBe(false);
     });
   });
 
+  const shift = {
+    id: '1',
+    employee_id: '5',
+    clock_in: '2024-01-15T09:00:00Z',
+    clock_out: '2024-01-15T17:00:00Z',
+    worked_hours: 8,
+    break_minutes: 30,
+    location: 'Office',
+    notes: 'Regular day',
+    created_at: '2024-01-15T09:00:00Z',
+    updated_at: '2024-01-15T17:00:00Z',
+  };
+
   describe('ShiftSchema', () => {
     it('should validate a shift record', () => {
-      const shift = {
-        id: 1,
-        employee_id: 5,
-        clock_in: '2024-01-15T09:00:00Z',
-        clock_out: '2024-01-15T17:00:00Z',
-        worked_hours: 8,
-        break_minutes: 30,
-        location: 'Office',
-        notes: 'Regular day',
-        created_at: '2024-01-15T09:00:00Z',
-        updated_at: '2024-01-15T17:00:00Z',
-      };
-
       const result = ShiftSchema.safeParse(shift);
       expect(result.success).toBe(true);
     });
 
     it('should allow null clock_out for ongoing shifts', () => {
-      const shift = {
-        id: 1,
-        employee_id: 5,
-        clock_in: '2024-01-15T09:00:00Z',
+      const result = ShiftSchema.safeParse({
+        ...shift,
         clock_out: null,
         worked_hours: null,
         break_minutes: null,
         location: null,
         notes: null,
-        created_at: null,
-        updated_at: null,
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('FolderSchema', () => {
+    it('should validate a folder object', () => {
+      const folder = {
+        id: '10',
+        name: 'Payslips',
+        parent_folder_id: null,
+        company_id: '1',
+        active: true,
+        space: 'employee_my_documents',
       };
 
-      const result = ShiftSchema.safeParse(shift);
+      const result = FolderSchema.safeParse(folder);
       expect(result.success).toBe(true);
     });
   });
 
   describe('DocumentSchema', () => {
-    it('should validate a document object', () => {
-      const doc = {
-        id: 1,
-        name: 'Employment Contract.pdf',
-        folder_id: 10,
-        employee_id: 5,
-        author_id: 1,
-        company_id: 1,
-        public: false,
-        space: 'hr',
-        file_url: 'https://example.com/files/contract.pdf',
-        mime_type: 'application/pdf',
-        size_bytes: 1024000,
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      };
+    const doc = {
+      id: '1',
+      filename: 'Employment Contract.pdf',
+      extension: 'pdf',
+      content_type: 'application/pdf',
+      file_size: 1024000,
+      folder_id: '10',
+      employee_id: '5',
+      author_id: '1',
+      company_id: '1',
+      leave_id: null,
+      public: false,
+      space: 'employee_my_documents',
+      is_company_document: false,
+      is_management_document: false,
+      is_pending_assignment: false,
+      signature_status: 'completed',
+      signees: ['5'],
+      deleted_at: null,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    };
 
+    it('should validate a document object', () => {
       const result = DocumentSchema.safeParse(doc);
       expect(result.success).toBe(true);
     });
 
     it('should default public to false', () => {
-      const doc = {
-        id: 1,
-        name: 'Document.pdf',
-        folder_id: null,
-        employee_id: null,
-        author_id: null,
-        company_id: null,
-        space: null,
-        file_url: null,
-        mime_type: null,
-        size_bytes: null,
-        created_at: null,
-        updated_at: null,
-      };
-
-      const result = DocumentSchema.safeParse(doc);
+      const { public: _omitted, ...withoutPublic } = doc;
+      const result = DocumentSchema.safeParse(withoutPublic);
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.public).toBe(false);
       }
     });
-  });
 
-  describe('ContractSchema', () => {
-    it('should validate a contract', () => {
-      const contract = {
-        id: 1,
-        employee_id: 5,
-        job_title: 'Senior Engineer',
-        effective_on: '2024-01-01',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-      };
-
-      const result = ContractSchema.safeParse(contract);
-      expect(result.success).toBe(true);
+    it('should reject the pre-2026 field names', () => {
+      const legacy = { ...doc, name: doc.filename, mime_type: doc.content_type };
+      const { filename: _f, ...withoutFilename } = legacy;
+      expect(DocumentSchema.safeParse(withoutFilename).success).toBe(false);
     });
   });
 
-  describe('AllowanceSchema', () => {
-    it('should validate an allowance', () => {
-      const allowance = {
-        id: 1,
-        employee_id: 5,
-        leave_type_id: 2,
-        policy_id: 1,
-        balance_days: 20,
-        consumed_days: 5,
-        available_days: 15,
-        valid_from: '2024-01-01',
-        valid_to: '2024-12-31',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
+  describe('JobRoleSchema and JobLevelSchema', () => {
+    it('should validate a job role', () => {
+      const role = {
+        id: '425573',
+        company_id: '1',
+        name: 'Customer Success Specialist',
+        description: '',
+        archived: false,
+        legal_entities_ids: ['1'],
+        supervisors_ids: ['5'],
+        competencies_ids: [],
       };
+      expect(JobRoleSchema.safeParse(role).success).toBe(true);
+    });
 
-      const result = AllowanceSchema.safeParse(allowance);
-      expect(result.success).toBe(true);
+    it('should validate a job level', () => {
+      const level = {
+        id: '795352',
+        role_id: '425573',
+        name: '__default__',
+        role_name: 'Customer Success Specialist',
+        order: 0,
+        archived: false,
+        is_default: true,
+      };
+      expect(JobLevelSchema.safeParse(level).success).toBe(true);
     });
   });
 });

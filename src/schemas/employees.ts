@@ -3,15 +3,18 @@
  */
 
 import { z } from 'zod';
-import { dateString } from './shared.js';
+import { dateString, resourceId } from './shared.js';
 
 /**
  * Employee schema
+ *
+ * Field set verified against live /employees/employees responses on API
+ * version 2026-07-01.
  */
 export const EmployeeSchema = z.object({
   // Core identity
-  id: z.number(),
-  access_id: z.number().nullable().optional(),
+  id: resourceId,
+  access_id: resourceId.nullable().optional(),
   first_name: z.string().nullable(),
   last_name: z.string().nullable(),
   full_name: z.string().nullable(),
@@ -29,6 +32,9 @@ export const EmployeeSchema = z.object({
   // Contact
   email: z.string().nullable(),
   login_email: z.string().nullable().optional(),
+  // Added in API 2026-07-01: address for company communications, separate from login email
+  communications_email: z.string().nullable().optional(),
+  unconfirmed_communications_email: z.string().nullable().optional(),
   phone_number: z.string().nullable().optional(),
   personal_email: z.string().nullable().optional(),
 
@@ -54,11 +60,13 @@ export const EmployeeSchema = z.object({
   bank_number_format: z.string().nullable().optional(),
 
   // Organization
-  company_id: z.number().nullable(),
-  legal_entity_id: z.number().nullable(),
-  location_id: z.number().nullable(),
-  manager_id: z.number().nullable(),
-  timeoff_manager_id: z.number().nullable(),
+  company_id: resourceId.nullable(),
+  legal_entity_id: resourceId.nullable(),
+  location_id: resourceId.nullable(),
+  // Added in API 2026-04-01: default work area at the default workplace (locations/work_areas)
+  default_work_area_id: resourceId.nullable().optional(),
+  manager_id: resourceId.nullable(),
+  timeoff_manager_id: resourceId.nullable(),
   company_identifier: z.string().nullable().optional(),
 
   // Employment status
@@ -87,25 +95,30 @@ export type Employee = z.infer<typeof EmployeeSchema>;
 
 /**
  * Team schema
+ *
+ * Field set verified against live /teams/teams responses on API version
+ * 2026-07-01. Teams carry no timestamps.
  */
 export const TeamSchema = z.object({
-  id: z.number(),
+  id: resourceId,
   name: z.string(),
   description: z.string().nullable(),
-  company_id: z.number().nullable(),
-  employee_ids: z.array(z.number()).default([]),
-  lead_ids: z.array(z.number()).default([]),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  avatar: z.string().nullable().optional(),
+  company_id: resourceId.nullable(),
+  employee_ids: z.array(resourceId).default([]),
+  lead_ids: z.array(resourceId).default([]),
 });
 
 export type Team = z.infer<typeof TeamSchema>;
 
 /**
  * Location schema
+ *
+ * Field set verified against live /locations/locations responses on API
+ * version 2026-07-01. Locations carry no timestamps.
  */
 export const LocationSchema = z.object({
-  id: z.number(),
+  id: resourceId,
   name: z.string(),
   country: z.string().nullable(),
   phone_number: z.string().nullable(),
@@ -114,9 +127,13 @@ export const LocationSchema = z.object({
   address_line_1: z.string().nullable(),
   address_line_2: z.string().nullable(),
   postal_code: z.string().nullable(),
-  company_id: z.number().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
+  timezone: z.string().nullable().optional(),
+  main: z.boolean().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  radius: z.number().nullable().optional(),
+  siret: z.string().nullable().optional(),
+  company_id: resourceId.nullable(),
 });
 
 export type Location = z.infer<typeof LocationSchema>;
@@ -124,14 +141,21 @@ export type Location = z.infer<typeof LocationSchema>;
 /**
  * Contract schema
  *
- * Extended to include salary, job catalog, and compensation fields
- * available in the /contracts/contract-versions endpoint.
+ * Field set verified against live /contracts/contract-versions responses on
+ * API version 2026-07-01. The endpoint returns many more country-specific
+ * fields (es_*, fr_*, de_*, pt_*) that are not modelled here.
  */
 export const ContractSchema = z.object({
-  id: z.number(),
-  employee_id: z.number(),
+  id: resourceId,
+  company_id: resourceId.optional(),
+  employee_id: resourceId,
+  // Removed from the contract DTO in API 2026-04-01 in favour of the job
+  // catalog tree; the key is still returned, always null.
   job_title: z.string().nullable(),
   effective_on: z.string().nullable(),
+  starts_on: z.string().nullable().optional(),
+  ends_on: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
 
   // Salary and compensation fields
   salary_amount: z.number().nullable().optional(),
@@ -141,15 +165,27 @@ export const ContractSchema = z.object({
     .optional(),
   working_hours: z.number().nullable().optional(),
   working_hours_frequency: z.enum(['day', 'week', 'month', 'year']).nullable().optional(),
+  working_week_days: z.string().nullable().optional(),
+  working_time_percentage_in_cents: z.number().nullable().optional(),
+  bank_holiday_treatment: z.enum(['workable', 'non_workable']).nullable().optional(),
+  has_payroll: z.boolean().optional(),
+  has_trial_period: z.boolean().optional(),
+  trial_period_ends_on: z.string().nullable().optional(),
 
   // Job catalog references
-  job_catalog_level_id: z.number().nullable().optional(),
-  job_catalog_role_id: z.number().nullable().optional(),
+  // Removed from the DTO in API 2026-04-01; the key is still returned, always null.
+  job_catalog_level_id: resourceId.nullable().optional(),
+  // Never returned by the API on either version. Kept only because
+  // listEmployeesByJobRole() still reads it; see the changelog for 9.0.0.
+  job_catalog_role_id: resourceId.nullable().optional(),
+  // Added in API 2026-01-01: level node in the job catalog tree (job_catalog/tree_nodes)
+  job_catalog_tree_node_uuid: z.string().nullable().optional(),
 
-  // Contract type and status
-  contract_type: z.string().nullable().optional(),
-  trial_period_ends_on: z.string().nullable().optional(),
-  ends_on: z.string().nullable().optional(),
+  // Added in API 2026-04-01: German base salary payroll concept
+  de_base_salary_type_id: resourceId.nullable().optional(),
+
+  // Added in API 2026-07-01: country-specific template fragments and fields
+  version_data: z.record(z.string(), z.unknown()).nullable().optional(),
 
   // Working time distribution (added in API 2025-07-01)
   annual_working_time_distribution: z.string().nullable().optional(),
@@ -166,8 +202,8 @@ export type Contract = z.infer<typeof ContractSchema>;
  * Returns minimal fields to reduce response size
  */
 export const ContractSummarySchema = z.object({
-  id: z.number(),
-  employee_id: z.number(),
+  id: resourceId,
+  employee_id: resourceId,
   job_title: z.string().nullable(),
   effective_on: z.string().nullable(),
 });
