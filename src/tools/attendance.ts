@@ -42,7 +42,13 @@ import {
   planFingerprint,
 } from '../attendance/planner.js';
 import type { PlanRequest, PlannedWrite } from '../attendance/planner.js';
-import { executeBackfill, findGaps, planBackfill, requestWindow } from '../attendance/backfill.js';
+import {
+  buildLedger,
+  executeBackfill,
+  findGaps,
+  planBackfill,
+  requestWindow,
+} from '../attendance/backfill.js';
 import {
   getConfiguredEmployeeId,
   resolveEmployeeName,
@@ -91,6 +97,7 @@ export function registerAttendanceTool(server: McpServer) {
             'clock_out',
             'status',
             'gaps',
+            'audit',
             'log_range',
             'log_days',
           ])
@@ -141,6 +148,28 @@ export function registerAttendanceTool(server: McpServer) {
           .optional()
           .default(true)
           .describe('Skip days covered by approved leave (default true)'),
+        jitter_minutes: z
+          .number()
+          .int()
+          .min(0)
+          .max(30)
+          .optional()
+          .default(0)
+          .describe(
+            'log_range/log_days: vary each written time by up to this many minutes so a month of ' +
+              'entries does not all read 09:00 exactly. Recommended 5 to 10 when reconstructing ' +
+              'approximate hours. Deterministic per record; the preview lists the exact times.'
+          ),
+        tolerance_minutes: z
+          .number()
+          .int()
+          .min(0)
+          .max(120)
+          .optional()
+          .default(15)
+          .describe(
+            'gaps/audit: a day within this many minutes of the expected total counts as complete (default 15)'
+          ),
         confirmation_token: z
           .string()
           .optional()
@@ -335,7 +364,12 @@ export function registerAttendanceTool(server: McpServer) {
             }
             const employeeId = resolveTargetEmployeeId(args.employee_id);
             const name = await resolveEmployeeName(employeeId);
-            const gaps = await findGaps(employeeId, args.start_on, args.end_on);
+            const gaps = await findGaps(
+              employeeId,
+              args.start_on,
+              args.end_on,
+              args.tolerance_minutes
+            );
             if (gaps.length === 0) {
               return textResponse(
                 `No gaps for ${name} (${employeeId}) between ${args.start_on} and ${args.end_on}: ` +
@@ -352,6 +386,42 @@ export function registerAttendanceTool(server: McpServer) {
               `${gaps.length} days with missing hours for ${name} (${employeeId}), ${hours(total)} in total:\n\n` +
                 `${rows.join('\n')}\n\nWeekends, bank holidays and full-day leave are excluded. ` +
                 'Use log_range with the same dates and your daily segments to fill them.'
+            );
+          }
+
+          case 'audit': {
+            if (!args.start_on || !args.end_on) {
+              return textResponse('Error: start_on and end_on (YYYY-MM-DD) are required');
+            }
+            const employeeId = resolveTargetEmployeeId(args.employee_id);
+            const name = await resolveEmployeeName(employeeId);
+            const ledger = await buildLedger(
+              employeeId,
+              args.start_on,
+              args.end_on,
+              args.tolerance_minutes
+            );
+            const counts = new Map<string, number>();
+            for (const day of ledger) counts.set(day.status, (counts.get(day.status) ?? 0) + 1);
+            const expected = ledger.reduce((sum, d) => sum + d.expected_minutes, 0);
+            const tracked = ledger.reduce((sum, d) => sum + d.tracked_minutes, 0);
+            const rows = ledger.map(d => {
+              const shifts = d.shifts.length
+                ? d.shifts.map(sh => `${sh.clock_in}-${sh.clock_out ?? 'open'}`).join(' ')
+                : '-';
+              const leave = d.leave ? `  leave:${d.leave}` : '';
+              return `  ${d.date}  ${(d.day_type ?? 'unknown').padEnd(12)} ${d.status.padEnd(14)} expected ${hours(d.expected_minutes).padEnd(6)} tracked ${hours(d.tracked_minutes).padEnd(6)} ${shifts}${leave}`;
+            });
+            const summary = [...counts.entries()].map(([k, v]) => `${v} ${k}`).join(', ');
+            return textResponse(
+              `Attendance audit for ${name} (${employeeId}), ${args.start_on} to ${args.end_on}\n` +
+                `Expected ${hours(expected)} across the range, tracked ${hours(tracked)}; days: ${summary}.\n` +
+                'Expected comes from the contract pattern; day type and bank holidays from the company ' +
+                'calendar in Factorial; leave from approved timeoff records. Times are HH:MM company local. ' +
+                `A day within ${args.tolerance_minutes} minutes of its expected total counts as complete.\n\n` +
+                `${rows.join('\n')}\n\n` +
+                'Machine-readable ledger:\n' +
+                JSON.stringify(ledger)
             );
           }
 
@@ -375,6 +445,7 @@ export function registerAttendanceTool(server: McpServer) {
                 dates: enumerateDates(args.start_on, args.end_on),
                 segments: args.segments,
                 skip_leave: args.skip_leave,
+                jitter_minutes: args.jitter_minutes,
               };
             } else {
               if (!args.days || args.days.length === 0) {
@@ -385,6 +456,7 @@ export function registerAttendanceTool(server: McpServer) {
                 employee_id: employeeId,
                 days: args.days,
                 skip_leave: args.skip_leave,
+                jitter_minutes: args.jitter_minutes,
               };
             }
             const window = requestWindow(request);

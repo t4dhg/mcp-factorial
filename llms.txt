@@ -34,10 +34,11 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 - list_leaves, get_leave, list_leave_types, get_leave_type, list_allowances
 - create_leave, update_leave, cancel_leave, approve_leave, reject_leave
 
-### Attendance (11 actions, registro horario)
+### Attendance (12 actions, registro horario)
 - list, get, create, update, delete (shift records; list needs start_on/end_on, paging is client-side)
 - clock_in, clock_out, status (live clocking; FACTORIAL_EMPLOYEE_ID supplies the default employee)
-- gaps (workdays with missing hours), log_range (daily pattern over a range), log_days (explicit days)
+- gaps (workdays with missing hours), audit (day-by-day ledger of expected vs tracked, with statuses and JSON), log_range (daily pattern over a range), log_days (explicit days)
+- jitter_minutes on log_range/log_days varies each written time deterministically so a month does not read 09:00 on every line
 - Bulk writes and writes for another person return a preview plus a confirmation_token first; repeat the call with the token to write
 
 ### Projects (17 tools)

@@ -57,6 +57,7 @@ export const CATEGORIES = {
       'clock_out',
       'status',
       'gaps',
+      'audit',
       'log_range',
       'log_days',
     ],

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   buildBackfillPlan,
   computeGaps,
+  computeLedger,
+  jitterSegments,
   enumerateDates,
   expandLeaves,
   intervalsOverlap,
@@ -399,6 +401,11 @@ describe('computeGaps', () => {
       expected_minutes: 240,
       tracked_minutes: 0,
     });
+    facts.days.set('2026-12-21', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 232,
+    });
     facts.days.set('2026-12-29', {
       day_type: 'workday',
       expected_minutes: 240,
@@ -414,5 +421,106 @@ describe('computeGaps', () => {
         half_day_leave: 'end_of_day',
       },
     ]);
+  });
+});
+
+describe('jitterSegments', () => {
+  const pattern = [
+    { clock_in: '09:00', clock_out: '14:00' },
+    { clock_in: '15:00', clock_out: '18:00' },
+  ];
+
+  it('returns the pattern untouched when the magnitude is zero', () => {
+    expect(jitterSegments(2, '2026-12-28', pattern, 0)).toEqual(pattern);
+  });
+
+  it('is deterministic per employee, date and segment, and stays within the magnitude', () => {
+    const a = jitterSegments(2, '2026-12-28', pattern, 7);
+    const b = jitterSegments(2, '2026-12-28', pattern, 7);
+    expect(a).toEqual(b);
+    expect(jitterSegments(2, '2026-12-29', pattern, 7)).not.toEqual(a);
+    expect(jitterSegments(3, '2026-12-28', pattern, 7)).not.toEqual(a);
+    a.forEach((segment, i) => {
+      expect(
+        Math.abs(parseHHMM(segment.clock_in) - parseHHMM(pattern[i].clock_in))
+      ).toBeLessThanOrEqual(7);
+      expect(
+        Math.abs(parseHHMM(segment.clock_out) - parseHHMM(pattern[i].clock_out))
+      ).toBeLessThanOrEqual(7);
+      expect(parseHHMM(segment.clock_in)).toBeLessThan(parseHHMM(segment.clock_out));
+    });
+  });
+
+  it('actually varies the times across a month', () => {
+    const starts = new Set(
+      enumerateDates('2026-03-02', '2026-03-31').map(
+        d => jitterSegments(2, d, pattern, 10)[0].clock_in
+      )
+    );
+    expect(starts.size).toBeGreaterThan(5);
+  });
+
+  it('never lets touching segments cross each other or midnight', () => {
+    const touching = [
+      { clock_in: '09:00', clock_out: '14:00' },
+      { clock_in: '14:00', clock_out: '23:58' },
+    ];
+    for (const date of enumerateDates('2026-03-02', '2026-03-31')) {
+      const [first, second] = jitterSegments(2, date, touching, 15);
+      expect(parseHHMM(first.clock_out)).toBeLessThanOrEqual(parseHHMM(second.clock_in));
+      expect(parseHHMM(second.clock_out)).toBeLessThanOrEqual(23 * 60 + 59);
+      expect(parseHHMM(first.clock_in)).toBeLessThan(parseHHMM(first.clock_out));
+      expect(parseHHMM(second.clock_in)).toBeLessThan(parseHHMM(second.clock_out));
+    }
+  });
+
+  it('keeps the plan fingerprint stable across a re-plan, so the token still matches', () => {
+    const request = rangeRequest({ segments: pattern, jitter_minutes: 8 });
+    const first = buildBackfillPlan(request, decemberFacts());
+    const second = buildBackfillPlan(request, decemberFacts());
+    expect(first.writes).toEqual(second.writes);
+    expect(first.writes[0].clock_in).not.toBe('09:00');
+    expect(planFingerprint(2, first.writes)).toBe(planFingerprint(2, second.writes));
+  });
+
+  it('recognises its own jittered writes on a retry', () => {
+    const request = rangeRequest({ segments: pattern, jitter_minutes: 8 });
+    const first = buildBackfillPlan(request, decemberFacts());
+    const rerun = buildBackfillPlan(request, decemberFacts({ shifts: first.writes.slice(0, 3) }));
+    expect(rerun.writes).toEqual(first.writes.slice(3));
+  });
+
+  it('builds a ledger with one status per day, tolerating small deviations', () => {
+    const facts = decemberFacts({
+      today: '2026-12-30',
+      shifts: [
+        { date: '2026-12-28', clock_in: '09:03', clock_out: '13:07' },
+        { date: '2026-12-29', clock_in: '08:00', clock_out: '13:30' },
+      ],
+      leaves: new Map([['2026-12-30', 'end_of_day' as const]]),
+    });
+    facts.days.set('2026-12-28', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 244,
+    });
+    facts.days.set('2026-12-29', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 330,
+    });
+    const ledger = computeLedger(enumerateDates('2026-12-25', '2026-12-31'), facts);
+    expect(ledger.map(d => `${d.date}:${d.status}`)).toEqual([
+      '2026-12-25:bank_holiday',
+      '2026-12-26:weekend',
+      '2026-12-27:weekend',
+      '2026-12-28:complete',
+      '2026-12-29:over',
+      '2026-12-30:half_day_leave',
+      '2026-12-31:future',
+    ]);
+    expect(ledger[3].shifts).toEqual([{ clock_in: '09:03', clock_out: '13:07', minutes: 244 }]);
+    expect(ledger[3].delta_minutes).toBe(4);
+    expect(computeLedger(['2026-12-28'], facts, 0)[0].status).toBe('over');
   });
 });
