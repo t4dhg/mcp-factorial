@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Single-record and write responses are read correctly.** `GET /{resource}/{id}` and every `POST`, `PUT` and `PATCH` return the record at the top level; only list endpoints wrap their payload in `data`. The client unwrapped `data` for every response, so `fetchOne`, `postOne`, `putOne`, `patchOne` and `postAction` returned `undefined`: every write tool printed `undefined` as the created or updated record, and `get_employee` and the document lookup only worked through their list-and-filter fallbacks. The helpers now return the record as sent and still accept a `{ data: record }` envelope. Verified live on 2026-09-06 against `/employees/employees/{id}` and `/teams/teams/{id}`.
+
 ## [9.0.0] - 2026-09-06
 
 ### Changed
@@ -50,7 +56,7 @@ The API-first re-verification of every schema against live `2026-07-01` response
 
 ### Known gaps found during verification and deliberately not fixed here
 
-- **Single-record and write responses are not wrapped in `data`.** On both versions, `GET /{resource}/{id}` and every `POST`/`PUT`/`PATCH` return the record at the top level; only list endpoints wrap it as `{ data: [...], meta: {...} }`. The 2026-07-01 reference says the same. `fetchOne`, `postOne`, `putOne`, `patchOne` and `postAction` all return `response.data`, so they return `undefined`, which is what the "individual endpoint is unreliable" fallbacks in `getEmployee` and `getDocument` have been compensating for, and why write tools print `undefined` as the created record. Unrelated to the version bump and not changed here; it needs its own fix and test update.
+- **Single-record and write responses are not wrapped in `data`.** On both versions, `GET /{resource}/{id}` and every `POST`/`PUT`/`PATCH` return the record at the top level; only list endpoints wrap it as `{ data: [...], meta: {...} }`. The 2026-07-01 reference says the same. `fetchOne`, `postOne`, `putOne`, `patchOne` and `postAction` all return `response.data`, so they return `undefined`, which is what the "individual endpoint is unreliable" fallbacks in `getEmployee` and `getDocument` have been compensating for, and why write tools print `undefined` as the created record. Unrelated to the version bump and not changed here; it needs its own fix and test update. Fixed in 9.0.1.
 - **Leave approve and reject paths.** The API exposes `POST /timeoff/leaves/approve` and `/reject` with the leave `id` in the body; the server posts to `/timeoff/leaves/{id}/approve`, which the reference does not list. Same on both versions.
 - **Document downloads are pinned to API `2025-01-01`** (`download-urls/bulk-create` with `document_ids`), a version that is past its one-year support window. The `2026-07-01` reference has `documents/download_urls/bulk_create` taking `ids: string[]`. That pinned request keeps sending numeric identifiers, exactly as before this release, since it predates the string migration and bypasses `factorialRequest`; a test pins the wire format.
 - `LeaveSchema` and `ShiftSchema` still describe the pre-2026 shapes. Live leaves have no `status` field but an `approved` boolean that is `null` while pending, `half_day` is `null`, `beggining_of_day` (Factorial's spelling) or `end_of_day`, and `duration_attributes` is `null`; live shifts have `date`, `reference_date`, `minutes`, `observations`, `workable`, `workplace_id`, `location_type` and the geolocation fields instead of `worked_hours`, `break_minutes`, `location` and `notes`. Both are reworked with the attendance feature.
