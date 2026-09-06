@@ -40,6 +40,7 @@ import { registerTrainingTool } from './training.js';
 import { registerWorkAreasTool } from './work-areas.js';
 import { registerAtsTool } from './ats.js';
 import { registerPayrollTool } from './payroll.js';
+import { registerAttendancePrompts, GUIDE_URI } from '../prompts/attendance.js';
 
 // Create server instance
 const server = new McpServer({
@@ -84,7 +85,7 @@ server.registerTool(
       .join('\n');
 
     return textResponse(
-      `# FactorialHR Tool Categories\n\nUse \`factorial_discover(category: "name")\` for action details.\n\n${categoryList}\n\n**Total: 14 tools covering 117 operations**`
+      `# FactorialHR Tool Categories\n\nUse \`factorial_discover(category: "name")\` for action details.\n\n${categoryList}\n\n**Total: 14 tools covering 117 operations**\n\nFor the registro horario (attendance record) workflows, read the guide resource ${GUIDE_URI} or use the prompts attendance_audit, attendance_fill and attendance_today.`
     );
   }
 );
@@ -258,6 +259,9 @@ server.registerPrompt(
     };
   }
 );
+
+// Attendance (registro horario): three prompts and the guide resource
+registerAttendancePrompts(server);
 
 // ============================================================================
 // Start Server

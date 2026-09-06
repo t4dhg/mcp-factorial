@@ -138,26 +138,34 @@ Every `gaps`, `audit` and bulk-write preview starts with a `Data read` line: how
 
 **Auditing a month.** Run `audit` for the range first. A day within `tolerance_minutes` (default 15) of its expected total counts as `complete`, so realistic clock-ins and jittered backfills do not read as shortfalls. Compare the ledger with what you know locally (your calendar, another time-tracking system, days you actually worked on a holiday), then fix the differences: `log_range` or `log_days` for missing days, `delete` or `update` for wrong records, and `audit` again to confirm every workday reads `complete`.
 
+Three prompts wrap these workflows for the user, and a guide resource documents them for the model; see [5 MCP Prompts](#5-mcp-prompts) and `factorial://guides/registro-horario`.
+
 Set `FACTORIAL_EMPLOYEE_ID` to your own employee id so that `employee_id` can be omitted. Writes aimed at anyone else, and every bulk write, require a confirmation token; see [Safety & Security](#safety--security).
 
-### 5 MCP Resources
+### 6 MCP Resources
 
-| Resource URI                      | Description                                        |
-| --------------------------------- | -------------------------------------------------- |
-| `factorial://org-chart`           | Complete organizational hierarchy (Markdown)       |
-| `factorial://employees/directory` | Employee directory by team (Markdown)              |
-| `factorial://locations/directory` | Location directory with employee counts (Markdown) |
-| `factorial://timeoff/policies`    | All leave types and policies (JSON)                |
-| `factorial://teams/{team_id}`     | Team details with member list (JSON, templated)    |
+| Resource URI                          | Description                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------ |
+| `factorial://org-chart`               | Complete organizational hierarchy (Markdown)                                   |
+| `factorial://guides/registro-horario` | How to audit, fill and maintain a registro horario with this server (Markdown) |
+| `factorial://employees/directory`     | Employee directory by team (Markdown)                                          |
+| `factorial://locations/directory`     | Location directory with employee counts (Markdown)                             |
+| `factorial://timeoff/policies`        | All leave types and policies (JSON)                                            |
+| `factorial://teams/{team_id}`         | Team details with member list (JSON, templated)                                |
 
-### 4 MCP Prompts
+### 5 MCP Prompts
 
-| Prompt                  | Description                                                       |
-| ----------------------- | ----------------------------------------------------------------- |
-| `onboard-employee`      | Generate personalized onboarding checklists                       |
-| `analyze-org-structure` | Analyze org structure (reporting lines, team sizes, distribution) |
-| `timeoff-report`        | Generate time off reports by team or date range                   |
-| `team-document-summary` | Summarize documents across a team (certifications, payslips, etc) |
+Prompts are procedures the user invokes (in Claude Code they appear as `/mcp__factorial__<name>` slash commands). The attendance prompts pre-read the data the procedure starts from and state the exact tool calls that follow, so a small model can carry the workflow through. A prompt never writes anything itself; writes go through `factorial_attendance` and its confirmation gate.
+
+| Prompt             | Arguments                                                                                    | What it does                                                                                                                                                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `attendance_audit` | `start_on`, `end_on`, `employee_id` (all optional)                                           | Runs the audit (default: this month to today, `FACTORIAL_EMPLOYEE_ID`) and asks for a read-only report: expected vs tracked, missing and over days by month, data-coverage warnings.                     |
+| `attendance_fill`  | `segments` (required), `start_on`, `end_on`, `employee_id`, `observations`, `jitter_minutes` | Reads the gaps and hands over the exact `log_range` call with the parsed pattern, then the preview, human confirmation, token, retry and verification steps. `segments` is `"09:00-14:00, 15:00-18:00"`. |
+| `attendance_today` | `segments` (required), `employee_id`, `observations`, `jitter_minutes`                       | Reads today's status and decides: nothing on weekends, holidays, leave, open shifts or complete days; otherwise `log_days` for today, confirmed in the same session for the configured identity only.    |
+| `summarize_team`   | `team_id`                                                                                    | Team summary with members and roles.                                                                                                                                                                     |
+| `time_off_report`  | `employee_id`                                                                                | Time off report for an employee: allowances and recent leaves.                                                                                                                                           |
+
+**Running the daily record on a schedule.** MCP has no scheduler, so the schedule lives in the client. In Claude Code, `/schedule` creates a routine that invokes `attendance_today` with your pattern, and `/loop` repeats it while a session is open; any cron can run `claude -p` with the prompt as its input. The prompt writes only when today is a workday with nothing tracked, and only for the employee in `FACTORIAL_EMPLOYEE_ID`; it reports one line either way. The record it produces is a legal document of hours worked, so the pattern you schedule must be the hours you actually work, and the day you do not work needs a leave record or a manual correction.
 
 ### Architecture Features
 

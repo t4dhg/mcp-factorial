@@ -42,7 +42,8 @@ import {
   parseHHMM,
   planFingerprint,
 } from '../attendance/planner.js';
-import type { LedgerDay, PlanRequest, PlannedWrite } from '../attendance/planner.js';
+import type { PlanRequest, PlannedWrite } from '../attendance/planner.js';
+import { formatAudit, formatGaps } from '../attendance/report.js';
 import {
   buildLedger,
   executeBackfill,
@@ -83,17 +84,6 @@ function describeWrites(writes: PlannedWrite[]): string {
       ([month, e]) => `  ${month}  ${e.days.size} days, ${e.records} records, ${hours(e.minutes)}`
     )
     .join('\n');
-}
-
-/** Statuses an audit summary lists; the rest are counted in the header only */
-const QUIET_STATUSES = new Set<LedgerDay['status']>(['complete', 'weekend', 'future']);
-
-function ledgerRow(d: LedgerDay): string {
-  const shifts = d.shifts.length
-    ? d.shifts.map(sh => `${sh.clock_in}-${sh.clock_out ?? 'open'}`).join(' ')
-    : '-';
-  const leave = d.leave ? `  leave:${d.leave}` : '';
-  return `  ${d.date}  ${(d.day_type ?? '-').padEnd(12)} ${d.status.padEnd(16)} expected ${hours(d.expected_minutes).padEnd(6)} tracked ${hours(d.tracked_minutes).padEnd(6)} ${shifts}${leave}`;
 }
 
 function shiftLine(shift: {
@@ -408,24 +398,14 @@ export function registerAttendanceTool(server: McpServer) {
               args.end_on,
               args.tolerance_minutes
             );
-            if (gaps.length === 0) {
-              return textResponse(
-                `No gaps for ${name} (${employeeId}) between ${args.start_on} and ${args.end_on}: ` +
-                  'every workday not on leave has at least the expected minutes tracked.\n' +
-                  formatCoverage(coverage)
-              );
-            }
-            const rows = gaps.map(
-              g =>
-                `  ${g.date}  expected ${hours(g.expected_minutes)}  tracked ${hours(g.tracked_minutes)}  ` +
-                `missing ${hours(g.missing_minutes)}${g.half_day_leave ? `  (half-day leave: ${g.half_day_leave})` : ''}`
-            );
-            const total = gaps.reduce((sum, g) => sum + g.missing_minutes, 0);
             return textResponse(
-              `${gaps.length} days with missing hours for ${name} (${employeeId}), ${hours(total)} in total.\n` +
-                `${formatCoverage(coverage)}\n\n` +
-                `${rows.join('\n')}\n\nWeekends, bank holidays and full-day leave are excluded. ` +
-                'Use log_range with the same dates and your daily segments to fill them.'
+              formatGaps({
+                employee: { id: employeeId, name },
+                startOn: args.start_on,
+                endOn: args.end_on,
+                gaps,
+                coverage,
+              })
             );
           }
 
@@ -441,33 +421,16 @@ export function registerAttendanceTool(server: McpServer) {
               args.end_on,
               args.tolerance_minutes
             );
-            const counts = new Map<string, number>();
-            for (const day of ledger) counts.set(day.status, (counts.get(day.status) ?? 0) + 1);
-            const expected = ledger.reduce((sum, d) => sum + d.expected_minutes, 0);
-            const tracked = ledger.reduce((sum, d) => sum + d.tracked_minutes, 0);
-            const summary = [...counts.entries()].map(([k, v]) => `${v} ${k}`).join(', ');
-            const header =
-              `Attendance audit for ${name} (${employeeId}), ${args.start_on} to ${args.end_on}\n` +
-              `Expected ${hours(expected)} across the range, tracked ${hours(tracked)}; days: ${summary}.\n` +
-              `${formatCoverage(coverage)}\n` +
-              'Expected comes from the contract pattern; day type and bank holidays from the company ' +
-              'calendar in Factorial; leave from approved timeoff records. Times are HH:MM company local. ' +
-              `A day within ${args.tolerance_minutes} minutes of its expected total counts as complete.`;
-            if (args.format === 'json') {
-              return textResponse(
-                `${header}\n\nMachine-readable ledger:\n${JSON.stringify(ledger)}`
-              );
-            }
-            const listed =
-              args.format === 'table' ? ledger : ledger.filter(d => !QUIET_STATUSES.has(d.status));
-            const rows = listed.map(ledgerRow);
-            const footer =
-              args.format === 'table'
-                ? ''
-                : `\n\n${listed.length} of ${ledger.length} days listed; complete days, weekends and future dates are ` +
-                  'only counted above. Pass format: "table" for every day or format: "json" for the ledger.';
             return textResponse(
-              `${header}\n\n${rows.length > 0 ? rows.join('\n') : '  (nothing needs attention)'}${footer}`
+              formatAudit({
+                employee: { id: employeeId, name },
+                startOn: args.start_on,
+                endOn: args.end_on,
+                ledger,
+                coverage,
+                toleranceMinutes: args.tolerance_minutes,
+                format: args.format,
+              })
             );
           }
 

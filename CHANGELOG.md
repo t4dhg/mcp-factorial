@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Data read` line** at the top of `gaps`, `audit` and every `log_range` / `log_days` preview: how many days of the window have contract data, and how many leave and shift records were read. When days are uncovered it names the first and last and says the result must not be trusted unless they precede the start of employment.
 - **`format` on `audit`**: `summary` (default) lists only the days that need attention and counts the rest; `table` lists every day; `json` returns the full ledger. A 249-day audit no longer returns 56,000 characters by default.
 - **Per-month summary of written records** when a bulk write exceeds 62 records, instead of one line per record.
+- **Three attendance prompts**: `attendance_audit`, `attendance_fill` and `attendance_today`. Each pre-reads the data its procedure starts from (the audit, the gaps, today's ledger), fills in the exact `factorial_attendance` calls that follow, and spells out the decision rules and the confirmation steps, so that a small model can run the workflow without designing it. `segments` is given as `"09:00-14:00, 15:00-18:00"`. `attendance_today` is made for a daily routine scheduled in the client (Claude Code `/schedule`, or cron with `claude -p`) and writes only for the configured identity on a workday with nothing tracked.
+- **Guide resource** `factorial://guides/registro-horario`: what the attendance data means, the three workflows, and the rules, as Markdown for a model that discovers resources on its own. `factorial_discover` points at it.
+- The audit and gaps text is rendered by one shared module (`src/attendance/report.ts`) so the tool and the prompts show the same report.
+
+### Fixed (documentation)
+
+- The README listed four prompts that did not exist (`onboard-employee`, `analyze-org-structure`, `timeoff-report`, `team-document-summary`). It now lists the five that do.
 
 ## [10.1.0] - 2026-09-06
 
