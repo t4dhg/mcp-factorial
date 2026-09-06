@@ -1,0 +1,153 @@
+{
+  "data": [
+    {
+      "employee_id": "2",
+      "date": "2026-12-21",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "bank_holiday",
+      "id": "2_2026-12-21"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-22",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "bank_holiday",
+      "id": "2_2026-12-22"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-23",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "bank_holiday",
+      "id": "2_2026-12-23"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-24",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "bank_holiday",
+      "id": "2_2026-12-24"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-25",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "bank_holiday",
+      "id": "2_2026-12-25"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-26",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "saturday",
+      "id": "2_2026-12-26"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-27",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "sunday",
+      "id": "2_2026-12-27"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-28",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "workday",
+      "id": "2_2026-12-28"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-29",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "workday",
+      "id": "2_2026-12-29"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-30",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "workday",
+      "id": "2_2026-12-30"
+    },
+    {
+      "employee_id": "2",
+      "date": "2026-12-31",
+      "company_id": "1",
+      "tracked_minutes": 0,
+      "multiplied_minutes": 0,
+      "pending_minutes": 0,
+      "minutes": 0,
+      "time_unit": "minute",
+      "worked_time_blocks": [],
+      "day_type": "bank_holiday",
+      "id": "2_2026-12-31"
+    }
+  ],
+  "meta": {
+    "has_next_page": false,
+    "has_previous_page": false,
+    "total": 11,
+    "limit": 100
+  }
+}

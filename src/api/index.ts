@@ -56,7 +56,21 @@ export {
 } from './time-off.js';
 
 // Attendance
-export { listShifts, getShift, createShift, updateShift, deleteShift } from './attendance.js';
+export {
+  listShifts,
+  listShiftsInRange,
+  getShift,
+  createShift,
+  updateShift,
+  deleteShift,
+  listOpenShifts,
+  listEstimatedTimes,
+  listWorkedTimes,
+  clockIn,
+  clockOut,
+  formatLocalIso,
+  localToday,
+} from './attendance.js';
 
 // Documents
 export {

@@ -28,9 +28,17 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 /**
  * Request options for the HTTP client
  */
+/** A query parameter value; arrays are sent as repeated `key[]=value` pairs */
+export type QueryParamValue =
+  | string
+  | number
+  | boolean
+  | undefined
+  | Array<string | number | boolean>;
+
 export interface RequestOptions {
   /** Query parameters */
-  params?: Record<string, string | number | boolean | undefined>;
+  params?: Record<string, QueryParamValue>;
   /** Request timeout in milliseconds (overrides default) */
   timeout?: number;
   /** Maximum retry attempts (overrides default) */
@@ -76,18 +84,20 @@ function getBackoffDelay(attempt: number, baseDelay = 1000): number {
 /**
  * Build URL with query parameters
  */
-function buildUrl(
-  endpoint: string,
-  params?: Record<string, string | number | boolean | undefined>
-): string {
+function buildUrl(endpoint: string, params?: Record<string, QueryParamValue>): string {
   const config = getConfig();
   const url = new URL(`${config.baseUrl}${endpoint}`);
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        url.searchParams.append(key, String(value));
+      if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        // Factorial expects Rails-style arrays: employee_ids[]=1&employee_ids[]=2
+        const name = key.endsWith('[]') ? key : `${key}[]`;
+        for (const item of value) url.searchParams.append(name, String(item));
+        return;
       }
+      url.searchParams.append(key, String(value));
     });
   }
 
