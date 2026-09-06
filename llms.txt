@@ -41,6 +41,7 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 - Every window is read across all API pages; the Data read line in each result says how many days had contract data. A date without data is no_contract_data, never not_workable
 - jitter_minutes on log_range/log_days varies each written time deterministically so a month does not read 09:00 on every line
 - Bulk writes and writes for another person return a preview plus a confirmation_token first; repeat the call with the token to write
+- Prompts attendance_audit, attendance_fill (segments "09:00-14:00, 15:00-18:00") and attendance_today pre-read the data and state the exact tool calls; the resource factorial://guides/registro-horario is the workflow guide for the model
 
 ### Projects (17 tools)
 - list_projects, get_project, create_project, update_project, delete_project
