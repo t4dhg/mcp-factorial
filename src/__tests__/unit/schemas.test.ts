@@ -6,6 +6,11 @@ import locationsFixture from '../fixtures/locations.json' with { type: 'json' };
 import contractsFixture from '../fixtures/contracts.json' with { type: 'json' };
 import leaveTypesFixture from '../fixtures/leave-types.json' with { type: 'json' };
 import allowancesFixture from '../fixtures/allowances.json' with { type: 'json' };
+import leavesFixture from '../fixtures/leaves.json' with { type: 'json' };
+import shiftsFixture from '../fixtures/shifts.json' with { type: 'json' };
+import openShiftsFixture from '../fixtures/open-shifts.json' with { type: 'json' };
+import estimatedTimesFixture from '../fixtures/estimated-times.json' with { type: 'json' };
+import workedTimesFixture from '../fixtures/worked-times.json' with { type: 'json' };
 import {
   EmployeeSchema,
   TeamSchema,
@@ -15,6 +20,9 @@ import {
   LeaveTypeSchema,
   AllowanceSchema,
   ShiftSchema,
+  OpenShiftSchema,
+  EstimatedTimeSchema,
+  WorkedTimeSchema,
   FolderSchema,
   DocumentSchema,
   JobRoleSchema,
@@ -29,8 +37,7 @@ import {
 describe('Zod Schemas', () => {
   // The fixtures are captured from live API 2026-07-01 responses (personal
   // data replaced by placeholders), so parsing them is the schema-vs-reality
-  // check. Leave and Shift are excluded on purpose: their field sets are still
-  // the pre-2026 ones and are reworked with the attendance feature.
+  // check.
   describe('fixtures captured from API 2026-07-01', () => {
     const cases: Array<[string, z.ZodTypeAny, unknown[]]> = [
       ['EmployeeSchema', EmployeeSchema, employeesFixture.data],
@@ -39,6 +46,11 @@ describe('Zod Schemas', () => {
       ['ContractSchema', ContractSchema, contractsFixture.data],
       ['LeaveTypeSchema', LeaveTypeSchema, leaveTypesFixture.data],
       ['AllowanceSchema', AllowanceSchema, allowancesFixture.data],
+      ['LeaveSchema', LeaveSchema, leavesFixture.data],
+      ['ShiftSchema', ShiftSchema, shiftsFixture.data],
+      ['OpenShiftSchema', OpenShiftSchema, openShiftsFixture.data],
+      ['EstimatedTimeSchema', EstimatedTimeSchema, estimatedTimesFixture.data],
+      ['WorkedTimeSchema', WorkedTimeSchema, workedTimesFixture.data],
     ];
 
     for (const [name, schema, records] of cases) {
@@ -141,77 +153,87 @@ describe('Zod Schemas', () => {
     });
   });
 
-  const leave = {
-    id: '1',
-    employee_id: '5',
-    leave_type_id: '2',
-    start_on: '2024-01-15',
-    finish_on: '2024-01-20',
-    half_day: 'all_day',
-    status: 'pending',
-    description: 'Vacation',
-    deleted_at: null,
-    duration_attributes: { days: 5, hours: 40 },
-    days_taken: 5,
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  };
+  const leave = leavesFixture.data[0];
 
   describe('LeaveSchema', () => {
-    it('should validate a leave request', () => {
-      const result = LeaveSchema.safeParse(leave);
-      expect(result.success).toBe(true);
+    it('reads approval as a nullable boolean; there is no status field', () => {
+      expect(LeaveSchema.safeParse({ ...leave, approved: null }).success).toBe(true);
+      expect(LeaveSchema.safeParse({ ...leave, approved: 'pending' }).success).toBe(false);
+      const parsed = LeaveSchema.parse(leave);
+      expect('status' in parsed).toBe(false);
     });
 
-    it('should accept a record without days_taken (pre-2026-01-01 shape)', () => {
+    it('accepts the real half_day values and null', () => {
+      for (const half_day of [null, 'beggining_of_day', 'end_of_day']) {
+        expect(LeaveSchema.safeParse({ ...leave, half_day }).success).toBe(true);
+      }
+    });
+
+    it('accepts a record without days_taken (pre-2026-01-01 shape)', () => {
       const { days_taken: _omitted, ...withoutDaysTaken } = leave;
       expect(LeaveSchema.safeParse(withoutDaysTaken).success).toBe(true);
     });
 
-    it('should validate leave status enum', () => {
-      const validStatuses = ['pending', 'approved', 'declined'];
-
-      for (const status of validStatuses) {
-        const result = LeaveSchema.safeParse({ ...leave, status });
-        expect(result.success).toBe(true);
-      }
-    });
-
-    it('should reject invalid status', () => {
-      const result = LeaveSchema.safeParse({ ...leave, status: 'invalid_status' });
-      expect(result.success).toBe(false);
+    it('keeps unknown fields instead of failing on them', () => {
+      const result = LeaveSchema.safeParse({ ...leave, brand_new_field: 1 });
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).brand_new_field).toBe(1);
     });
   });
 
-  const shift = {
-    id: '1',
-    employee_id: '5',
-    clock_in: '2024-01-15T09:00:00Z',
-    clock_out: '2024-01-15T17:00:00Z',
-    worked_hours: 8,
-    break_minutes: 30,
-    location: 'Office',
-    notes: 'Regular day',
-    created_at: '2024-01-15T09:00:00Z',
-    updated_at: '2024-01-15T17:00:00Z',
-  };
+  const shift = shiftsFixture.data[0];
 
   describe('ShiftSchema', () => {
-    it('should validate a shift record', () => {
+    it('validates a real shift record with HH:MM times and a date', () => {
       const result = ShiftSchema.safeParse(shift);
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(result.data.clock_in).toMatch(/^\d{2}:\d{2}$/);
+        expect(typeof result.data.minutes).toBe('number');
+      }
     });
 
-    it('should allow null clock_out for ongoing shifts', () => {
-      const result = ShiftSchema.safeParse({
-        ...shift,
-        clock_out: null,
-        worked_hours: null,
-        break_minutes: null,
-        location: null,
-        notes: null,
-      });
+    it('allows null clock_out for an open shift', () => {
+      expect(ShiftSchema.safeParse({ ...shift, clock_out: null, minutes: null }).success).toBe(
+        true
+      );
+    });
+
+    it('requires date and rejects the pre-2026 field set', () => {
+      const { date: _omitted, ...withoutDate } = shift;
+      expect(ShiftSchema.safeParse(withoutDate).success).toBe(false);
+      const parsed = ShiftSchema.parse(shift) as Record<string, unknown>;
+      expect(parsed.worked_hours).toBeUndefined();
+    });
+
+    it('keeps unknown fields instead of failing on them', () => {
+      const result = ShiftSchema.safeParse({ ...shift, brand_new_field: true });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('OpenShiftSchema', () => {
+    it('is a different shape from Shift', () => {
+      const open = openShiftsFixture.data[0];
+      expect(OpenShiftSchema.safeParse(open).success).toBe(true);
+      expect(open.status).toBe('opened');
+      expect(open.clock_in.startsWith('2000-01-01T')).toBe(true);
+    });
+  });
+
+  describe('WorkedTimeSchema', () => {
+    it('carries the bank holiday signal that estimated_times lacks', () => {
+      const dates = (date: string) => ({
+        worked: workedTimesFixture.data.find(d => d.date === date),
+        estimated: estimatedTimesFixture.data.find(d => d.date === date),
+      });
+      const christmas = dates('2026-12-25');
+      expect(christmas.worked?.day_type).toBe('bank_holiday');
+      expect(christmas.estimated?.expected_minutes).toBeGreaterThan(0);
+      const saturday = dates('2026-12-26');
+      expect(saturday.worked?.day_type).toBe('saturday');
+      expect(saturday.estimated?.expected_minutes).toBe(0);
     });
   });
 
@@ -520,35 +542,48 @@ describe('Input Schemas', () => {
   });
 
   describe('CreateShiftInputSchema', () => {
-    it('should validate valid shift input', () => {
-      const input = {
+    it('accepts HH:MM times with a date', () => {
+      const result = CreateShiftInputSchema.safeParse({
         employee_id: 5,
-        clock_in: '2024-01-15T09:00:00Z',
-        clock_out: '2024-01-15T17:00:00Z',
-        notes: 'Regular shift',
-      };
-
-      const result = CreateShiftInputSchema.safeParse(input);
+        date: '2026-03-02',
+        clock_in: '09:00',
+        clock_out: '17:00',
+        observations: 'Regular shift',
+        location_type: 'office',
+      });
       expect(result.success).toBe(true);
     });
 
-    it('should require employee_id and clock_in', () => {
-      const input = {
-        clock_out: '2024-01-15T17:00:00Z',
-      };
+    it('accepts ISO 8601 with an explicit offset and rejects a bare UTC-less datetime', () => {
+      const base = { employee_id: 5, date: '2026-03-02' };
+      expect(
+        CreateShiftInputSchema.safeParse({ ...base, clock_in: '2026-03-02T09:00:00+01:00' }).success
+      ).toBe(true);
+      expect(
+        CreateShiftInputSchema.safeParse({ ...base, clock_in: '2026-03-02T09:00:00' }).success
+      ).toBe(false);
+      expect(CreateShiftInputSchema.safeParse({ ...base, clock_in: '9:00' }).success).toBe(false);
+    });
 
-      const result = CreateShiftInputSchema.safeParse(input);
+    it('requires employee_id and date, but not clock_in', () => {
+      expect(
+        CreateShiftInputSchema.safeParse({ clock_in: '09:00', clock_out: '17:00' }).success
+      ).toBe(false);
+      expect(CreateShiftInputSchema.safeParse({ employee_id: 5, clock_in: '09:00' }).success).toBe(
+        false
+      );
+      expect(CreateShiftInputSchema.safeParse({ employee_id: 5, date: '2026-03-02' }).success).toBe(
+        true
+      );
+    });
+
+    it('rejects the removed pre-2026 fields', () => {
+      const result = CreateShiftInputSchema.strict().safeParse({
+        employee_id: 5,
+        date: '2026-03-02',
+        break_minutes: 30,
+      });
       expect(result.success).toBe(false);
-    });
-
-    it('should allow missing clock_out for ongoing shifts', () => {
-      const input = {
-        employee_id: 5,
-        clock_in: '2024-01-15T09:00:00Z',
-      };
-
-      const result = CreateShiftInputSchema.safeParse(input);
-      expect(result.success).toBe(true);
     });
   });
 });

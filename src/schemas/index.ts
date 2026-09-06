@@ -53,19 +53,41 @@ export {
   type LeaveType,
   AllowanceSchema,
   type Allowance,
-  ShiftSchema,
-  type Shift,
   CreateLeaveInputSchema,
   type CreateLeaveInput,
   UpdateLeaveInputSchema,
   type UpdateLeaveInput,
   LeaveDecisionInputSchema,
   type LeaveDecisionInput,
+} from './time-off.js';
+
+// Attendance: Shift, OpenShift, EstimatedTime, WorkedTime
+export {
+  ShiftSchema,
+  type Shift,
+  OpenShiftSchema,
+  type OpenShift,
+  EstimatedTimeSchema,
+  type EstimatedTime,
+  WorkedTimeSchema,
+  type WorkedTime,
   CreateShiftInputSchema,
   type CreateShiftInput,
   UpdateShiftInputSchema,
   type UpdateShiftInput,
-} from './time-off.js';
+  ClockInputSchema,
+  type ClockInput,
+  SegmentInputSchema,
+  type SegmentInput,
+  DayInputSchema,
+  type DayInput,
+  hhmm,
+  isoWithOffset,
+  SHIFT_SOURCES,
+  LOCATION_TYPES,
+  HALF_DAY_VALUES,
+  DAY_TYPES,
+} from './attendance.js';
 
 // Documents: Folder, Document
 export { FolderSchema, type Folder, DocumentSchema, type Document } from './documents.js';

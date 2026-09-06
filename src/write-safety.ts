@@ -169,6 +169,26 @@ const POLICIES = {
     requiresPreview: true,
     impactDescription: 'Deletes the shift record',
   },
+  clock_in: {
+    risk: OperationRisk.LOW,
+    requiresConfirmation: false,
+    requiresPreview: false,
+    impactDescription: 'Opens a shift for an employee at the current time',
+  },
+  clock_out: {
+    risk: OperationRisk.LOW,
+    requiresConfirmation: false,
+    requiresPreview: false,
+    impactDescription: 'Closes the open shift of an employee at the current time',
+  },
+  backfill_shifts: {
+    risk: OperationRisk.HIGH,
+    requiresConfirmation: true,
+    requiresPreview: true,
+    impactDescription:
+      'Writes many attendance records for one employee at once. Gated by a confirmation token bound ' +
+      'to the previewed plan (the preview names the person, the dates and the totals), not by confirm: true.',
+  },
 
   // Document operations
   upload_document: {

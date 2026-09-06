@@ -29,7 +29,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ### Hierarchical Tool Discovery (v8.0.0+)
 
-The MCP server uses a hierarchical tool structure for optimal context usage. Instead of 117 individual tools, you get 14 category-based tools with an `action` parameter.
+The MCP server uses a hierarchical tool structure for optimal context usage. Instead of 123 individual tools, you get 14 category-based tools with an `action` parameter.
 
 | Tool                    | Description                   | Actions                                            |
 | ----------------------- | ----------------------------- | -------------------------------------------------- |
@@ -39,7 +39,7 @@ The MCP server uses a hierarchical tool structure for optimal context usage. Ins
 | `factorial_locations`   | Location management           | list, get, create, update, delete                  |
 | `factorial_contracts`   | Contract/salary data          | list, get_with_employee, by_job_role, by_job_level |
 | `factorial_time_off`    | Leave management              | 10 actions                                         |
-| `factorial_attendance`  | Shift management              | list, get, create, update, delete                  |
+| `factorial_attendance`  | Shifts and registro horario   | 11 actions incl. clock_in, gaps, log_range         |
 | `factorial_documents`   | Document management           | 8 actions (downloads require OAuth2 - see below)   |
 | `factorial_job_catalog` | Job roles/levels              | list_roles, get_role, list_levels                  |
 | `factorial_projects`    | Project management            | 16 actions for projects, tasks, workers, time      |
@@ -73,7 +73,7 @@ factorial_time_off({
 factorial_discover({ category: 'employees' });
 ```
 
-### 117 Operations Across 14 Categories
+### 123 Operations Across 14 Categories
 
 | Category        | Operations                                                                                             |
 | --------------- | ------------------------------------------------------------------------------------------------------ |
@@ -81,7 +81,7 @@ factorial_discover({ category: 'employees' });
 | **Teams**       | list, get, create, update, delete                                                                      |
 | **Locations**   | list, get, create, update, delete                                                                      |
 | **Time Off**    | list_leaves, get_leave, list_types, get_type, list_allowances, create, update, cancel, approve, reject |
-| **Attendance**  | list, get, create, update, delete                                                                      |
+| **Attendance**  | list, get, create, update, delete, clock_in, clock_out, status, gaps, log_range, log_days              |
 | **Projects**    | 16 operations for projects, tasks, workers, time records                                               |
 | **Training**    | 12 operations for trainings, sessions, enrollments                                                     |
 | **Work Areas**  | list, get, create, update, archive, unarchive                                                          |
@@ -90,6 +90,45 @@ factorial_discover({ category: 'employees' });
 | **Documents**   | 8 operations for folders, documents, and downloads (⚠️ downloads require OAuth2)                       |
 | **Job Catalog** | list_roles, get_role, list_levels (read-only)                                                          |
 | **Contracts**   | list, get_with_employee, by_job_role, by_job_level (read-only)                                         |
+
+### Attendance and Registro Horario
+
+Factorial asks employees to record their working hours day by day. `factorial_attendance` lets Claude do that, for one day or for a whole month, and for any employee the API key can see.
+
+Times are `HH:MM` in the company's local time, exactly as Factorial shows them. Records written by this server carry `source: "api"`, so they are distinguishable from live clocks in Factorial's own activity log.
+
+| Action                                      | What it does                                                                                                                                                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`                                    | Whether the employee is clocked in and since when. Always prints the configured identity.                                                                                                                             |
+| `clock_in`, `clock_out`                     | Live clocking at the current time.                                                                                                                                                                                    |
+| `gaps`                                      | Workdays in a date range where the contract expects more hours than were tracked. Weekends, bank holidays and full-day leave are excluded.                                                                            |
+| `log_range`                                 | Apply a daily pattern (`segments`) to every workable day in a range. Skips weekends, bank holidays, days the contract expects 0 minutes, approved leave, future dates, and any segment overlapping an existing shift. |
+| `log_days`                                  | Write an explicit list of days with their segments, for migrating from another platform. Only refuses future dates, approved leave and overlaps, so a Saturday someone worked can be written.                         |
+| `list`, `get`, `create`, `update`, `delete` | Individual shift records. `list` needs `start_on` and `end_on` (or `ids`, or `updated_at`); Factorial ignores paging on this endpoint, so paging is client-side.                                                      |
+
+```typescript
+// Find the missing days first
+factorial_attendance({ action: 'gaps', start_on: '2026-03-01', end_on: '2026-03-31' });
+
+// Preview a month of split days; nothing is written yet
+factorial_attendance({
+  action: 'log_range',
+  start_on: '2026-03-01',
+  end_on: '2026-03-31',
+  segments: [
+    { clock_in: '09:00', clock_out: '14:00' },
+    { clock_in: '15:00', clock_out: '18:00' },
+  ],
+});
+// -> "Plan for <name> (<id>) ... 20 days to write, 40 shift records, 160h ... confirmation_token: <token>"
+
+// Same call plus the token writes it
+factorial_attendance({ action: 'log_range', /* same arguments */ confirmation_token: '<token>' });
+```
+
+Bank holidays come from the company's own calendar in Factorial (`worked_times.day_type`), so no holiday list is needed. Approved leave is read from `timeoff/leaves`; pass `skip_leave: false` when the source system is right and Factorial's leave record is stale. Half-day leave days are left out of `log_range` and named in the preview; write the worked half with `log_days`.
+
+Set `FACTORIAL_EMPLOYEE_ID` to your own employee id so that `employee_id` can be omitted. Writes aimed at anyone else, and every bulk write, require a confirmation token; see [Safety & Security](#safety--security).
 
 ### 5 MCP Resources
 
@@ -292,16 +331,17 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ## Configuration Options
 
-| Environment Variable            | Description                          | Default      |
-| ------------------------------- | ------------------------------------ | ------------ |
-| `FACTORIAL_API_KEY`             | Your FactorialHR API key             | Required     |
-| `FACTORIAL_API_VERSION`         | API version                          | `2026-07-01` |
-| `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                 | `30000`      |
-| `FACTORIAL_MAX_RETRIES`         | Max retry attempts                   | `3`          |
-| `DEBUG`                         | Enable debug logging                 | `false`      |
-| `FACTORIAL_OAUTH_CLIENT_ID`     | OAuth2 client ID (for downloads)     | -            |
-| `FACTORIAL_OAUTH_CLIENT_SECRET` | OAuth2 client secret (for downloads) | -            |
-| `FACTORIAL_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (for downloads) | -            |
+| Environment Variable            | Description                                                          | Default      |
+| ------------------------------- | -------------------------------------------------------------------- | ------------ |
+| `FACTORIAL_API_KEY`             | Your FactorialHR API key                                             | Required     |
+| `FACTORIAL_API_VERSION`         | API version                                                          | `2026-07-01` |
+| `FACTORIAL_EMPLOYEE_ID`         | Your employee id: default target and ungated identity for attendance | -            |
+| `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                                                 | `30000`      |
+| `FACTORIAL_MAX_RETRIES`         | Max retry attempts                                                   | `3`          |
+| `DEBUG`                         | Enable debug logging                                                 | `false`      |
+| `FACTORIAL_OAUTH_CLIENT_ID`     | OAuth2 client ID (for downloads)                                     | -            |
+| `FACTORIAL_OAUTH_CLIENT_SECRET` | OAuth2 client secret (for downloads)                                 | -            |
+| `FACTORIAL_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (for downloads)                                 | -            |
 
 ## Safety & Security
 
@@ -325,6 +365,25 @@ The following operations require explicit confirmation (`confirm: true`). Called
 - `factorial_ats({ action: 'delete_posting' })` - Deletes a job posting and its applications
 - `factorial_ats({ action: 'delete_candidate' })` - Permanently deletes a candidate
 - `factorial_ats({ action: 'delete_application' })` - Permanently deletes an application
+
+### Operations Gated by a Confirmation Token
+
+Attendance writes are gated by **who they target and how many records they touch**, which a per-operation policy cannot express. A first call writes nothing and returns a preview that names the person, the dates and the totals, plus a `confirmation_token` valid for five minutes and bound to exactly that plan. Repeating the call with the token executes it; if the plan changed in between (someone wrote a shift), the token is refused and a new preview is issued. `confirm: true` cannot bypass this gate, because there is no token to pass on a first call.
+
+Gated whenever the target is not the configured `FACTORIAL_EMPLOYEE_ID`, and always when that variable is unset:
+
+- `factorial_attendance({ action: 'create' })` - Creates a shift for another person
+- `factorial_attendance({ action: 'update' })` - Updates another person's shift (the shift is fetched first to learn whose it is)
+- `factorial_attendance({ action: 'delete' })` - Deletes another person's shift, in addition to `confirm: true`
+- `factorial_attendance({ action: 'clock_in' })` - Clocks another person in
+- `factorial_attendance({ action: 'clock_out' })` - Clocks another person out
+
+Always gated, whatever the target, because volume is its own hazard:
+
+- `factorial_attendance({ action: 'log_range' })` - Writes one or more shift records per workable day in a range
+- `factorial_attendance({ action: 'log_days' })` - Writes an explicit list of days
+
+Re-running a bulk call after a partial failure is safe against its own earlier writes: the planner re-reads existing shifts and skips whatever overlaps. It does not protect against another writer between the read and the writes.
 
 ### Document Downloads
 
@@ -506,6 +565,9 @@ A: Data is cached in-memory with TTLs: employees (5 min), teams (10 min), locati
 
 **Q: What FactorialHR API version is used?**
 A: Version `2026-07-01` by default. Override with `FACTORIAL_API_VERSION` environment variable. Since that version every Factorial identifier (`id` and `*_id` fields) is a string, not a number; treat them as opaque strings.
+
+**Q: Can Claude fill in my registro horario?**
+A: Yes. Set `FACTORIAL_EMPLOYEE_ID`, run `gaps` to see the missing days, then `log_range` with your daily segments. The first call returns a preview and a token; the second call writes. See [Attendance and Registro Horario](#attendance-and-registro-horario).
 
 **Q: Are write operations logged?**
 A: Yes, every write is recorded by the audit module with a timestamp, entity, changes, and outcome. The log lives in memory in the running process (last 1000 entries) and is not retrievable through the MCP interface, so treat it as a debugging aid rather than a compliance record. See [Audit Logging](#audit-logging).

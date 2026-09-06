@@ -31,14 +31,9 @@ export type {
 } from './pagination.js';
 
 /**
- * Leave status options
+ * Half day values as the API serialises them (Factorial's spelling)
  */
-export type LeaveStatus = 'pending' | 'approved' | 'declined';
-
-/**
- * Half day options
- */
-export type HalfDay = 'all_day' | 'start' | 'finish';
+export type HalfDay = 'beggining_of_day' | 'end_of_day';
 
 /**
  * Options for listing employees
@@ -54,10 +49,12 @@ export interface ListEmployeesOptions {
  * Options for listing leaves
  */
 export interface ListLeavesOptions {
-  employee_id?: number;
-  status?: LeaveStatus;
-  start_on_gte?: string;
-  start_on_lte?: string;
+  /** Filter by employee IDs (employee_ids[]) */
+  employee_ids?: number[];
+  /** Leaves overlapping the window starting on this date (YYYY-MM-DD) */
+  from?: string;
+  /** Leaves overlapping the window ending on this date (YYYY-MM-DD) */
+  to?: string;
   page?: number;
   limit?: number;
 }
@@ -73,13 +70,31 @@ export interface ListAllowancesOptions {
 
 /**
  * Options for listing shifts
+ *
+ * Only filters the API honours are listed. /attendance/shifts ignores
+ * `employee_id` (singular), `clock_in_gte`, `clock_in_lte`, `page` and
+ * `limit`, and returns every matching record with `paginateable: false`, so
+ * page and limit are applied client-side.
  */
 export interface ListShiftsOptions {
-  employee_id?: number;
-  clock_in_gte?: string;
-  clock_in_lte?: string;
+  employee_ids?: number[];
+  start_on?: string;
+  end_on?: string;
+  ids?: number[];
+  updated_at?: string;
+  workable?: boolean;
+  half_day?: HalfDay;
   page?: number;
   limit?: number;
+}
+
+/**
+ * Options for the per-day attendance summaries (estimated_times, worked_times)
+ */
+export interface DailyTimesOptions {
+  employee_ids: number[];
+  start_on: string;
+  end_on: string;
 }
 
 /**

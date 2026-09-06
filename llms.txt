@@ -9,7 +9,7 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 ## Key Features
 
 - **80+ Tools**: Full CRUD operations for all major HR entities
-- **Safety Guardrails**: Every operation that deletes a record, or terminates an employee, requires `confirm: true`. See the README for the full list.
+- **Safety Guardrails**: Every operation that deletes a record, or terminates an employee, requires `confirm: true`. Attendance writes for another person, and all bulk attendance writes, require a confirmation token from a preview. See the README for the full lists.
 - **Audit Logging**: All write operations are logged in-process for debugging. The log is in-memory, capped at 1000 entries, and not retrievable through any tool.
 - **Read-only Payroll**: Payroll data is accessible but read-only for security
 - **Pagination**: All list operations support pagination
@@ -34,9 +34,11 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 - list_leaves, get_leave, list_leave_types, get_leave_type, list_allowances
 - create_leave, update_leave, cancel_leave, approve_leave, reject_leave
 
-### Attendance (5 tools)
-- list_shifts, get_shift
-- create_shift, update_shift, delete_shift
+### Attendance (11 actions, registro horario)
+- list, get, create, update, delete (shift records; list needs start_on/end_on, paging is client-side)
+- clock_in, clock_out, status (live clocking; FACTORIAL_EMPLOYEE_ID supplies the default employee)
+- gaps (workdays with missing hours), log_range (daily pattern over a range), log_days (explicit days)
+- Bulk writes and writes for another person return a preview plus a confirmation_token first; repeat the call with the token to write
 
 ### Projects (17 tools)
 - list_projects, get_project, create_project, update_project, delete_project

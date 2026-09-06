@@ -1,5 +1,5 @@
 /**
- * Time Off schemas: Leave, LeaveType, Allowance, Shift
+ * Time Off schemas: Leave, LeaveType, Allowance
  */
 
 import { z } from 'zod';
@@ -8,33 +8,36 @@ import { dateString, resourceId } from './shared.js';
 /**
  * Leave schema
  *
- * Only the identifier types and the `days_taken` field were changed for API
- * version 2026-07-01. The remaining fields are known not to match what the
- * live API returns (there is no `status`, approval is a boolean `approved`,
- * and `half_day` values are null, 'beggining_of_day' or 'end_of_day'); that
- * rework belongs to the attendance feature and is deliberately left out here.
+ * Field set verified against live /timeoff/leaves responses on API version
+ * 2026-07-01 (2026-09-06). There is no `status` field: approval is the
+ * boolean `approved`, null while pending. `half_day` is null for a full day,
+ * or `beggining_of_day` / `end_of_day` (Factorial's spelling). Declared with
+ * passthrough so a new field does not break parsing.
  */
-export const LeaveSchema = z.object({
-  id: resourceId,
-  employee_id: resourceId,
-  leave_type_id: resourceId,
-  start_on: z.string(),
-  finish_on: z.string(),
-  half_day: z.enum(['all_day', 'start', 'finish']).nullable(),
-  status: z.enum(['pending', 'approved', 'declined']),
-  description: z.string().nullable(),
-  deleted_at: z.string().nullable(),
-  duration_attributes: z
-    .object({
-      days: z.number(),
-      hours: z.number(),
-    })
-    .nullable(),
-  // Added in API 2026-01-01: number of days taken for paid leave
-  days_taken: z.number().optional(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
-});
+export const LeaveSchema = z
+  .object({
+    id: resourceId,
+    company_id: resourceId.nullable().optional(),
+    employee_id: resourceId,
+    employee_full_name: z.string().nullable().optional(),
+    leave_type_id: resourceId,
+    leave_type_name: z.string().nullable().optional(),
+    start_on: z.string(),
+    finish_on: z.string(),
+    half_day: z.string().nullable(),
+    approved: z.boolean().nullable(),
+    description: z.string().nullable(),
+    reason: z.string().nullable().optional(),
+    start_time: z.string().nullable().optional(),
+    hours_amount_in_cents: z.number().nullable().optional(),
+    deleted_at: z.string().nullable(),
+    duration_attributes: z.unknown().nullable().optional(),
+    // Added in API 2026-01-01: number of days taken for paid leave
+    days_taken: z.number().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    updated_at: z.string().nullable().optional(),
+  })
+  .passthrough();
 
 export type Leave = z.infer<typeof LeaveSchema>;
 
@@ -125,28 +128,6 @@ export const AllowanceSchema = z.object({
 
 export type Allowance = z.infer<typeof AllowanceSchema>;
 
-/**
- * Shift schema
- *
- * Only the identifier types were changed for API version 2026-07-01. The
- * remaining fields are known not to match what the live API returns; that
- * rework belongs to the attendance feature and is deliberately left out here.
- */
-export const ShiftSchema = z.object({
-  id: resourceId,
-  employee_id: resourceId,
-  clock_in: z.string(),
-  clock_out: z.string().nullable(),
-  worked_hours: z.number().nullable(),
-  break_minutes: z.number().nullable(),
-  location: z.string().nullable(),
-  notes: z.string().nullable(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable(),
-});
-
-export type Shift = z.infer<typeof ShiftSchema>;
-
 // ============================================================================
 // Write Input Schemas
 // ============================================================================
@@ -180,24 +161,3 @@ export const LeaveDecisionInputSchema = z.object({
 });
 
 export type LeaveDecisionInput = z.infer<typeof LeaveDecisionInputSchema>;
-
-/**
- * Shift create input schema
- */
-export const CreateShiftInputSchema = z.object({
-  employee_id: z.number().positive(),
-  clock_in: z.string().datetime(),
-  clock_out: z.string().datetime().optional(),
-  break_minutes: z.number().min(0).max(480).optional(),
-  location: z.string().max(200).optional(),
-  notes: z.string().max(500).optional(),
-});
-
-export type CreateShiftInput = z.infer<typeof CreateShiftInputSchema>;
-
-/**
- * Shift update input schema
- */
-export const UpdateShiftInputSchema = CreateShiftInputSchema.partial().omit({ employee_id: true });
-
-export type UpdateShiftInput = z.infer<typeof UpdateShiftInputSchema>;

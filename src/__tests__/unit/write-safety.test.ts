@@ -176,7 +176,7 @@ describe('Write Safety Module', () => {
       for (const key of Object.keys(OPERATION_POLICIES)) {
         // Operation names should be verb_entity format
         expect(key).toMatch(
-          /^(create|update|delete|cancel|approve|reject|assign|archive|enroll|advance|terminate|add|remove|upload)_[a-z_]+$/
+          /^(create|update|delete|cancel|approve|reject|assign|archive|enroll|advance|terminate|add|remove|upload|clock|backfill)_[a-z_]+$/
         );
       }
     });

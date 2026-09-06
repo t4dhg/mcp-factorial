@@ -1,0 +1,38 @@
+{
+  "data": [
+    {
+      "id": "201",
+      "employee_id": "2",
+      "date": "2026-09-04",
+      "reference_date": "2026-09-04",
+      "clock_in": "2000-01-01T11:05:56.000Z",
+      "clock_out": null,
+      "status": "opened",
+      "workable": true,
+      "automatic_clock_in": false,
+      "location_type": null,
+      "workplace_id": "3",
+      "time_settings_break_configuration_id": null
+    },
+    {
+      "id": "202",
+      "employee_id": "9",
+      "date": "2026-09-04",
+      "reference_date": "2026-09-04",
+      "clock_in": "2000-01-01T16:03:44.000Z",
+      "clock_out": null,
+      "status": "opened",
+      "workable": true,
+      "automatic_clock_in": false,
+      "location_type": null,
+      "workplace_id": "3",
+      "time_settings_break_configuration_id": null
+    }
+  ],
+  "meta": {
+    "has_next_page": false,
+    "has_previous_page": false,
+    "total": 2,
+    "limit": 100
+  }
+}

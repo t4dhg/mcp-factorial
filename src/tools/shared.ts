@@ -46,8 +46,20 @@ export const CATEGORIES = {
   },
   attendance: {
     name: 'Attendance',
-    description: 'Clock in/out and shift records',
-    actions: ['list', 'get', 'create', 'update', 'delete'],
+    description: 'Shift records, live clocking and bulk time entry (registro horario)',
+    actions: [
+      'list',
+      'get',
+      'create',
+      'update',
+      'delete',
+      'clock_in',
+      'clock_out',
+      'status',
+      'gaps',
+      'log_range',
+      'log_days',
+    ],
   },
   documents: {
     name: 'Documents',

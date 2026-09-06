@@ -68,10 +68,19 @@ function caseArms(source: string): Array<{ action: string; body: string }> {
     action: m[1],
   }));
 
-  return positions.map((entry, i) => ({
+  const arms = positions.map((entry, i) => ({
     action: entry.action,
     body: source.slice(entry.index, positions[i + 1]?.index ?? source.length),
   }));
+
+  // A label that falls through (`case 'clock_in':` directly followed by
+  // `case 'clock_out': {`) shares the body of the arm that follows it.
+  for (let i = arms.length - 2; i >= 0; i--) {
+    const own = arms[i].body.replace(/case '[a-z_]+':/, '').trim();
+    if (own === '') arms[i].body = arms[i + 1].body;
+  }
+
+  return arms;
 }
 
 /** Every gated (tool file, action) pair, read from the handler sources */
@@ -97,7 +106,7 @@ function documentedActions(): Array<{ file: string; action: string }> {
   const readme = readFileSync(readmePath, 'utf8');
   const section = readme.slice(
     readme.indexOf('### Operations That Require Confirmation'),
-    readme.indexOf('### Document Downloads')
+    readme.indexOf('### Operations Gated by a Confirmation Token')
   );
 
   return [...section.matchAll(/`factorial_(\w+)\(\{ action: '(\w+)' \}\)`/g)].map(match => ({
@@ -128,6 +137,82 @@ function destructiveActions(): Array<{ file: string; action: string; gated: bool
 
   return results;
 }
+
+/**
+ * Attendance writes are gated by target identity, not only by deleteOne().
+ * Every case arm in tools/attendance.ts that reaches one of these API calls
+ * must consult requireTargetConfirmation, which is the token gate.
+ */
+const ATTENDANCE_WRITE_CALLS = [
+  'createShift',
+  'updateShift',
+  'deleteShift',
+  'clockIn',
+  'clockOut',
+  'executeBackfill',
+];
+
+function attendanceWriteArms(): Array<{ action: string; gated: boolean }> {
+  const source = readFileSync(path.join(toolsDir, 'attendance.ts'), 'utf8');
+  return caseArms(source)
+    .filter(({ body }) =>
+      ATTENDANCE_WRITE_CALLS.some(fn => new RegExp(`\\b${fn}\\s*\\(`).test(body))
+    )
+    .map(({ action, body }) => ({ action, gated: body.includes('requireTargetConfirmation(') }));
+}
+
+/** Every (tool file, action) pair that consults the token gate */
+function tokenGatedActions(): Array<{ file: string; action: string }> {
+  const pairs: Array<{ file: string; action: string }> = [];
+  const toolFiles = readdirSync(toolsDir).filter(
+    file => file.endsWith('.ts') && file !== 'index.ts' && file !== 'shared.ts'
+  );
+  for (const file of toolFiles) {
+    const source = readFileSync(path.join(toolsDir, file), 'utf8');
+    for (const { action, body } of caseArms(source)) {
+      if (body.includes('requireTargetConfirmation(')) pairs.push({ file, action });
+    }
+  }
+  return pairs;
+}
+
+/** The pairs the README documents as gated by a confirmation token */
+function documentedTokenGatedActions(): Array<{ file: string; action: string }> {
+  const readme = readFileSync(readmePath, 'utf8');
+  const section = readme.slice(
+    readme.indexOf('### Operations Gated by a Confirmation Token'),
+    readme.indexOf('### Document Downloads')
+  );
+  return [...section.matchAll(/`factorial_(\w+)\(\{ action: '(\w+)' \}\)`/g)].map(match => ({
+    file: `${match[1].replace(/_/g, '-')}.ts`,
+    action: match[2],
+  }));
+}
+
+describe('Target-identity gate across attendance writes', () => {
+  it('finds the attendance write arms', () => {
+    const arms = attendanceWriteArms().map(a => a.action);
+    expect(arms).toContain('create');
+    expect(arms).toContain('clock_in');
+    expect(arms).toContain('log_range');
+    expect(arms.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('routes every attendance write through requireTargetConfirmation', () => {
+    const ungated = attendanceWriteArms()
+      .filter(a => !a.gated)
+      .map(a => `attendance.ts: case '${a.action}'`);
+    expect(ungated, `attendance writes with no identity gate:\n${ungated.join('\n')}`).toEqual([]);
+  });
+
+  it("keeps the README's list of token-gated operations in step with the code", () => {
+    const key = (entry: { file: string; action: string }) => `${entry.file}:${entry.action}`;
+    const inCode = [...new Set(tokenGatedActions().map(key))].sort();
+    const inReadme = [...new Set(documentedTokenGatedActions().map(key))].sort();
+    expect(inCode.length).toBeGreaterThanOrEqual(6);
+    expect(inReadme).toEqual(inCode);
+  });
+});
 
 describe('Confirmation coverage across tool handlers', () => {
   it('derives a plausible destructive set from the API layer', () => {
