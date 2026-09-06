@@ -3,7 +3,7 @@
   "name": "io.github.t4dhg/mcp-factorial",
   "title": "MCP FactorialHR",
   "description": "Full CRUD MCP server for FactorialHR: employees, teams, time off, projects, ATS, payroll.",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "repository": {
     "url": "https://github.com/t4dhg/mcp-factorial",
     "source": "github"
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@t4dhg/mcp-factorial",
-      "version": "9.0.0",
+      "version": "10.0.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
