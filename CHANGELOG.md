@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Guide resource** `factorial://guides/registro-horario`: what the attendance data means, the three workflows, and the rules, as Markdown for a model that discovers resources on its own. `factorial_discover` points at it.
 - The audit and gaps text is rendered by one shared module (`src/attendance/report.ts`) so the tool and the prompts show the same report.
 
+- **`list` defaults to `FACTORIAL_EMPLOYEE_ID`** like every other attendance action, and the result says whose shifts it lists. Without a configured identity it says it is company-wide; passing `employee_ids: []` asks for the whole company explicitly.
+- **Large previews list the first 20 and last 10 records** with the count of records not listed, instead of omitting the record table above 62 records. The jittered times at both ends can be checked before confirming; the token binds to every record regardless.
+
+### Changed
+
+- **Confirmation tokens last 15 minutes** instead of 5. Reading a preview, checking a calendar and confirming took longer than the old window, so every preview had to be regenerated.
+
 ### Fixed (documentation)
 
 - The README listed four prompts that did not exist (`onboard-employee`, `analyze-org-structure`, `timeoff-report`, `team-document-summary`). It now lists the five that do.

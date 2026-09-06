@@ -6,6 +6,7 @@ import {
   jitterSegments,
   enumerateDates,
   expandLeaves,
+  formatPlanPreview,
   intervalsOverlap,
   parseHHMM,
   planFingerprint,
@@ -435,6 +436,61 @@ describe('computeGaps', () => {
         half_day_leave: 'end_of_day',
       },
     ]);
+  });
+});
+
+describe('formatPlanPreview', () => {
+  it('lists every record up to 62 and the first and last few above that, with the hidden count', () => {
+    const small = buildBackfillPlan(rangeRequest({ segments: [morning] }), decemberFacts());
+    const smallText = formatPlanPreview(
+      small,
+      { id: 2, name: 'Placeholder Person' },
+      { start: '2026-12-21', end: '2026-12-31' },
+      rangeRequest({ segments: [morning] })
+    );
+    expect(smallText).toContain('Records to write:');
+    expect(smallText).toContain('    2026-12-30 09:00-13:00');
+    expect(smallText).not.toContain('more records not listed');
+
+    // 50 workdays x 2 segments = 100 records, well over the full-list limit
+    const dates = enumerateDates('2026-03-02', '2026-05-10');
+    const days = new Map<
+      string,
+      { day_type: string; expected_minutes: number; tracked_minutes: number }
+    >();
+    for (const d of dates) {
+      const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+      days.set(d, {
+        day_type: dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday',
+        expected_minutes: dow === 0 || dow === 6 ? 0 : 480,
+        tracked_minutes: 0,
+      });
+    }
+    const request = {
+      ...rangeRequest({ segments: [morning, afternoon], jitter_minutes: 6 }),
+      dates,
+    };
+    const facts: PlanFacts = { today: '2026-06-01', days, shifts: [], leaves: new Map() };
+    const big = buildBackfillPlan(request, facts);
+    expect(big.writes.length).toBe(100);
+    const text = formatPlanPreview(
+      big,
+      { id: 2, name: 'Placeholder Person' },
+      { start: '2026-03-02', end: '2026-05-10' },
+      request
+    );
+    expect(text).toContain('Records to write:');
+    expect(text).toContain(
+      `    ${big.writes[0].date} ${big.writes[0].clock_in}-${big.writes[0].clock_out}`
+    );
+    expect(text).toContain(
+      `    ${big.writes[99].date} ${big.writes[99].clock_in}-${big.writes[99].clock_out}`
+    );
+    expect(text).toContain(
+      '... 70 more records not listed; the confirmation token binds to all of them ...'
+    );
+    expect(text).toContain('fixed per record, listed below');
+    expect(text.split('\n').filter(l => /^ {4}2026-\d{2}-\d{2} /.test(l))).toHaveLength(30);
   });
 });
 

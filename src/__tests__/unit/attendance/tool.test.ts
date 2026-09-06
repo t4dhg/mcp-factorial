@@ -111,6 +111,38 @@ describe('factorial_attendance tool', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it('list defaults to the configured identity and says so; [] asks for the whole company', async () => {
+    vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '2');
+    routeFetch({ shifts: [shiftsFixture.data[0]] });
+    const mine = await call({ action: 'list', start_on: '2026-12-01', end_on: '2026-12-31' });
+    expect(mine.content[0].text).toContain('shifts for employee 2 (');
+    const listUrl = new URL(
+      mockFetch.mock.calls.find(([u]) => /attendance\/shifts/.test(u as string))![0] as string
+    );
+    expect(listUrl.searchParams.getAll('employee_ids[]')).toEqual(['2']);
+
+    mockFetch.mockClear();
+    const everyone = await call({
+      action: 'list',
+      employee_ids: [],
+      start_on: '2026-12-01',
+      end_on: '2026-12-31',
+    });
+    expect(everyone.content[0].text).toContain('company-wide (employee_ids: [] was passed)');
+    const allUrl = new URL(
+      mockFetch.mock.calls.find(([u]) => /attendance\/shifts/.test(u as string))![0] as string
+    );
+    expect(allUrl.searchParams.getAll('employee_ids[]')).toEqual([]);
+  });
+
+  it('list without a configured identity is company-wide and says so', async () => {
+    routeFetch({ shifts: [shiftsFixture.data[0]] });
+    const result = await call({ action: 'list', start_on: '2026-12-01', end_on: '2026-12-31' });
+    expect(result.content[0].text).toContain(
+      'company-wide (no employee filter and FACTORIAL_EMPLOYEE_ID is not set)'
+    );
+  });
+
   it('returns a preview and writes nothing on a first bulk call, even with confirm: true', async () => {
     routeFetch({});
     const result = await call({ ...range, confirm: true });

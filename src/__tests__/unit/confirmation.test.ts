@@ -95,7 +95,11 @@ describe('Confirmation Module', () => {
       // Token should be valid initially
       expect(confirmationManager.isValid(token)).toBe(true);
 
-      // Advance time past TTL (5 minutes + 1 second)
+      // Still valid well past the old 5-minute window
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      expect(confirmationManager.isValid(token)).toBe(true);
+
+      // Advance time past TTL (15 minutes + 1 second)
       vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
 
       // Token should now be expired

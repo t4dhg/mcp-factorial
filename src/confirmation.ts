@@ -59,8 +59,9 @@ class ConfirmationManager {
   private pending = new Map<string, PendingOperation>();
   private readonly tokenTtlMs: number;
 
-  constructor(tokenTtlMs = 5 * 60 * 1000) {
-    // Default 5 minutes
+  // 15 minutes: a human reads the preview, checks a calendar, asks a question,
+  // and confirms. Five minutes forced every preview to be regenerated.
+  constructor(tokenTtlMs = 15 * 60 * 1000) {
     this.tokenTtlMs = tokenTtlMs;
   }
 

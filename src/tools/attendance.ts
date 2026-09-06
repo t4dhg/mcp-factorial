@@ -127,7 +127,12 @@ export function registerAttendanceTool(server: McpServer) {
           .number()
           .optional()
           .describe('Employee ID. Defaults to FACTORIAL_EMPLOYEE_ID when set'),
-        employee_ids: z.array(z.number()).optional().describe('Employee IDs (list)'),
+        employee_ids: z
+          .array(z.number())
+          .optional()
+          .describe(
+            'Employee IDs (list). Defaults to FACTORIAL_EMPLOYEE_ID; pass [] for the whole company'
+          ),
         start_on: z.string().optional().describe('Start date YYYY-MM-DD (list, gaps, log_range)'),
         end_on: z.string().optional().describe('End date YYYY-MM-DD (list, gaps, log_range)'),
         ids: z.array(z.number()).optional().describe('Shift IDs (list)'),
@@ -211,9 +216,20 @@ export function registerAttendanceTool(server: McpServer) {
       try {
         switch (args.action) {
           case 'list': {
+            // Like every other action, list defaults to the configured identity.
+            // An explicit empty employee_ids asks for the whole company.
+            const configured = getConfiguredEmployeeId();
+            const employeeIds =
+              args.employee_ids ??
+              (args.employee_id ? [args.employee_id] : configured ? [configured] : undefined);
+            const scope =
+              employeeIds && employeeIds.length > 0
+                ? `for employee${employeeIds.length > 1 ? 's' : ''} ${employeeIds.join(', ')}`
+                : configured
+                  ? 'company-wide (employee_ids: [] was passed)'
+                  : 'company-wide (no employee filter and FACTORIAL_EMPLOYEE_ID is not set)';
             const result = await listShifts({
-              employee_ids:
-                args.employee_ids ?? (args.employee_id ? [args.employee_id] : undefined),
+              employee_ids: employeeIds && employeeIds.length > 0 ? employeeIds : undefined,
               start_on: args.start_on,
               end_on: args.end_on,
               ids: args.ids,
@@ -234,7 +250,7 @@ export function registerAttendanceTool(server: McpServer) {
               observations: s.observations,
             }));
             return textResponse(
-              `Found ${result.meta.total} shifts (${formatPaginationInfo(result.meta)}; paging is ` +
+              `Found ${result.meta.total} shifts ${scope} (${formatPaginationInfo(result.meta)}; paging is ` +
                 `client-side, the API returned everything in range). Times are HH:MM company local.\n\n` +
                 JSON.stringify(summary, null, 2)
             );
