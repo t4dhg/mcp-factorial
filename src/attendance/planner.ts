@@ -177,6 +177,11 @@ const END_OF_DAY = 24 * 60;
  */
 export const DEFAULT_TOLERANCE_MINUTES = 15;
 
+/** A preview lists every record up to this many; above it, the first and last few */
+export const PREVIEW_FULL_LIST_MAX = 62;
+const PREVIEW_HEAD = 20;
+const PREVIEW_TAIL = 10;
+
 /** Parse "HH:MM" into minutes since midnight; anything else is rejected */
 export function parseHHMM(value: string): number {
   const match = HHMM.exec(value);
@@ -625,13 +630,27 @@ export function formatPlanPreview(
   }
   if (request.jitter_minutes && request.jitter_minutes > 0) {
     lines.push(
-      `  Each time varies by up to ${request.jitter_minutes} minutes from the pattern (fixed per record, shown below).`
+      `  Each time varies by up to ${request.jitter_minutes} minutes from the pattern (fixed per record, listed below).`
     );
   }
-  if (plan.writes.length > 0 && plan.writes.length <= 62) {
+  if (plan.writes.length > 0) {
     lines.push('');
     lines.push('  Records to write:');
-    for (const w of plan.writes) lines.push(`    ${w.date} ${w.clock_in}-${w.clock_out}`);
+    const record = (w: PlannedWrite) => `    ${w.date} ${w.clock_in}-${w.clock_out}`;
+    if (plan.writes.length <= PREVIEW_FULL_LIST_MAX) {
+      for (const w of plan.writes) lines.push(record(w));
+    } else {
+      // Enough to check the pattern and the jitter at both ends without
+      // drowning the preview; the token binds to every record regardless.
+      const head = plan.writes.slice(0, PREVIEW_HEAD);
+      const tail = plan.writes.slice(-PREVIEW_TAIL);
+      const hidden = plan.writes.length - head.length - tail.length;
+      for (const w of head) lines.push(record(w));
+      lines.push(
+        `    ... ${hidden} more records not listed; the confirmation token binds to all of them ...`
+      );
+      for (const w of tail) lines.push(record(w));
+    }
   }
 
   if (plan.skippedDays.length > 0) {

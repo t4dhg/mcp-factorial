@@ -54,7 +54,7 @@ function issue(request: GateRequest, prefix = ''): GateResult {
     message:
       `${prefix}${request.preview}\n\nNothing has been written. ` +
       `To proceed, call this action again with the same arguments and confirmation_token: ${token}\n` +
-      'The token is valid for 5 minutes and for exactly this plan.',
+      'The token is valid for 15 minutes and for exactly this plan.',
   };
 }
 

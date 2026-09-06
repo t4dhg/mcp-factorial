@@ -157,7 +157,7 @@ This guide is for the model driving the tool. Every step below is a call to the 
 1. \`gaps\` for the window to see which workdays are short and by how much.
 2. Ask the person for their usual daily pattern if you do not have it, as segments such as \`[{"clock_in":"09:00","clock_out":"14:00"},{"clock_in":"15:00","clock_out":"18:00"}]\`. Never invent hours; the record is a legal document of time actually worked.
 3. \`log_range\` with \`start_on\`, \`end_on\`, \`segments\`, and usually \`jitter_minutes\` (5 to 10) and an \`observations\` note saying why the records are being entered now. The first call returns a **preview** and a \`confirmation_token\`; nothing is written. The preview skips weekends, bank holidays, approved leave, days the contract does not expect work, future dates, days without contract data, and any segment overlapping an existing shift.
-4. Show the preview to the person and ask them to confirm. Only then repeat the identical call with \`confirmation_token\`. The token lasts 5 minutes and matches exactly that plan. A bulk write always needs this step; there is no way around it and you must not look for one.
+4. Show the preview to the person and ask them to confirm. Only then repeat the identical call with \`confirmation_token\`. The token lasts 15 minutes and matches exactly that plan. A bulk write always needs this step; there is no way around it and you must not look for one.
 5. Days the person did not work in the range (sick without a leave record, a day off) must be excluded: either narrow the range, or run \`log_range\` on the sub-ranges around them. Days worked outside the pattern (a Saturday, a half day) are written one by one with \`log_days\`, which takes explicit dates and segments and skips only future dates, approved leave and overlaps.
 6. If the write stops part way, the result says where. Re-running the identical call is safe: the planner re-reads existing shifts and writes only what is still missing.
 7. \`audit\` the same window again and report what changed. Every workday should now read \`complete\`.
@@ -333,7 +333,7 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
           '2. Tell the person which days are short and ask whether any of them were not worked (illness without a leave record, a day off). Exclude such days by narrowing the range or by running the call on the sub-ranges around them. Never invent hours.',
           `3. Preview the write. Nothing is written by this call: ${toolCall(rangeCall)}`,
           '4. Show the person the preview: how many days and records, the hours, and every skipped day with its reason. Ask them to confirm.',
-          '5. Only after they confirm, repeat exactly the same call adding the confirmation_token from the preview. The token lasts 5 minutes and matches only that plan. If it expired, run the preview again.',
+          '5. Only after they confirm, repeat exactly the same call adding the confirmation_token from the preview. The token lasts 15 minutes and matches only that plan. If it expired, run the preview again.',
           '6. If the result says the write stopped part way, re-run the identical call; the planner writes only what is still missing.',
           `7. Verify: ${toolCall({ action: 'audit', employee_id: employeeId, start_on: window.start_on, end_on: window.end_on })} and report what changed. Every workday should read complete.`,
           '',

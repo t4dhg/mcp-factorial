@@ -386,7 +386,7 @@ The following operations require explicit confirmation (`confirm: true`). Called
 
 ### Operations Gated by a Confirmation Token
 
-Attendance writes are gated by **who they target and how many records they touch**, which a per-operation policy cannot express. A first call writes nothing and returns a preview that names the person, the dates and the totals, plus a `confirmation_token` valid for five minutes and bound to exactly that plan. Repeating the call with the token executes it; if the plan changed in between (someone wrote a shift), the token is refused and a new preview is issued. `confirm: true` cannot bypass this gate, because there is no token to pass on a first call.
+Attendance writes are gated by **who they target and how many records they touch**, which a per-operation policy cannot express. A first call writes nothing and returns a preview that names the person, the dates and the totals, plus a `confirmation_token` valid for fifteen minutes and bound to exactly that plan. Repeating the call with the token executes it; if the plan changed in between (someone wrote a shift), the token is refused and a new preview is issued. `confirm: true` cannot bypass this gate, because there is no token to pass on a first call.
 
 Gated whenever the target is not the configured `FACTORIAL_EMPLOYEE_ID`, and always when that variable is unset:
 
