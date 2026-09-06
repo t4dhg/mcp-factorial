@@ -23,16 +23,8 @@ export const isoWithOffset = z
     'Date-time must be ISO 8601 with an explicit offset'
   );
 
-export const SHIFT_SOURCES = [
-  'desktop',
-  'mobile',
-  'face_recognition',
-  'qr_code',
-  'mobile_geolocation',
-  'shared_device',
-  'api',
-  'system',
-] as const;
+// Known `source` values: desktop | mobile | face_recognition | qr_code |
+// mobile_geolocation | shared_device | api | system. This server always writes `api`.
 
 export const LOCATION_TYPES = ['office', 'business_trip', 'work_from_home'] as const;
 
@@ -122,7 +114,7 @@ export const EstimatedTimeSchema = z
 
 export type EstimatedTime = z.infer<typeof EstimatedTimeSchema>;
 
-export const DAY_TYPES = ['workday', 'saturday', 'sunday', 'bank_holiday'] as const;
+// Known `day_type` values: workday | saturday | sunday | bank_holiday.
 
 /**
  * Tracked minutes per day plus the day type (/attendance/worked_times). The

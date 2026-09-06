@@ -344,19 +344,45 @@ describe('buildBackfillPlan for explicit days', () => {
 });
 
 describe('planFingerprint', () => {
+  const writes = [
+    { date: '2026-12-28', clock_in: '09:00', clock_out: '13:00' },
+    { date: '2026-12-29', clock_in: '09:00', clock_out: '13:00' },
+  ];
+
   it('is stable for the same writes and changes when a write changes', () => {
-    const writes = [
-      { date: '2026-12-28', clock_in: '09:00', clock_out: '13:00' },
-      { date: '2026-12-29', clock_in: '09:00', clock_out: '13:00' },
-    ];
     expect(planFingerprint(1, writes)).toBe(planFingerprint(1, [...writes]));
     expect(planFingerprint(1, writes)).not.toBe(planFingerprint(2, writes));
     expect(planFingerprint(1, writes)).not.toBe(planFingerprint(1, writes.slice(1)));
   });
+
+  it('covers the note written onto every record', () => {
+    expect(planFingerprint(1, writes, 'migrated')).not.toBe(planFingerprint(1, writes));
+    expect(planFingerprint(1, writes, 'migrated')).toBe(planFingerprint(1, writes, 'migrated'));
+  });
+});
+
+describe('existing shifts the planner cannot interpret', () => {
+  it('names the record instead of blaming the request', () => {
+    const facts = decemberFacts({
+      shifts: [{ date: '2026-12-29', clock_in: '2000-01-01T09:00:00Z', clock_out: null }],
+    });
+    expect(() => buildBackfillPlan(rangeRequest(), facts)).toThrow(/existing shift on 2026-12-29/);
+  });
+
+  it('treats an overnight existing shift as occupying to the end of its day', () => {
+    const facts = decemberFacts({
+      shifts: [{ date: '2026-12-29', clock_in: '22:00', clock_out: '06:00' }],
+    });
+    const plan = buildBackfillPlan(
+      rangeRequest({ segments: [{ clock_in: '22:30', clock_out: '23:30' }] }),
+      facts
+    );
+    expect(plan.writes.map(w => w.date)).toEqual(['2026-12-28', '2026-12-30']);
+  });
 });
 
 describe('computeGaps', () => {
-  it('lists workdays where expected exceeds tracked and are not on leave, flagging half days', () => {
+  it('lists past workdays where expected exceeds tracked and are not on leave, flagging half days', () => {
     const facts = decemberFacts({
       leaves: new Map([
         ['2026-12-28', 'full' as const],
@@ -367,6 +393,11 @@ describe('computeGaps', () => {
       day_type: 'workday',
       expected_minutes: 240,
       tracked_minutes: 240,
+    });
+    facts.days.set('2027-02-01', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 0,
     });
     facts.days.set('2026-12-29', {
       day_type: 'workday',
