@@ -123,11 +123,19 @@ describe('factorial_attendance tool', () => {
 
   it('writes the plan when called again with the token, sending source api', async () => {
     routeFetch({});
-    const first = await call(range);
+    const first = await call({ ...range, observations: 'migrated' });
+    expect(first.content[0].text).toContain('Note on every record: "migrated"');
     const token = TOKEN.exec(first.content[0].text)?.[1];
     expect(token).toBeDefined();
 
-    const second = await call({ ...range, confirmation_token: token, observations: 'migrated' });
+    // A note that was not previewed changes the fingerprint and is refused.
+    const sneaky = await call({ ...range, confirmation_token: token, observations: 'other' });
+    expect(sneaky.content[0].text).toMatch(/plan changed/);
+    expect(posts()).toEqual([]);
+
+    const again = await call({ ...range, observations: 'migrated' });
+    const token2 = TOKEN.exec(again.content[0].text)?.[1];
+    const second = await call({ ...range, confirmation_token: token2, observations: 'migrated' });
     expect(second.content[0].text).toContain(
       'Wrote 3 of 3 shift records for Placeholder Person (2), 12h'
     );
@@ -271,6 +279,36 @@ describe('factorial_attendance tool', () => {
     expect(colleague.content[0].text).toContain('Clock in Other Colleague (3) now');
     expect(colleague.content[0].text).toMatch(TOKEN);
     expect(posts()).toHaveLength(1);
+  });
+
+  it('delete of a foreign shift needs confirm: true and then a token; update needs a token', async () => {
+    vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '3');
+    const foreign = { ...shiftsFixture.data[0], id: '77', employee_id: '2' };
+    mockFetch.mockImplementation(async (input: string, init?: { method?: string }) => {
+      const url = new URL(input);
+      const ok = (json: unknown) => ({
+        ok: true,
+        status: 200,
+        json: async () => json,
+        text: async () => '',
+      });
+      if (init?.method === 'DELETE' || init?.method === 'PATCH')
+        throw new Error('write reached the API');
+      if (url.pathname.endsWith('/attendance/shifts/77')) return ok(foreign);
+      if (url.pathname.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+      throw new Error(`unexpected ${url.pathname}`);
+    });
+
+    const noConfirm = await call({ action: 'delete', id: 77 });
+    expect(noConfirm.content[0].text).toMatch(/confirm: true/);
+
+    const confirmed = await call({ action: 'delete', id: 77, confirm: true });
+    expect(confirmed.content[0].text).toContain('Delete shift 77 of Placeholder Person (2)');
+    expect(confirmed.content[0].text).toMatch(TOKEN);
+
+    const update = await call({ action: 'update', id: 77, clock_out: '14:00' });
+    expect(update.content[0].text).toContain('Update shift 77 of Placeholder Person (2)');
+    expect(update.content[0].text).toMatch(TOKEN);
   });
 
   it('errors clearly on a malformed FACTORIAL_EMPLOYEE_ID', async () => {

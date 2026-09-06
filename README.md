@@ -126,7 +126,7 @@ factorial_attendance({
 factorial_attendance({ action: 'log_range', /* same arguments */ confirmation_token: '<token>' });
 ```
 
-Bank holidays come from the company's own calendar in Factorial (`worked_times.day_type`), so no holiday list is needed. Approved leave is read from `timeoff/leaves`; pass `skip_leave: false` when the source system is right and Factorial's leave record is stale. Half-day leave days are left out of `log_range` and named in the preview; write the worked half with `log_days`.
+"Today" for the future-date rule is the date in the zone of the machine running the server, so run it in the company's zone or accept that the boundary day may be off by one. Bank holidays come from the company's own calendar in Factorial (`worked_times.day_type`), so no holiday list is needed. Approved leave is read from `timeoff/leaves`; pass `skip_leave: false` when the source system is right and Factorial's leave record is stale. Half-day leave days are left out of `log_range` and named in the preview; write the worked half with `log_days`.
 
 Set `FACTORIAL_EMPLOYEE_ID` to your own employee id so that `employee_id` can be omitted. Writes aimed at anyone else, and every bulk write, require a confirmation token; see [Safety & Security](#safety--security).
 

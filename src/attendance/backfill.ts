@@ -35,7 +35,8 @@ export async function gatherFacts(
   endOn: string,
   now: Date = new Date()
 ): Promise<PlanFacts> {
-  // A plan must never reason from a shift list older than the call.
+  // A plan must never reason from a shift list older than the call. None of
+  // the reads below is cached today; this keeps that true if one becomes so.
   cache.invalidatePrefix('shifts');
 
   const range = { employee_ids: [employeeId], start_on: startOn, end_on: endOn };

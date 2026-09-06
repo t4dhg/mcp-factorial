@@ -14,7 +14,7 @@ import {
   type UpdateLeaveInput,
   type LeaveDecisionInput,
 } from '../schemas.js';
-import { parseArray } from '../schemas/shared.js';
+import { parseArray, parseData } from '../schemas/shared.js';
 import { AuditAction, auditedOperation } from '../audit.js';
 import { validateId } from '../utils.js';
 import { ENDPOINTS, endpointWithId, endpointWithAction } from '../endpoints.js';
@@ -52,7 +52,8 @@ export async function listLeaves(
 export async function getLeave(id: number): Promise<Leave> {
   validateId(id, 'leave');
 
-  return fetchOne<Leave>(endpointWithId(ENDPOINTS.leaves, id));
+  const leave = await fetchOne<unknown>(endpointWithId(ENDPOINTS.leaves, id));
+  return parseData('Leave', LeaveSchema, leave);
 }
 
 /**
