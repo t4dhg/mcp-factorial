@@ -19,10 +19,13 @@ import { listLeaves } from '../api/time-off.js';
 import {
   buildBackfillPlan,
   computeGaps,
+  computeLedger,
+  enumerateDates,
   expandLeaves,
   type BackfillPlan,
   type DayFacts,
   type Gap,
+  type LedgerDay,
   type PlanFacts,
   type PlanRequest,
   type PlannedWrite,
@@ -89,9 +92,25 @@ export async function planBackfill(
 }
 
 /** Workdays where the contract expects more than was tracked */
-export async function findGaps(employeeId: number, startOn: string, endOn: string): Promise<Gap[]> {
+export async function findGaps(
+  employeeId: number,
+  startOn: string,
+  endOn: string,
+  toleranceMinutes?: number
+): Promise<Gap[]> {
   const facts = await gatherFacts(employeeId, startOn, endOn);
-  return computeGaps(facts);
+  return computeGaps(facts, toleranceMinutes);
+}
+
+/** Day-by-day ledger for an audit of what was clocked against what should have been */
+export async function buildLedger(
+  employeeId: number,
+  startOn: string,
+  endOn: string,
+  toleranceMinutes?: number
+): Promise<LedgerDay[]> {
+  const facts = await gatherFacts(employeeId, startOn, endOn);
+  return computeLedger(enumerateDates(startOn, endOn), facts, toleranceMinutes);
 }
 
 export interface BackfillResult {

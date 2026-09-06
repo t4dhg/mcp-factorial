@@ -29,7 +29,7 @@ A comprehensive Model Context Protocol (MCP) server that provides AI assistants 
 
 ### Hierarchical Tool Discovery (v8.0.0+)
 
-The MCP server uses a hierarchical tool structure for optimal context usage. Instead of 123 individual tools, you get 14 category-based tools with an `action` parameter.
+The MCP server uses a hierarchical tool structure for optimal context usage. Instead of 124 individual tools, you get 14 category-based tools with an `action` parameter.
 
 | Tool                    | Description                   | Actions                                            |
 | ----------------------- | ----------------------------- | -------------------------------------------------- |
@@ -39,7 +39,7 @@ The MCP server uses a hierarchical tool structure for optimal context usage. Ins
 | `factorial_locations`   | Location management           | list, get, create, update, delete                  |
 | `factorial_contracts`   | Contract/salary data          | list, get_with_employee, by_job_role, by_job_level |
 | `factorial_time_off`    | Leave management              | 10 actions                                         |
-| `factorial_attendance`  | Shifts and registro horario   | 11 actions incl. clock_in, gaps, log_range         |
+| `factorial_attendance`  | Shifts and registro horario   | 12 actions incl. clock_in, audit, log_range        |
 | `factorial_documents`   | Document management           | 8 actions (downloads require OAuth2 - see below)   |
 | `factorial_job_catalog` | Job roles/levels              | list_roles, get_role, list_levels                  |
 | `factorial_projects`    | Project management            | 16 actions for projects, tasks, workers, time      |
@@ -73,7 +73,7 @@ factorial_time_off({
 factorial_discover({ category: 'employees' });
 ```
 
-### 123 Operations Across 14 Categories
+### 124 Operations Across 14 Categories
 
 | Category        | Operations                                                                                             |
 | --------------- | ------------------------------------------------------------------------------------------------------ |
@@ -81,7 +81,7 @@ factorial_discover({ category: 'employees' });
 | **Teams**       | list, get, create, update, delete                                                                      |
 | **Locations**   | list, get, create, update, delete                                                                      |
 | **Time Off**    | list_leaves, get_leave, list_types, get_type, list_allowances, create, update, cancel, approve, reject |
-| **Attendance**  | list, get, create, update, delete, clock_in, clock_out, status, gaps, log_range, log_days              |
+| **Attendance**  | list, get, create, update, delete, clock_in, clock_out, status, gaps, audit, log_range, log_days       |
 | **Projects**    | 16 operations for projects, tasks, workers, time records                                               |
 | **Training**    | 12 operations for trainings, sessions, enrollments                                                     |
 | **Work Areas**  | list, get, create, update, archive, unarchive                                                          |
@@ -97,14 +97,15 @@ Factorial asks employees to record their working hours day by day. `factorial_at
 
 Times are `HH:MM` in the company's local time, exactly as Factorial shows them. Records written by this server carry `source: "api"`, so they are distinguishable from live clocks in Factorial's own activity log.
 
-| Action                                      | What it does                                                                                                                                                                                                          |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`                                    | Whether the employee is clocked in and since when. Always prints the configured identity.                                                                                                                             |
-| `clock_in`, `clock_out`                     | Live clocking at the current time.                                                                                                                                                                                    |
-| `gaps`                                      | Workdays in a date range where the contract expects more hours than were tracked. Weekends, bank holidays and full-day leave are excluded.                                                                            |
-| `log_range`                                 | Apply a daily pattern (`segments`) to every workable day in a range. Skips weekends, bank holidays, days the contract expects 0 minutes, approved leave, future dates, and any segment overlapping an existing shift. |
-| `log_days`                                  | Write an explicit list of days with their segments, for migrating from another platform. Only refuses future dates, approved leave and overlaps, so a Saturday someone worked can be written.                         |
-| `list`, `get`, `create`, `update`, `delete` | Individual shift records. `list` needs `start_on` and `end_on` (or `ids`, or `updated_at`); Factorial ignores paging on this endpoint, so paging is client-side.                                                      |
+| Action                                      | What it does                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`                                    | Whether the employee is clocked in and since when. Always prints the configured identity.                                                                                                                                                                                                                                                      |
+| `clock_in`, `clock_out`                     | Live clocking at the current time.                                                                                                                                                                                                                                                                                                             |
+| `gaps`                                      | Workdays in a date range where the contract expects more hours than were tracked. Weekends, bank holidays and full-day leave are excluded.                                                                                                                                                                                                     |
+| `audit`                                     | One row per calendar day in a range: day type, expected and tracked hours, leave cover, the shifts on record and a status (`complete`, `missing`, `over`, `weekend`, `bank_holiday`, `on_leave`, `half_day_leave`, `future`), plus the same ledger as JSON. The starting point for reconciling what was clocked against what should have been. |
+| `log_range`                                 | Apply a daily pattern (`segments`) to every workable day in a range. Skips weekends, bank holidays, days the contract expects 0 minutes, approved leave, future dates, and any segment overlapping an existing shift.                                                                                                                          |
+| `log_days`                                  | Write an explicit list of days with their segments, for migrating from another platform. Only refuses future dates, approved leave and overlaps, so a Saturday someone worked can be written.                                                                                                                                                  |
+| `list`, `get`, `create`, `update`, `delete` | Individual shift records. `list` needs `start_on` and `end_on` (or `ids`, or `updated_at`); Factorial ignores paging on this endpoint, so paging is client-side.                                                                                                                                                                               |
 
 ```typescript
 // Find the missing days first
@@ -124,9 +125,16 @@ factorial_attendance({
 
 // Same call plus the token writes it
 factorial_attendance({ action: 'log_range', /* same arguments */ confirmation_token: '<token>' });
+
+// Afterwards, reconcile the month
+factorial_attendance({ action: 'audit', start_on: '2026-03-01', end_on: '2026-03-31' });
 ```
 
 "Today" for the future-date rule is the date in the zone of the machine running the server, so run it in the company's zone or accept that the boundary day may be off by one. Bank holidays come from the company's own calendar in Factorial (`worked_times.day_type`), so no holiday list is needed. Approved leave is read from `timeoff/leaves`; pass `skip_leave: false` when the source system is right and Factorial's leave record is stale. Half-day leave days are left out of `log_range` and named in the preview; write the worked half with `log_days`.
+
+Nobody clocks in at exactly 09:00 every day, and a month of identical entries is the one pattern a real registro never shows. Pass `jitter_minutes` (5 to 10 is sensible) to `log_range` or `log_days` and each written time varies by up to that many minutes from your pattern. The variation is derived from the employee, the date and the segment, so the preview lists the exact times that will be written, the confirmation token binds to them, and a retry recognises its own earlier records. Segments never cross each other. The records still carry `source: "api"`; the option makes reconstructed hours realistic, it does not disguise where they came from.
+
+**Auditing a month.** Run `audit` for the range first. A day within `tolerance_minutes` (default 15) of its expected total counts as `complete`, so realistic clock-ins and jittered backfills do not read as shortfalls. Compare the ledger with what you know locally (your calendar, another time-tracking system, days you actually worked on a holiday), then fix the differences: `log_range` or `log_days` for missing days, `delete` or `update` for wrong records, and `audit` again to confirm every workday reads `complete`.
 
 Set `FACTORIAL_EMPLOYEE_ID` to your own employee id so that `employee_id` can be omitted. Writes aimed at anyone else, and every bulk write, require a confirmation token; see [Safety & Security](#safety--security).
 

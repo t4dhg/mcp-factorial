@@ -67,6 +67,8 @@ export interface RangeRequest {
   dates: string[];
   segments: Segment[];
   skip_leave: boolean;
+  /** Vary each written time by up to this many minutes, deterministically per record */
+  jitter_minutes?: number;
 }
 
 export interface DaysRequest {
@@ -74,6 +76,8 @@ export interface DaysRequest {
   employee_id: number;
   days: Array<{ date: string; segments: Segment[] }>;
   skip_leave: boolean;
+  /** Vary each written time by up to this many minutes, deterministically per record */
+  jitter_minutes?: number;
 }
 
 export type PlanRequest = RangeRequest | DaysRequest;
@@ -116,6 +120,13 @@ export interface Gap {
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const END_OF_DAY = 24 * 60;
+
+/**
+ * A day whose tracked minutes are within this distance of the expected minutes
+ * counts as complete. Real clock-ins are never exact, and jittered backfills
+ * are deliberately not, so a strict comparison would flag nearly every day.
+ */
+export const DEFAULT_TOLERANCE_MINUTES = 15;
 
 /** Parse "HH:MM" into minutes since midnight; anything else is rejected */
 export function parseHHMM(value: string): number {
@@ -274,6 +285,58 @@ function existingIntervals(shifts: ExistingShift[], date: string): Array<[number
     });
 }
 
+function formatHHMM(minutes: number): string {
+  const clamped = Math.max(0, Math.min(END_OF_DAY - 1, minutes));
+  return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`;
+}
+
+/** Deterministic integer in [-magnitude, magnitude] derived from the record's identity */
+function deterministicOffset(seed: string, magnitude: number): number {
+  if (magnitude <= 0) return 0;
+  const digest = createHash('sha256').update(seed).digest();
+  const value = digest.readUInt32BE(0) % (2 * magnitude + 1);
+  return value - magnitude;
+}
+
+/**
+ * Apply per-record variation to a day's segments. Nobody clocks in at exactly
+ * 09:00 every day, so a month of identical times is the one pattern a real
+ * registro never shows. The variation is derived from a hash of the employee,
+ * the date and the segment, so re-planning the same request yields the same
+ * times: the preview shows exactly what will be written, the confirmation
+ * token binds to it, and a retry after a partial failure recognises its own
+ * earlier writes. Segments never cross each other or midnight.
+ */
+export function jitterSegments(
+  employeeId: number,
+  date: string,
+  segments: Segment[],
+  magnitude: number
+): Segment[] {
+  if (magnitude <= 0) return segments;
+  const ordered = [...segments].sort((a, b) => parseHHMM(a.clock_in) - parseHHMM(b.clock_in));
+  const result: Segment[] = [];
+  let previousEnd = -Infinity;
+  ordered.forEach((segment, index) => {
+    const baseStart = parseHHMM(segment.clock_in);
+    const baseEnd = parseHHMM(segment.clock_out);
+    const nextStart =
+      index + 1 < ordered.length ? parseHHMM(ordered[index + 1].clock_in) : Infinity;
+    let start = baseStart + deterministicOffset(`${employeeId}|${date}|${index}|in`, magnitude);
+    let end = baseEnd + deterministicOffset(`${employeeId}|${date}|${index}|out`, magnitude);
+    // Never start before the previous segment ended, never end after the next one may start.
+    start = Math.max(start, previousEnd, 0);
+    end = Math.min(end, nextStart - magnitude - 1, END_OF_DAY - 1);
+    if (end <= start) {
+      start = baseStart;
+      end = baseEnd;
+    }
+    previousEnd = end;
+    result.push({ clock_in: formatHHMM(start), clock_out: formatHHMM(end) });
+  });
+  return result;
+}
+
 /**
  * Build the plan. Skip reasons are evaluated in the documented order and the
  * first match wins. Explicit days skip the weekday, holiday and workability
@@ -312,7 +375,13 @@ export function buildBackfillPlan(request: PlanRequest, facts: PlanFacts): Backf
       continue;
     }
     const existing = existingIntervals(facts.shifts, date);
-    for (const segment of segments) {
+    const planned = jitterSegments(
+      request.employee_id,
+      date,
+      segments,
+      request.jitter_minutes ?? 0
+    );
+    for (const segment of planned) {
       const interval: [number, number] = [
         parseHHMM(segment.clock_in),
         parseHHMM(segment.clock_out),
@@ -364,12 +433,12 @@ export function planFingerprint(
  * full-day leave applies. Future dates are left out, since log_range would
  * refuse them anyway.
  */
-export function computeGaps(facts: PlanFacts): Gap[] {
+export function computeGaps(facts: PlanFacts, toleranceMinutes = DEFAULT_TOLERANCE_MINUTES): Gap[] {
   const gaps: Gap[] = [];
   for (const [date, day] of [...facts.days.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (date > facts.today) continue;
     if (day.day_type !== 'workday') continue;
-    if (day.expected_minutes <= day.tracked_minutes) continue;
+    if (day.expected_minutes - day.tracked_minutes <= toleranceMinutes) continue;
     const cover = facts.leaves.get(date);
     if (cover === 'full') continue;
     gaps.push({
@@ -381,6 +450,75 @@ export function computeGaps(facts: PlanFacts): Gap[] {
     });
   }
   return gaps;
+}
+
+export type LedgerStatus =
+  | 'future'
+  | 'weekend'
+  | 'bank_holiday'
+  | 'not_workable'
+  | 'on_leave'
+  | 'half_day_leave'
+  | 'complete'
+  | 'missing'
+  | 'over';
+
+export interface LedgerDay {
+  date: string;
+  day_type: string | null;
+  expected_minutes: number;
+  tracked_minutes: number;
+  leave: LeaveCover | null;
+  shifts: Array<{ clock_in: string; clock_out: string | null; minutes: number | null }>;
+  status: LedgerStatus;
+  /** tracked minus expected; negative means hours are missing */
+  delta_minutes: number;
+}
+
+/**
+ * One row per calendar day in the range, with everything the planner knows
+ * about it, for auditing what was clocked against what the contract, the
+ * company calendar and the leave record say should have been.
+ */
+export function computeLedger(
+  dates: string[],
+  facts: PlanFacts,
+  toleranceMinutes = DEFAULT_TOLERANCE_MINUTES
+): LedgerDay[] {
+  return dates.map(date => {
+    const day = facts.days.get(date);
+    const leave = facts.leaves.get(date) ?? null;
+    const shifts = facts.shifts
+      .filter(s => s.date === date)
+      .sort((a, b) => a.clock_in.localeCompare(b.clock_in))
+      .map(s => ({
+        clock_in: s.clock_in,
+        clock_out: s.clock_out,
+        minutes: s.clock_out === null ? null : parseHHMM(s.clock_out) - parseHHMM(s.clock_in),
+      }));
+    const expected = day?.expected_minutes ?? 0;
+    const tracked = day?.tracked_minutes ?? 0;
+    let status: LedgerStatus;
+    if (date > facts.today) status = 'future';
+    else if (day?.day_type === 'saturday' || day?.day_type === 'sunday') status = 'weekend';
+    else if (day?.day_type === 'bank_holiday') status = 'bank_holiday';
+    else if (leave === 'full') status = 'on_leave';
+    else if (leave) status = 'half_day_leave';
+    else if (expected <= 0) status = 'not_workable';
+    else if (expected - tracked > toleranceMinutes) status = 'missing';
+    else if (tracked - expected > toleranceMinutes) status = 'over';
+    else status = 'complete';
+    return {
+      date,
+      day_type: day?.day_type ?? null,
+      expected_minutes: expected,
+      tracked_minutes: tracked,
+      leave,
+      shifts,
+      status,
+      delta_minutes: tracked - expected,
+    };
+  });
 }
 
 /** 720 -> "12h", 750 -> "12h30" */
@@ -420,6 +558,16 @@ export function formatPlanPreview(
   }
   if (observations) {
     lines.push(`  Note on every record: "${observations}"`);
+  }
+  if (request.jitter_minutes && request.jitter_minutes > 0) {
+    lines.push(
+      `  Each time varies by up to ${request.jitter_minutes} minutes from the pattern (fixed per record, shown below).`
+    );
+  }
+  if (plan.writes.length > 0 && plan.writes.length <= 62) {
+    lines.push('');
+    lines.push('  Records to write:');
+    for (const w of plan.writes) lines.push(`    ${w.date} ${w.clock_in}-${w.clock_out}`);
   }
 
   if (plan.skippedDays.length > 0) {

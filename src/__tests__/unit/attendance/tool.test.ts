@@ -359,6 +359,52 @@ describe('factorial_attendance tool', () => {
     expect(text).not.toContain('2026-12-26');
   });
 
+  it('audit lists every day in the range with a status and a machine-readable ledger', async () => {
+    routeFetch({
+      shifts: [
+        {
+          ...shiftsFixture.data[0],
+          date: '2026-12-28',
+          clock_in: '09:02',
+          clock_out: '13:05',
+          minutes: 243,
+        },
+      ],
+    });
+    const result = await call({
+      action: 'audit',
+      employee_id: 2,
+      start_on: '2026-12-24',
+      end_on: '2026-12-31',
+    });
+    const text = result.content[0].text;
+    expect(text).toContain('Attendance audit for Placeholder Person (2), 2026-12-24 to 2026-12-31');
+    expect(text).toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
+    expect(text).toMatch(/2026-12-26\s+saturday\s+weekend/);
+    expect(text).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
+    const json = JSON.parse(
+      text.slice(text.indexOf('Machine-readable ledger:') + 'Machine-readable ledger:'.length)
+    );
+    expect(json).toHaveLength(8);
+    expect(json.find((d: { date: string }) => d.date === '2026-12-28').shifts[0].minutes).toBe(243);
+  });
+
+  it('log_range with jitter previews the exact varied times and writes those same times', async () => {
+    routeFetch({});
+    const args = { ...range, jitter_minutes: 6 };
+    const first = await call(args);
+    const text = first.content[0].text;
+    expect(text).toContain('varies by up to 6 minutes');
+    const listed = [...text.matchAll(/^\s{4}(2026-12-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2})$/gm)].map(
+      m => `${m[1]} ${m[2]}-${m[3]}`
+    );
+    expect(listed).toHaveLength(3);
+    expect(listed.some(l => !l.endsWith('09:00-13:00'))).toBe(true);
+    const token = TOKEN.exec(text)?.[1];
+    await call({ ...args, confirmation_token: token });
+    expect(posts().map(p => `${p.date} ${p.clock_in}-${p.clock_out}`)).toEqual(listed);
+  });
+
   it('log_days writes a bank holiday someone worked but refuses a future date', async () => {
     routeFetch({});
     const args = {
