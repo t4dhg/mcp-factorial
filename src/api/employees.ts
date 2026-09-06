@@ -58,9 +58,11 @@ export async function listEmployees(
 /**
  * Get a specific employee by ID
  *
- * Note: The Factorial API's individual employee endpoint (/employees/employees/{id})
- * can be unreliable. This function falls back to fetching all employees and filtering
- * if the direct endpoint fails or returns no data.
+ * The direct endpoint is tried first. If it answers 404, which happens for
+ * employees the API key cannot see directly, the function falls back to listing
+ * all employees and filtering. (Until 9.0.1 the direct endpoint always appeared
+ * to return nothing, because the client unwrapped a `data` envelope the API does
+ * not send for single records; the fallback was masking that bug.)
  */
 export async function getEmployee(id: number): Promise<Employee> {
   validateId(id, 'employee');

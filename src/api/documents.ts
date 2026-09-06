@@ -76,9 +76,10 @@ export async function listDocuments(
 /**
  * Get a specific document by ID
  *
- * Note: The Factorial API's individual document endpoint (/documents/documents/{id})
- * can be unreliable, similar to the employee endpoint. This function implements a fallback
- * to listing all documents and filtering if the direct endpoint fails or returns no data.
+ * The direct endpoint is tried first; if it answers 404 the function falls back
+ * to listing all documents and filtering. (Until 9.0.1 the direct endpoint always
+ * appeared to return nothing, because the client unwrapped a `data` envelope the
+ * API does not send for single records; the fallback was masking that bug.)
  *
  * IMPORTANT: Due to Factorial API limitations, this function may not find employee-specific
  * documents that were returned by listDocuments({ employee_ids: [...] }). This is because

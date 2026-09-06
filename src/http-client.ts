@@ -295,11 +295,36 @@ export interface ApiListResponse<T> {
 }
 
 /**
+ * Extract a single record from a response.
+ *
+ * Factorial returns single records at the top level: `GET /{resource}/{id}`
+ * and every `POST`, `PUT` and `PATCH` respond with the record itself, and only
+ * list endpoints wrap their payload as `{ data: [...], meta: {...} }`. This was
+ * verified live on 2026-09-06 on API 2026-07-01 and the reference agrees. The
+ * `{ data: record }` envelope is still accepted so that a tenant or version
+ * that does wrap single records keeps working.
+ */
+export function unwrapRecord<T>(response: unknown): T {
+  if (
+    response !== null &&
+    typeof response === 'object' &&
+    !Array.isArray(response) &&
+    'data' in response
+  ) {
+    const inner = (response as { data: unknown }).data;
+    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
+      return inner as T;
+    }
+  }
+  return response as T;
+}
+
+/**
  * Make a request expecting a single item response
  */
 export async function fetchOne<T>(endpoint: string, options?: RequestOptions): Promise<T> {
-  const response = await factorialRequest<ApiResponse<T>>(endpoint, options);
-  return response.data;
+  const response = await factorialRequest<unknown>(endpoint, options);
+  return unwrapRecord<T>(response);
 }
 
 /**
@@ -322,12 +347,12 @@ export async function postOne<T>(
   body: Record<string, unknown>,
   options?: Omit<WriteRequestOptions, 'method' | 'body'>
 ): Promise<T> {
-  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+  const response = await factorialRequest<unknown>(endpoint, {
     ...options,
     method: 'POST',
     body,
   });
-  return response.data;
+  return unwrapRecord<T>(response);
 }
 
 /**
@@ -338,12 +363,12 @@ export async function putOne<T>(
   body: Record<string, unknown>,
   options?: Omit<WriteRequestOptions, 'method' | 'body'>
 ): Promise<T> {
-  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+  const response = await factorialRequest<unknown>(endpoint, {
     ...options,
     method: 'PUT',
     body,
   });
-  return response.data;
+  return unwrapRecord<T>(response);
 }
 
 /**
@@ -354,12 +379,12 @@ export async function patchOne<T>(
   body: Record<string, unknown>,
   options?: Omit<WriteRequestOptions, 'method' | 'body'>
 ): Promise<T> {
-  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+  const response = await factorialRequest<unknown>(endpoint, {
     ...options,
     method: 'PATCH',
     body,
   });
-  return response.data;
+  return unwrapRecord<T>(response);
 }
 
 /**
@@ -384,10 +409,10 @@ export async function postAction<T>(
   body?: Record<string, unknown>,
   options?: Omit<WriteRequestOptions, 'method' | 'body'>
 ): Promise<T> {
-  const response = await factorialRequest<ApiResponse<T>>(endpoint, {
+  const response = await factorialRequest<unknown>(endpoint, {
     ...options,
     method: 'POST',
     body: body || {},
   });
-  return response.data;
+  return unwrapRecord<T>(response);
 }
