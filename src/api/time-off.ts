@@ -5,14 +5,16 @@
 import { fetchList, fetchOne, postOne, patchOne, deleteOne, postAction } from '../http-client.js';
 import { cached, CACHE_TTL } from '../cache.js';
 import { buildPaginationParams, paginateResponse, type PaginatedResponse } from '../pagination.js';
-import type {
-  Leave,
-  LeaveType,
-  Allowance,
-  CreateLeaveInput,
-  UpdateLeaveInput,
-  LeaveDecisionInput,
+import {
+  LeaveSchema,
+  type Leave,
+  type LeaveType,
+  type Allowance,
+  type CreateLeaveInput,
+  type UpdateLeaveInput,
+  type LeaveDecisionInput,
 } from '../schemas.js';
+import { parseArray } from '../schemas/shared.js';
 import { AuditAction, auditedOperation } from '../audit.js';
 import { validateId } from '../utils.js';
 import { ENDPOINTS, endpointWithId, endpointWithAction } from '../endpoints.js';
@@ -20,23 +22,28 @@ import type { ListLeavesOptions, ListAllowancesOptions } from '../types.js';
 
 /**
  * List leaves with optional filtering
+ *
+ * The endpoint honours employee_ids[], from and to (leaves overlapping the
+ * window, verified live on 2026-07-01). It ignores employee_id (singular),
+ * status, start_on and finish_on, so those are not sent. Responses are
+ * validated at runtime.
  */
-export async function listLeaves(options?: ListLeavesOptions): Promise<PaginatedResponse<Leave>> {
+export async function listLeaves(
+  options: ListLeavesOptions = {}
+): Promise<PaginatedResponse<Leave>> {
   const params = buildPaginationParams(options);
 
-  const queryParams: Record<string, string | number | undefined> = {
-    page: params.page,
-    limit: params.limit,
-  };
+  const leaves = await fetchList<unknown>(ENDPOINTS.leaves, {
+    params: {
+      employee_ids: options.employee_ids,
+      from: options.from,
+      to: options.to,
+      page: params.page,
+      limit: params.limit,
+    },
+  });
 
-  if (options?.employee_id) queryParams.employee_id = options.employee_id;
-  if (options?.status) queryParams.status = options.status;
-  if (options?.start_on_gte) queryParams.start_on_gte = options.start_on_gte;
-  if (options?.start_on_lte) queryParams.start_on_lte = options.start_on_lte;
-
-  const leaves = await fetchList<Leave>(ENDPOINTS.leaves, { params: queryParams });
-
-  return paginateResponse(leaves, params.page, params.limit);
+  return paginateResponse(parseArray('Leave', LeaveSchema, leaves), params.page, params.limit);
 }
 
 /**

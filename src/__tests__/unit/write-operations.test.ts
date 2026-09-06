@@ -426,65 +426,82 @@ describe('Write Operations', () => {
   });
 
   describe('Shift Write Operations', () => {
-    it('should create a shift', async () => {
-      const newShift = {
-        id: 4,
-        employee_id: 1,
-        clock_in: '2025-01-15T09:00:00Z',
-        clock_out: '2025-01-15T17:00:00Z',
-        worked_hours: 8,
-        break_minutes: 60,
-        location: 'Office',
-        notes: null,
-        created_at: '2025-01-15T00:00:00Z',
-        updated_at: '2025-01-15T00:00:00Z',
-      };
+    const shift = {
+      id: '4',
+      employee_id: '1',
+      date: '2025-01-15',
+      reference_date: '2025-01-15',
+      clock_in: '09:00',
+      clock_out: '17:00',
+      in_source: 'api',
+      out_source: 'api',
+      observations: null,
+      location_type: null,
+      half_day: null,
+      workable: true,
+      minutes: 480,
+      workplace_id: null,
+      time_settings_break_configuration_id: null,
+      company_id: '1',
+    };
 
+    it('should create a shift, sending date, HH:MM times and source api', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 201,
-        json: async () => ({ data: newShift }),
+        json: async () => shift,
       });
 
       const result = await createShift({
         employee_id: 1,
-        clock_in: '2025-01-15T09:00:00Z',
-        clock_out: '2025-01-15T17:00:00Z',
-        break_minutes: 60,
-        location: 'Office',
+        date: '2025-01-15',
+        clock_in: '09:00',
+        clock_out: '17:00',
       });
 
       expect(mockFetch).toHaveBeenCalledOnce();
-      expect(result.worked_hours).toBe(8);
+      const sent = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(sent).toEqual({
+        employee_id: '1',
+        date: '2025-01-15',
+        clock_in: '09:00',
+        clock_out: '17:00',
+        source: 'api',
+      });
+      expect(result.minutes).toBe(480);
+    });
+
+    it('rewrites the misleading 404 on create into an employee problem', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: async () => '{"errors":[{"error":"El recurso no existe"}]}',
+      });
+
+      await expect(
+        createShift({ employee_id: 999, date: '2025-01-15', clock_in: '09:00', clock_out: '17:00' })
+      ).rejects.toThrow(/employee \(999\)/);
     });
 
     it('should update a shift', async () => {
-      const updatedShift = {
-        id: 1,
-        employee_id: 1,
-        clock_in: '2025-01-15T09:00:00Z',
-        clock_out: '2025-01-15T18:00:00Z',
-        worked_hours: 9,
-        break_minutes: 60,
-        location: 'Office',
-        notes: 'Worked late',
-        created_at: '2025-01-15T00:00:00Z',
-        updated_at: '2025-01-15T12:00:00Z',
-      };
-
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ data: updatedShift }),
+        json: async () => ({
+          ...shift,
+          clock_out: '18:00',
+          observations: 'Worked late',
+          minutes: 540,
+        }),
       });
 
-      const result = await updateShift(1, {
-        clock_out: '2025-01-15T18:00:00Z',
-        notes: 'Worked late',
+      const result = await updateShift(4, {
+        clock_out: '18:00',
+        observations: 'Worked late',
       });
 
       expect(mockFetch).toHaveBeenCalledOnce();
-      expect(result.notes).toBe('Worked late');
+      expect(result.observations).toBe('Worked late');
     });
 
     it('should delete a shift', async () => {

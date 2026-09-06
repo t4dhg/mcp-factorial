@@ -45,8 +45,18 @@ export function registerTimeOffTool(server: McpServer) {
         id: z.number().optional().describe('Leave/type ID'),
         employee_id: z.number().optional().describe('Employee ID'),
         leave_type_id: z.number().optional().describe('Leave type ID'),
-        start_on: z.string().optional().describe('Start date (YYYY-MM-DD)'),
-        finish_on: z.string().optional().describe('End date (YYYY-MM-DD)'),
+        start_on: z
+          .string()
+          .optional()
+          .describe(
+            'Start date (YYYY-MM-DD). For list_leaves: leaves overlapping a window from this date'
+          ),
+        finish_on: z
+          .string()
+          .optional()
+          .describe(
+            'End date (YYYY-MM-DD). For list_leaves: leaves overlapping a window to this date'
+          ),
         half_day: z.enum(['all_day', 'start', 'finish']).optional().describe('Half day option'),
         description: z.string().optional().describe('Leave description'),
         page: z.number().optional().default(1).describe('Page number'),
@@ -59,9 +69,9 @@ export function registerTimeOffTool(server: McpServer) {
         switch (args.action) {
           case 'list_leaves': {
             const result = await listLeaves({
-              employee_id: args.employee_id,
-              start_on_gte: args.start_on,
-              start_on_lte: args.finish_on,
+              employee_ids: args.employee_id ? [args.employee_id] : undefined,
+              from: args.start_on,
+              to: args.finish_on,
               page: args.page,
               limit: args.limit,
             });
@@ -71,7 +81,10 @@ export function registerTimeOffTool(server: McpServer) {
               leave_type_id: l.leave_type_id,
               start_on: l.start_on,
               finish_on: l.finish_on,
-              status: l.status,
+              half_day: l.half_day,
+              // null while the request is pending
+              approved: l.approved,
+              deleted_at: l.deleted_at,
             }));
             return textResponse(
               `Found ${result.data.length} leaves (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`

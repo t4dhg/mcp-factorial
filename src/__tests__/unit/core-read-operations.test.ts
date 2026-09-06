@@ -293,62 +293,58 @@ describe('Core Read Operations', () => {
   });
 
   describe('Leave Read Operations', () => {
-    it('should list leaves', async () => {
-      const leaves = [
-        {
-          id: 1,
-          employee_id: 1,
-          leave_type_id: 1,
-          start_on: '2025-02-01',
-          finish_on: '2025-02-05',
-          half_day: 'all_day' as const,
-          status: 'pending' as const,
-          description: null,
-          deleted_at: null,
-          duration_attributes: { days: 5, hours: 40 },
-          created_at: '2025-01-01T00:00:00Z',
-          updated_at: '2025-01-01T00:00:00Z',
-        },
-      ];
+    const leave = {
+      id: '1',
+      company_id: '1',
+      employee_id: '1',
+      start_on: '2025-02-01',
+      finish_on: '2025-02-05',
+      half_day: null,
+      description: null,
+      reason: null,
+      leave_type_id: '1',
+      leave_type_name: null,
+      approved: null,
+      employee_full_name: 'Placeholder Person',
+      start_time: null,
+      hours_amount_in_cents: null,
+      deleted_at: null,
+      duration_attributes: null,
+      days_taken: 5,
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    };
 
+    it('should list leaves with the filters the API honours', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ data: leaves }),
+        json: async () => ({ data: [leave] }),
       });
 
-      const result = await listLeaves();
+      const result = await listLeaves({ employee_ids: [1], from: '2025-02-01', to: '2025-02-28' });
 
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].status).toBe('pending');
+      expect(result.data[0].approved).toBeNull();
+      const url = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(url.searchParams.getAll('employee_ids[]')).toEqual(['1']);
+      expect(url.searchParams.get('from')).toBe('2025-02-01');
+      expect(url.searchParams.get('to')).toBe('2025-02-28');
+      expect(url.searchParams.has('employee_id')).toBe(false);
+      expect(url.searchParams.has('status')).toBe(false);
     });
 
     it('should get a specific leave', async () => {
-      const leave = {
-        id: 1,
-        employee_id: 1,
-        leave_type_id: 1,
-        start_on: '2025-02-01',
-        finish_on: '2025-02-05',
-        half_day: 'all_day' as const,
-        status: 'pending' as const,
-        description: null,
-        deleted_at: null,
-        duration_attributes: { days: 5, hours: 40 },
-        created_at: '2025-01-01T00:00:00Z',
-        updated_at: '2025-01-01T00:00:00Z',
-      };
-
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ data: leave }),
+        json: async () => leave,
       });
 
       const result = await getLeave(1);
 
-      expect(result.id).toBe(1);
-      expect(result.status).toBe('pending');
+      expect(result.id).toBe('1');
+      expect(result.approved).toBeNull();
     });
 
     it('should list leave types', async () => {
@@ -404,58 +400,94 @@ describe('Core Read Operations', () => {
   });
 
   describe('Shift Read Operations', () => {
-    it('should list shifts', async () => {
-      const shifts = [
-        {
-          id: 1,
-          employee_id: 1,
-          clock_in: '2025-01-15T09:00:00Z',
-          clock_out: '2025-01-15T17:00:00Z',
-          worked_hours: 8,
-          break_minutes: 60,
-          location: 'Office',
-          notes: null,
-          created_at: '2025-01-15T00:00:00Z',
-          updated_at: '2025-01-15T00:00:00Z',
-        },
-      ];
+    const shift = {
+      id: '1',
+      employee_id: '1',
+      date: '2025-01-15',
+      reference_date: '2025-01-15',
+      clock_in: '09:00',
+      clock_out: '17:00',
+      in_source: 'api',
+      out_source: 'api',
+      observations: null,
+      location_type: null,
+      half_day: null,
+      workable: true,
+      minutes: 480,
+      workplace_id: null,
+      time_settings_break_configuration_id: null,
+      company_id: '1',
+      created_at: '2025-01-15T00:00:00Z',
+      updated_at: '2025-01-15T00:00:00Z',
+    };
 
+    it('should list shifts in a date range with Rails-style array filters', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ data: shifts }),
+        json: async () => ({ data: [shift], meta: { total: 1, paginateable: false } }),
       });
 
-      const result = await listShifts();
+      const result = await listShifts({
+        employee_ids: [1, 2],
+        start_on: '2025-01-01',
+        end_on: '2025-01-31',
+      });
 
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].worked_hours).toBe(8);
+      expect(result.data[0].minutes).toBe(480);
+      const url = new URL(mockFetch.mock.calls[0][0] as string);
+      expect(url.searchParams.getAll('employee_ids[]')).toEqual(['1', '2']);
+      expect(url.searchParams.get('start_on')).toBe('2025-01-01');
+      expect(url.searchParams.has('page')).toBe(false);
+      expect(url.searchParams.has('limit')).toBe(false);
+    });
+
+    it('refuses an unbounded shift list instead of returning the whole company', async () => {
+      await expect(listShifts({ employee_ids: [1] })).rejects.toThrow(/start_on and end_on/);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('pages client-side because the API ignores page and limit', async () => {
+      const many = Array.from({ length: 7 }, (_, i) => ({ ...shift, id: String(i + 1) }));
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: many }),
+      });
+
+      const result = await listShifts({
+        start_on: '2025-01-01',
+        end_on: '2025-01-31',
+        page: 2,
+        limit: 3,
+      });
+
+      expect(result.data.map(s => s.id)).toEqual(['4', '5', '6']);
+      expect(result.meta.total).toBe(7);
     });
 
     it('should get a specific shift', async () => {
-      const shift = {
-        id: 1,
-        employee_id: 1,
-        clock_in: '2025-01-15T09:00:00Z',
-        clock_out: '2025-01-15T17:00:00Z',
-        worked_hours: 8,
-        break_minutes: 60,
-        location: 'Office',
-        notes: null,
-        created_at: '2025-01-15T00:00:00Z',
-        updated_at: '2025-01-15T00:00:00Z',
-      };
-
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ data: shift }),
+        json: async () => shift,
       });
 
       const result = await getShift(1);
 
-      expect(result.id).toBe(1);
-      expect(result.worked_hours).toBe(8);
+      expect(result.id).toBe('1');
+      expect(result.clock_in).toBe('09:00');
+    });
+
+    it('fails loudly when a shift does not match the schema', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: '1', employee_id: '1', worked_hours: 8 }),
+      });
+
+      await expect(getShift(1)).rejects.toThrow(/Shift/);
     });
   });
 

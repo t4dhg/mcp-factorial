@@ -29,6 +29,11 @@ export const ENDPOINTS = {
 
   // Attendance endpoints
   shifts: '/attendance/shifts',
+  openShifts: '/attendance/open_shifts',
+  estimatedTimes: '/attendance/estimated_times',
+  workedTimes: '/attendance/worked_times',
+  clockIn: '/attendance/shifts/clock_in',
+  clockOut: '/attendance/shifts/clock_out',
 
   // Document endpoints
   folders: '/documents/folders',

@@ -242,7 +242,7 @@ server.registerPrompt(
   },
   async ({ employee_id }) => {
     const employee = await getEmployee(Number(employee_id));
-    const leaves = await listLeaves({ employee_id: Number(employee_id) });
+    const leaves = await listLeaves({ employee_ids: [Number(employee_id)] });
     const allowances = await listAllowances({ employee_id: Number(employee_id) });
 
     return {
