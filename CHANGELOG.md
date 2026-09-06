@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.2.0] - 2026-09-06
+
+### Fixed
+
+- **List reads stopped after the first page.** Factorial pages list endpoints at 100 items and says so in `meta.has_next_page`; `fetchList` read one page and returned it as the whole result. For `estimated_times` and `worked_times` that meant any window longer than 100 days lost every day from the 101st on, and `gaps`, `audit`, `log_range` and `log_days` reported those days as `not_workable` with "no contract data for this date". An `audit` of 1 January to 6 September 2026 showed every day from 11 April as unknown and not workable; a `log_range` over the same window would have silently skipped them. `fetchList` now follows `has_next_page` to the end (with a 1000-page cap), and every other exhaustive read (employees, contracts, teams, leave types, and so on) benefits the same way. The three user-facing pagers (`listLeaves`, `listAllowances`, `listDocuments`) use a new `fetchPage` that reads exactly one page and now report the API's real `total`.
+- **Leave cover was read from page 1 only.** The planner now reads every leave overlapping the window, so an employee with more than 100 leave records in a window can no longer have `log_range` write over approved leave.
+- **A gap in the data is no longer reported as a fact about the contract.** A date absent from both `worked_times` and `estimated_times` gets the new status and skip reason `no_contract_data`; `not_workable` now means only that the contract expects 0 minutes on that day.
+- **Jitter preserves each segment's duration.** `jitter_minutes` moved clock in and clock out independently, so a two-segment day could drift up to four times the magnitude from its expected total and an audit at the default tolerance could report a freshly written day as `missing`. Both ends of a segment now move by the same offset. Times produced for the same request differ from 10.1.0, so a retry of a partial 10.1.0 write will plan different minutes; the overlap check still skips what was already written.
+
+### Added
+
+- **`Data read` line** at the top of `gaps`, `audit` and every `log_range` / `log_days` preview: how many days of the window have contract data, and how many leave and shift records were read. When days are uncovered it names the first and last and says the result must not be trusted unless they precede the start of employment.
+- **`format` on `audit`**: `summary` (default) lists only the days that need attention and counts the rest; `table` lists every day; `json` returns the full ledger. A 249-day audit no longer returns 56,000 characters by default.
+- **Per-month summary of written records** when a bulk write exceeds 62 records, instead of one line per record.
+
 ## [10.1.0] - 2026-09-06
 
 ### Added

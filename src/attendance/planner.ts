@@ -50,6 +50,21 @@ export interface LeaveLike {
   deleted_at: string | null;
 }
 
+/**
+ * How much of the requested window the API actually returned data for. Printed
+ * at the top of every audit, gaps and bulk-write preview so that a gap in the
+ * data is visible before anyone reasons from it.
+ */
+export interface FactsCoverage {
+  days_in_window: number;
+  days_with_contract_data: number;
+  /** First and last date in the window with no contract data, if any */
+  first_uncovered: string | null;
+  last_uncovered: string | null;
+  leave_records: number;
+  shift_records: number;
+}
+
 export interface PlanFacts {
   /** Today's date, YYYY-MM-DD, in the zone the caller considers local */
   today: string;
@@ -59,6 +74,39 @@ export interface PlanFacts {
   shifts: ExistingShift[];
   /** Approved leave cover per date, see expandLeaves */
   leaves: Map<string, LeaveCover>;
+  /** What the reads covered; absent when the facts were not read from the API */
+  coverage?: FactsCoverage;
+}
+
+/** Measure how much of a date window the per-day facts cover */
+export function measureCoverage(
+  dates: string[],
+  days: Map<string, DayFacts>,
+  leaveRecords: number,
+  shiftRecords: number
+): FactsCoverage {
+  const uncovered = dates.filter(date => !days.has(date));
+  return {
+    days_in_window: dates.length,
+    days_with_contract_data: dates.length - uncovered.length,
+    first_uncovered: uncovered[0] ?? null,
+    last_uncovered: uncovered.length > 0 ? uncovered[uncovered.length - 1] : null,
+    leave_records: leaveRecords,
+    shift_records: shiftRecords,
+  };
+}
+
+/** One line for the header of an audit, gaps or preview */
+export function formatCoverage(coverage: FactsCoverage): string {
+  const base =
+    `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} days, ` +
+    `${coverage.leave_records} leave records, ${coverage.shift_records} shift records.`;
+  if (coverage.days_with_contract_data === coverage.days_in_window) return base;
+  return (
+    `${base} Days without contract data (${coverage.first_uncovered} to ${coverage.last_uncovered}) ` +
+    'are reported as no_contract_data and are never written; they usually precede the start of ' +
+    'employment. If that is not the case here, the read is incomplete and the result must not be trusted.'
+  );
 }
 
 export interface RangeRequest {
@@ -87,6 +135,7 @@ export type SkipReason =
   | 'weekend'
   | 'bank_holiday'
   | 'not_workable'
+  | 'no_contract_data'
   | 'on_leave'
   | 'half_day_leave';
 
@@ -239,12 +288,18 @@ function daySkipReason(date: string, request: PlanRequest, facts: PlanFacts): Sk
     if (day?.day_type === 'bank_holiday') {
       return { date, reason: 'bank_holiday' };
     }
-    if (!day || day.expected_minutes <= 0) {
+    // A date the API said nothing about is not a fact about the contract, so
+    // it gets its own reason: the planner must never present a gap in the
+    // data as a day that was not workable.
+    if (!day) {
       return {
         date,
-        reason: 'not_workable',
-        detail: day ? 'contract expects 0 minutes' : 'no contract data for this date',
+        reason: 'no_contract_data',
+        detail: 'neither worked_times nor estimated_times returned this date',
       };
+    }
+    if (day.expected_minutes <= 0) {
+      return { date, reason: 'not_workable', detail: 'contract expects 0 minutes' };
     }
   }
   if (request.skip_leave) {
@@ -306,6 +361,12 @@ function deterministicOffset(seed: string, magnitude: number): number {
  * times: the preview shows exactly what will be written, the confirmation
  * token binds to it, and a retry after a partial failure recognises its own
  * earlier writes. Segments never cross each other or midnight.
+ *
+ * Both ends of a segment move by the same offset, so the day's total is
+ * unchanged and an audit of a jittered backfill reads complete at any
+ * tolerance. Only where a segment would otherwise run into its neighbour or
+ * past midnight is an end clamped, and then that segment shrinks by at most
+ * the magnitude.
  */
 export function jitterSegments(
   employeeId: number,
@@ -322,8 +383,9 @@ export function jitterSegments(
     const baseEnd = parseHHMM(segment.clock_out);
     const nextStart =
       index + 1 < ordered.length ? parseHHMM(ordered[index + 1].clock_in) : Infinity;
-    let start = baseStart + deterministicOffset(`${employeeId}|${date}|${index}|in`, magnitude);
-    let end = baseEnd + deterministicOffset(`${employeeId}|${date}|${index}|out`, magnitude);
+    const offset = deterministicOffset(`${employeeId}|${date}|${index}`, magnitude);
+    let start = baseStart + offset;
+    let end = baseEnd + offset;
     // Never start before the previous segment ended, never end after the next one may start.
     start = Math.max(start, previousEnd, 0);
     end = Math.min(end, nextStart - magnitude - 1, END_OF_DAY - 1);
@@ -457,6 +519,7 @@ export type LedgerStatus =
   | 'weekend'
   | 'bank_holiday'
   | 'not_workable'
+  | 'no_contract_data'
   | 'on_leave'
   | 'half_day_leave'
   | 'complete'
@@ -500,6 +563,7 @@ export function computeLedger(
     const tracked = day?.tracked_minutes ?? 0;
     let status: LedgerStatus;
     if (date > facts.today) status = 'future';
+    else if (!day) status = 'no_contract_data';
     else if (day?.day_type === 'saturday' || day?.day_type === 'sunday') status = 'weekend';
     else if (day?.day_type === 'bank_holiday') status = 'bank_holiday';
     else if (leave === 'full') status = 'on_leave';
@@ -579,6 +643,8 @@ export function formatPlanPreview(
       weekend: 'weekend',
       bank_holiday: 'bank holiday',
       not_workable: 'not workable under the contract',
+      no_contract_data:
+        'without contract data in Factorial for the date (not written; usually before the start of employment)',
       on_leave: 'approved leave',
       half_day_leave: 'half-day leave, write it with log_days if the other half was worked',
     };

@@ -189,6 +189,20 @@ describe('buildBackfillPlan for a range', () => {
     expect(plan.skippedDays.find(d => d.date === '2026-12-29')?.reason).toBe('not_workable');
   });
 
+  // A date the API returned nothing for is not a fact about the contract. In
+  // 10.1.0 it was reported as not_workable, which is how a truncated read of a
+  // 249-day window presented itself as "every day from 11 April is not workable".
+  it('reports a date absent from the facts as no_contract_data, never as not_workable', () => {
+    const facts = decemberFacts();
+    facts.days.delete('2026-12-29');
+    const plan = buildBackfillPlan(rangeRequest(), facts);
+    expect(plan.writes.map(w => w.date)).toEqual(['2026-12-28', '2026-12-30']);
+    const skipped = plan.skippedDays.find(d => d.date === '2026-12-29');
+    expect(skipped?.reason).toBe('no_contract_data');
+    expect(skipped?.reason).not.toBe('not_workable');
+    expect(plan.skippedDays.filter(d => d.reason === 'not_workable')).toEqual([]);
+  });
+
   it('skips full-day leave, and skips the whole day on half-day leave with a pointer to log_days', () => {
     const leaves = new Map([
       ['2026-12-28', 'full' as const],
@@ -451,6 +465,19 @@ describe('jitterSegments', () => {
     });
   });
 
+  it('shifts clock_in and clock_out of a segment by the same offset, so its duration is preserved', () => {
+    // Independent offsets let a two-segment day drift up to 4x the magnitude
+    // from its expected total, and an audit with the default tolerance then
+    // reported a freshly written day as missing hours.
+    for (const date of enumerateDates('2026-03-02', '2026-03-31')) {
+      const jittered = jitterSegments(2, date, pattern, 8);
+      jittered.forEach((segment, i) => {
+        const base = parseHHMM(pattern[i].clock_out) - parseHHMM(pattern[i].clock_in);
+        expect(parseHHMM(segment.clock_out) - parseHHMM(segment.clock_in)).toBe(base);
+      });
+    }
+  });
+
   it('actually varies the times across a month', () => {
     const starts = new Set(
       enumerateDates('2026-03-02', '2026-03-31').map(
@@ -522,5 +549,15 @@ describe('jitterSegments', () => {
     expect(ledger[3].shifts).toEqual([{ clock_in: '09:03', clock_out: '13:07', minutes: 244 }]);
     expect(ledger[3].delta_minutes).toBe(4);
     expect(computeLedger(['2026-12-28'], facts, 0)[0].status).toBe('over');
+  });
+
+  it('gives a date with no facts the status no_contract_data with a null day type', () => {
+    const facts = decemberFacts({ today: '2026-12-30' });
+    facts.days.delete('2026-12-29');
+    const [row] = computeLedger(['2026-12-29'], facts);
+    expect(row.status).toBe('no_contract_data');
+    expect(row.day_type).toBeNull();
+    expect(row.expected_minutes).toBe(0);
+    expect(computeLedger(['2026-12-28'], facts)[0].status).not.toBe('no_contract_data');
   });
 });

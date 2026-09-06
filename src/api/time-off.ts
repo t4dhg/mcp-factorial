@@ -2,7 +2,15 @@
  * Time Off API endpoints: Leaves, Leave Types, Allowances
  */
 
-import { fetchList, fetchOne, postOne, patchOne, deleteOne, postAction } from '../http-client.js';
+import {
+  fetchList,
+  fetchOne,
+  fetchPage,
+  postOne,
+  patchOne,
+  deleteOne,
+  postAction,
+} from '../http-client.js';
 import { cached, CACHE_TTL } from '../cache.js';
 import { buildPaginationParams, paginateResponse, type PaginatedResponse } from '../pagination.js';
 import {
@@ -33,7 +41,7 @@ export async function listLeaves(
 ): Promise<PaginatedResponse<Leave>> {
   const params = buildPaginationParams(options);
 
-  const leaves = await fetchList<unknown>(ENDPOINTS.leaves, {
+  const page = await fetchPage<unknown>(ENDPOINTS.leaves, {
     params: {
       employee_ids: options.employee_ids,
       from: options.from,
@@ -43,7 +51,28 @@ export async function listLeaves(
     },
   });
 
-  return paginateResponse(parseArray('Leave', LeaveSchema, leaves), params.page, params.limit);
+  return paginateResponse(
+    parseArray('Leave', LeaveSchema, page.data),
+    params.page,
+    params.limit,
+    page.meta?.total
+  );
+}
+
+/**
+ * Every leave of some employees overlapping a date window, across all pages.
+ * The planner reads leave cover with this so that an employee with more than
+ * a page of leave records in the window is never silently under-covered.
+ */
+export async function listLeavesInRange(
+  employeeIds: number[],
+  from: string,
+  to: string
+): Promise<Leave[]> {
+  const leaves = await fetchList<unknown>(ENDPOINTS.leaves, {
+    params: { employee_ids: employeeIds, from, to },
+  });
+  return parseArray('Leave', LeaveSchema, leaves);
 }
 
 /**
@@ -91,9 +120,9 @@ export async function listAllowances(
 
   if (options?.employee_id) queryParams.employee_id = options.employee_id;
 
-  const allowances = await fetchList<Allowance>(ENDPOINTS.allowances, { params: queryParams });
+  const page = await fetchPage<Allowance>(ENDPOINTS.allowances, { params: queryParams });
 
-  return paginateResponse(allowances, params.page, params.limit);
+  return paginateResponse(page.data, params.page, params.limit, page.meta?.total);
 }
 
 /**

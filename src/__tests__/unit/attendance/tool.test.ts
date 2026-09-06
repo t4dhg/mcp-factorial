@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import shiftsFixture from '../../fixtures/shifts.json' with { type: 'json' };
 import estimatedFixture from '../../fixtures/estimated-times.json' with { type: 'json' };
 import workedFixture from '../../fixtures/worked-times.json' with { type: 'json' };
+import leavesFixture from '../../fixtures/leaves.json' with { type: 'json' };
 
 vi.stubEnv('FACTORIAL_API_KEY', 'test-key');
 
@@ -13,6 +14,7 @@ const { registerAttendanceTool } = await import('../../../tools/attendance.js');
 const { confirmationManager } = await import('../../../confirmation.js');
 const { clearResolvedNames } = await import('../../../attendance/identity.js');
 const { clearCache } = await import('../../../api.js');
+const { enumerateDates } = await import('../../../attendance/planner.js');
 
 type Handler = (args: Record<string, unknown>) => Promise<{ content: Array<{ text: string }> }>;
 
@@ -359,34 +361,179 @@ describe('factorial_attendance tool', () => {
     expect(text).not.toContain('2026-12-26');
   });
 
-  it('audit lists every day in the range with a status and a machine-readable ledger', async () => {
-    routeFetch({
-      shifts: [
-        {
-          ...shiftsFixture.data[0],
-          date: '2026-12-28',
-          clock_in: '09:02',
-          clock_out: '13:05',
-          minutes: 243,
-        },
-      ],
-    });
-    const result = await call({
-      action: 'audit',
-      employee_id: 2,
-      start_on: '2026-12-24',
-      end_on: '2026-12-31',
-    });
-    const text = result.content[0].text;
+  const auditShifts = [
+    {
+      ...shiftsFixture.data[0],
+      date: '2026-12-28',
+      clock_in: '09:02',
+      clock_out: '13:05',
+      minutes: 243,
+    },
+  ];
+  const audit = { action: 'audit', employee_id: 2, start_on: '2026-12-24', end_on: '2026-12-31' };
+
+  it('audit defaults to a summary: the header, what was read, and only the days needing attention', async () => {
+    routeFetch({ shifts: auditShifts });
+    const text = (await call(audit)).content[0].text;
     expect(text).toContain('Attendance audit for Placeholder Person (2), 2026-12-24 to 2026-12-31');
+    expect(text).toContain(
+      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift records.'
+    );
     expect(text).toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
-    expect(text).toMatch(/2026-12-26\s+saturday\s+weekend/);
     expect(text).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
+    // Weekends and complete days are counted in the summary line, not listed
+    expect(text).not.toMatch(/2026-12-26\s+saturday/);
+    expect(text).toMatch(/2 weekend/);
+    expect(text).not.toContain('Machine-readable ledger');
+    expect(text).toContain('format: "table"');
+  });
+
+  it('audit format table lists every day and format json returns the full ledger', async () => {
+    routeFetch({ shifts: auditShifts });
+    const table = (await call({ ...audit, format: 'table' })).content[0].text;
+    expect(table).toMatch(/2026-12-26\s+saturday\s+weekend/);
+    expect(table).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
+    expect(table).not.toContain('Machine-readable ledger');
+
+    const jsonText = (await call({ ...audit, format: 'json' })).content[0].text;
     const json = JSON.parse(
-      text.slice(text.indexOf('Machine-readable ledger:') + 'Machine-readable ledger:'.length)
+      jsonText.slice(
+        jsonText.indexOf('Machine-readable ledger:') + 'Machine-readable ledger:'.length
+      )
     );
     expect(json).toHaveLength(8);
     expect(json.find((d: { date: string }) => d.date === '2026-12-28').shifts[0].minutes).toBe(243);
+  });
+
+  // Regression for the 10.1.0 bug: estimated_times and worked_times page at 100
+  // days, the client read one page, and every day from the 101st on was
+  // reported as not workable. This serves a 249-day window in three pages the
+  // way the live API does and expects every day to be classified.
+  it('audit over a 249-day window reads every page of the per-day endpoints', async () => {
+    const dates = enumerateDates('2026-01-01', '2026-09-06');
+    expect(dates).toHaveLength(249);
+    const dayType = (date: string) => {
+      const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+      return dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
+    };
+    const paged = (url: URL, rows: unknown[]) => {
+      const page = Number(url.searchParams.get('page') ?? '1');
+      const slice = rows.slice((page - 1) * 100, page * 100);
+      return {
+        data: slice,
+        meta: { has_next_page: page * 100 < rows.length, total: rows.length, limit: 100 },
+      };
+    };
+    const worked = dates.map(date => ({
+      ...workedFixture.data[0],
+      id: `2_${date}`,
+      date,
+      day_type: dayType(date),
+      tracked_minutes: 0,
+    }));
+    const estimated = dates.map(date => ({
+      ...estimatedFixture.data[0],
+      id: `2_${date}`,
+      date,
+      expected_minutes: dayType(date) === 'workday' ? 480 : 0,
+    }));
+    mockFetch.mockImplementation(async (input: string) => {
+      const url = new URL(input);
+      const ok = (json: unknown) => ({ ok: true, status: 200, json: async () => json });
+      if (url.pathname.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+      if (url.pathname.endsWith('/attendance/worked_times')) return ok(paged(url, worked));
+      if (url.pathname.endsWith('/attendance/estimated_times')) return ok(paged(url, estimated));
+      if (url.pathname.endsWith('/attendance/shifts'))
+        return ok({ data: [], meta: { has_next_page: false, paginateable: false } });
+      if (url.pathname.endsWith('/timeoff/leaves'))
+        return ok({ data: [], meta: { has_next_page: false, total: 0, limit: 100 } });
+      throw new Error(`unexpected ${url.pathname}`);
+    });
+    const text = (
+      await call({ action: 'audit', employee_id: 2, start_on: '2026-01-01', end_on: '2026-09-06' })
+    ).content[0].text;
+    expect(text).toContain('Data read: contract data for 249 of 249 days');
+    expect(text).not.toContain('no_contract_data');
+    expect(text).not.toContain('unknown');
+    const workdays = dates.filter(d => dayType(d) === 'workday').length;
+    expect(text).toContain(`${workdays} missing`);
+    expect(text).toContain(`Expected ${workdays * 8}h`);
+    const perDayCalls = mockFetch.mock.calls.filter(([url]) =>
+      /worked_times|estimated_times/.test(url as string)
+    );
+    expect(perDayCalls).toHaveLength(6);
+  });
+
+  it('audit names the days the API returned nothing for instead of calling them not workable', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const url = new URL(input);
+      const ok = (json: unknown) => ({ ok: true, status: 200, json: async () => json });
+      if (url.pathname.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+      // Contract data starts on the 28th, as for someone hired that day
+      if (url.pathname.endsWith('/attendance/worked_times'))
+        return ok({ data: workedFixture.data.filter(d => d.date >= '2026-12-28') });
+      if (url.pathname.endsWith('/attendance/estimated_times'))
+        return ok({ data: estimatedFixture.data.filter(d => d.date >= '2026-12-28') });
+      if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: [] });
+      if (url.pathname.endsWith('/timeoff/leaves')) return ok({ data: [] });
+      throw new Error(`unexpected ${url.pathname}`);
+    });
+    const text = (await call(audit)).content[0].text;
+    expect(text).toContain('Data read: contract data for 4 of 8 days');
+    expect(text).toContain('Days without contract data (2026-12-24 to 2026-12-27)');
+    expect(text).toMatch(/2026-12-24\s+-\s+no_contract_data/);
+    expect(text).not.toContain('not_workable');
+
+    const preview = (await call(range)).content[0].text;
+    expect(preview).toContain('Data read: contract data for 4 of 11 days');
+    expect(preview).toMatch(/7 without contract data in Factorial/);
+    expect(preview).not.toMatch(/not workable under the contract/);
+  });
+
+  it('log_range reads every page of leaves before deciding what is on leave', async () => {
+    const filler = Array.from({ length: 100 }, (_, i) => ({
+      ...leavesFixture.data[0],
+      id: String(1000 + i),
+      employee_id: '2',
+      start_on: '2026-01-05',
+      finish_on: '2026-01-05',
+      half_day: null,
+      approved: true,
+      deleted_at: null,
+    }));
+    const december = {
+      ...leavesFixture.data[0],
+      id: '2000',
+      employee_id: '2',
+      start_on: '2026-12-29',
+      finish_on: '2026-12-29',
+      half_day: null,
+      approved: true,
+      deleted_at: null,
+    };
+    mockFetch.mockImplementation(async (input: string) => {
+      const url = new URL(input);
+      const ok = (json: unknown) => ({ ok: true, status: 200, json: async () => json });
+      if (url.pathname.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+      if (url.pathname.endsWith('/attendance/worked_times'))
+        return ok({ data: workedFixture.data });
+      if (url.pathname.endsWith('/attendance/estimated_times'))
+        return ok({ data: estimatedFixture.data });
+      if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: [] });
+      if (url.pathname.endsWith('/timeoff/leaves')) {
+        const page = Number(url.searchParams.get('page') ?? '1');
+        return ok(
+          page === 1
+            ? { data: filler, meta: { has_next_page: true, total: 101, limit: 100 } }
+            : { data: [december], meta: { has_next_page: false, total: 101, limit: 100 } }
+        );
+      }
+      throw new Error(`unexpected ${url.pathname}`);
+    });
+    const text = (await call(range)).content[0].text;
+    expect(text).toContain('2 days to write, 2 shift records, 8h');
+    expect(text).toMatch(/1 approved leave \(2026-12-29\)/);
+    expect(text).toContain('101 leave records');
   });
 
   it('log_range with jitter previews the exact varied times and writes those same times', async () => {

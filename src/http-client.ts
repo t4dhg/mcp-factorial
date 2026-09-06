@@ -298,11 +298,43 @@ export interface ApiResponse<T> {
 }
 
 /**
+ * Pagination block Factorial attaches to every list response. Verified live on
+ * 2026-09-06 on API 2026-07-01: `has_next_page`, `has_previous_page`, `total`
+ * and `limit` are always present; the first page also carries `start_cursor`
+ * and `end_cursor`; endpoints that return everything at once (shifts) say
+ * `paginateable: false` with `limit: null`. There is no `current_page` or
+ * `total_pages`.
+ */
+export interface ApiListMeta {
+  has_next_page?: boolean;
+  has_previous_page?: boolean;
+  total?: number;
+  limit?: number | null;
+  paginateable?: boolean;
+  start_cursor?: string;
+  end_cursor?: string;
+}
+
+/**
  * Wrapper type for list API responses
  */
 export interface ApiListResponse<T> {
   data: T[];
+  meta?: ApiListMeta;
 }
+
+/** One page of a list endpoint, with the pagination block the API sent */
+export interface ApiPage<T> {
+  data: T[];
+  meta?: ApiListMeta;
+}
+
+/**
+ * Safety cap on the exhaustive read. At 100 items a page this is 100,000
+ * records, far beyond any real query this server makes; it exists so that an
+ * endpoint that never turns `has_next_page` off cannot spin forever.
+ */
+export const MAX_LIST_PAGES = 1000;
 
 /**
  * Extract a single record from a response.
@@ -338,11 +370,59 @@ export async function fetchOne<T>(endpoint: string, options?: RequestOptions): P
 }
 
 /**
- * Make a request expecting a list response
+ * Read exactly one page of a list endpoint and return it with its meta.
+ * This is for user-facing pagers that expose page and limit to the caller.
+ * Anything that needs the whole result set must use fetchList.
+ */
+export async function fetchPage<T>(
+  endpoint: string,
+  options?: RequestOptions
+): Promise<ApiPage<T>> {
+  const response = await factorialRequest<ApiListResponse<T>>(endpoint, options);
+  return { data: response?.data ?? [], meta: response?.meta };
+}
+
+/**
+ * Read a list endpoint exhaustively.
+ *
+ * Factorial pages list endpoints at 100 items by default and reports the
+ * remainder in `meta.has_next_page`, so a single request silently truncates
+ * anything longer than a page: a 249-day window of estimated_times came back
+ * as the first 100 days and nothing else (found 2026-09-06). This follows
+ * `has_next_page` until it is false. Filters in `options.params` travel with
+ * every page; a caller-supplied `page` is where the read starts and a
+ * caller-supplied `limit` is kept. A response without `meta` is taken as
+ * complete, which is what endpoints marked `paginateable: false` also say.
  */
 export async function fetchList<T>(endpoint: string, options?: RequestOptions): Promise<T[]> {
-  const response = await factorialRequest<ApiListResponse<T>>(endpoint, options);
-  return response.data || [];
+  const params = options?.params ?? {};
+  const startPage = typeof params.page === 'number' && params.page > 0 ? params.page : 1;
+  const all: T[] = [];
+  let page = startPage;
+  for (;;) {
+    // The first request goes out exactly as the caller built it; only the
+    // follow-up pages add `page`, so endpoints that ignore it never see it.
+    const response = await factorialRequest<ApiListResponse<T>>(
+      endpoint,
+      page === startPage ? options : { ...options, params: { ...params, page } }
+    );
+    const batch = response?.data ?? [];
+    all.push(...batch);
+    const more = response?.meta?.has_next_page === true && batch.length > 0;
+    if (!more) break;
+    page += 1;
+    if (page - startPage >= MAX_LIST_PAGES) {
+      throw new Error(
+        `fetchList(${endpoint}): more than ${MAX_LIST_PAGES} pages, refusing to continue`
+      );
+    }
+  }
+  if (page > startPage) {
+    debug(
+      `fetchList(${endpoint}): read ${all.length} records across ${page - startPage + 1} pages`
+    );
+  }
+  return all;
 }
 
 // ============================================================================

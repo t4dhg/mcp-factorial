@@ -15,15 +15,17 @@ import {
   listWorkedTimes,
   localToday,
 } from '../api/attendance.js';
-import { listLeaves } from '../api/time-off.js';
+import { listLeavesInRange } from '../api/time-off.js';
 import {
   buildBackfillPlan,
   computeGaps,
   computeLedger,
   enumerateDates,
   expandLeaves,
+  measureCoverage,
   type BackfillPlan,
   type DayFacts,
+  type FactsCoverage,
   type Gap,
   type LedgerDay,
   type PlanFacts,
@@ -42,12 +44,16 @@ export async function gatherFacts(
   // the reads below is cached today; this keeps that true if one becomes so.
   cache.invalidatePrefix('shifts');
 
+  // Every read below is exhaustive across pages (fetchList follows
+  // meta.has_next_page). estimated_times and worked_times page at 100 days,
+  // so a single-page read once made every window over 100 days go blind
+  // after day 100 and report the rest as not workable.
   const range = { employee_ids: [employeeId], start_on: startOn, end_on: endOn };
   const [worked, estimated, shifts, leaves] = await Promise.all([
     listWorkedTimes(range),
     listEstimatedTimes(range),
     listShiftsInRange([employeeId], startOn, endOn),
-    listLeaves({ employee_ids: [employeeId], from: startOn, to: endOn, limit: 100 }),
+    listLeavesInRange([employeeId], startOn, endOn),
   ]);
 
   const days = new Map<string, DayFacts>();
@@ -77,8 +83,14 @@ export async function gatherFacts(
     shifts: shifts
       .filter(s => s.clock_in !== null)
       .map(s => ({ date: s.date, clock_in: s.clock_in as string, clock_out: s.clock_out })),
-    leaves: expandLeaves(leaves.data),
+    leaves: expandLeaves(leaves),
+    coverage: measureCoverage(enumerateDates(startOn, endOn), days, leaves.length, shifts.length),
   };
+}
+
+function coverageOf(facts: PlanFacts): FactsCoverage {
+  if (!facts.coverage) throw new Error('facts read from the API always carry coverage');
+  return facts.coverage;
 }
 
 /** Plan without writing */
@@ -97,9 +109,9 @@ export async function findGaps(
   startOn: string,
   endOn: string,
   toleranceMinutes?: number
-): Promise<Gap[]> {
+): Promise<{ gaps: Gap[]; coverage: FactsCoverage }> {
   const facts = await gatherFacts(employeeId, startOn, endOn);
-  return computeGaps(facts, toleranceMinutes);
+  return { gaps: computeGaps(facts, toleranceMinutes), coverage: coverageOf(facts) };
 }
 
 /** Day-by-day ledger for an audit of what was clocked against what should have been */
@@ -108,9 +120,12 @@ export async function buildLedger(
   startOn: string,
   endOn: string,
   toleranceMinutes?: number
-): Promise<LedgerDay[]> {
+): Promise<{ ledger: LedgerDay[]; coverage: FactsCoverage }> {
   const facts = await gatherFacts(employeeId, startOn, endOn);
-  return computeLedger(enumerateDates(startOn, endOn), facts, toleranceMinutes);
+  return {
+    ledger: computeLedger(enumerateDates(startOn, endOn), facts, toleranceMinutes),
+    coverage: coverageOf(facts),
+  };
 }
 
 export interface BackfillResult {
