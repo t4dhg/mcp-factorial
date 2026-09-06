@@ -82,7 +82,11 @@ function rewriteShiftWriteError(error: unknown, employeeId: number | undefined):
   }
   if (error instanceof UnprocessableEntityError || error instanceof ValidationError) {
     const message = error.message.toLowerCase();
-    if (message.includes('approv') || message.includes('request') || message.includes('permi')) {
+    if (
+      message.includes('approv') ||
+      message.includes('edit_timesheet') ||
+      message.includes('permi')
+    ) {
       throw new Error(
         `${error.message}\n\nThis tenant appears to require approval for attendance edits. ` +
           'Factorial offers an edit-timesheet-request flow (POST /attendance/edit_timesheet_requests) ' +

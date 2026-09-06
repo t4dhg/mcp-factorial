@@ -83,10 +83,8 @@ export {
   type DayInput,
   hhmm,
   isoWithOffset,
-  SHIFT_SOURCES,
   LOCATION_TYPES,
   HALF_DAY_VALUES,
-  DAY_TYPES,
 } from './attendance.js';
 
 // Documents: Folder, Document

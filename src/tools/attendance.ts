@@ -34,7 +34,13 @@ import {
   SegmentInputSchema,
   DayInputSchema,
 } from '../schemas.js';
-import { enumerateDates, formatPlanPreview, planFingerprint } from '../attendance/planner.js';
+import {
+  enumerateDates,
+  formatPlanPreview,
+  hours,
+  parseHHMM,
+  planFingerprint,
+} from '../attendance/planner.js';
 import type { PlanRequest, PlannedWrite } from '../attendance/planner.js';
 import { executeBackfill, findGaps, planBackfill, requestWindow } from '../attendance/backfill.js';
 import {
@@ -49,12 +55,6 @@ const RETRY_NOTE =
   'and skips whatever overlaps, so it writes only the missing records. This also covers a POST ' +
   'that timed out after Factorial committed it. It does not protect against another writer ' +
   'between the read and the writes (another session, a colleague clocking in through the app).';
-
-function hours(minutes: number): string {
-  const whole = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `${whole}h` : `${whole}h${String(rest).padStart(2, '0')}`;
-}
 
 function describeWrites(writes: PlannedWrite[]): string {
   return writes.map(w => `  ${w.date} ${w.clock_in}-${w.clock_out}`).join('\n');
@@ -357,6 +357,9 @@ export function registerAttendanceTool(server: McpServer) {
 
           case 'log_range':
           case 'log_days': {
+            if (args.observations !== undefined && args.observations.length > 500) {
+              return textResponse('Error: observations must be 500 characters or fewer');
+            }
             const employeeId = resolveTargetEmployeeId(args.employee_id);
             const name = await resolveEmployeeName(employeeId);
             let request: PlanRequest;
@@ -386,7 +389,13 @@ export function registerAttendanceTool(server: McpServer) {
             }
             const window = requestWindow(request);
             const { plan } = await planBackfill(request, window.start, window.end);
-            const preview = formatPlanPreview(plan, { id: employeeId, name }, window, request);
+            const preview = formatPlanPreview(
+              plan,
+              { id: employeeId, name },
+              window,
+              request,
+              args.observations
+            );
 
             if (plan.writes.length === 0) {
               return textResponse(`${preview}\n\nNothing to write.`);
@@ -395,7 +404,7 @@ export function registerAttendanceTool(server: McpServer) {
             const gate = requireTargetConfirmation({
               operation: 'backfill_shifts',
               employeeId,
-              fingerprint: planFingerprint(employeeId, plan.writes),
+              fingerprint: planFingerprint(employeeId, plan.writes, args.observations),
               preview,
               token: args.confirmation_token,
               always: true,
@@ -404,12 +413,7 @@ export function registerAttendanceTool(server: McpServer) {
 
             const result = await executeBackfill(employeeId, plan.writes, args.observations);
             const writtenMinutes = result.written.reduce(
-              (sum, w) =>
-                sum +
-                (Number(w.clock_out.slice(0, 2)) * 60 +
-                  Number(w.clock_out.slice(3)) -
-                  Number(w.clock_in.slice(0, 2)) * 60 -
-                  Number(w.clock_in.slice(3))),
+              (sum, w) => sum + parseHHMM(w.clock_out) - parseHHMM(w.clock_in),
               0
             );
             const lines = [

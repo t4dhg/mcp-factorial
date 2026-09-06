@@ -214,7 +214,11 @@ export function expandLeaves(leaves: LeaveLike[]): Map<string, LeaveCover> {
 
 function daySkipReason(date: string, request: PlanRequest, facts: PlanFacts): SkippedDay | null {
   if (date > facts.today) {
-    return { date, reason: 'future_date', detail: `today is ${facts.today}` };
+    return {
+      date,
+      reason: 'future_date',
+      detail: `today is ${facts.today} in the zone of the machine running the server`,
+    };
   }
   const day = facts.days.get(date);
   if (request.mode === 'range') {
@@ -252,10 +256,21 @@ function existingIntervals(shifts: ExistingShift[], date: string): Array<[number
   return shifts
     .filter(shift => shift.date === date)
     .map(shift => {
-      const start = parseHHMM(shift.clock_in);
-      const end = shift.clock_out === null ? END_OF_DAY : parseHHMM(shift.clock_out);
+      let start: number;
+      let end: number;
+      try {
+        start = parseHHMM(shift.clock_in);
+        end = shift.clock_out === null ? END_OF_DAY : parseHHMM(shift.clock_out);
+      } catch {
+        throw new Error(
+          `An existing shift on ${date} has times the planner cannot read ` +
+            `(${shift.clock_in}-${shift.clock_out ?? 'open'}). Fix or delete that record first.`
+        );
+      }
+      // An overnight existing shift (clock_out before clock_in) occupies to end of day.
+      if (end < start) end = END_OF_DAY;
       const label = `${shift.clock_in}-${shift.clock_out ?? 'open'}`;
-      return [start, Math.max(end, start), label];
+      return [start, end, label];
     });
 }
 
@@ -326,19 +341,33 @@ export function buildBackfillPlan(request: PlanRequest, facts: PlanFacts): Backf
   };
 }
 
-/** Stable digest of who and what a plan writes; the confirmation token is bound to it */
-export function planFingerprint(employeeId: number, writes: PlannedWrite[]): string {
+/**
+ * Stable digest of who and what a plan writes, including the note stored on
+ * every record; the confirmation token is bound to it.
+ */
+export function planFingerprint(
+  employeeId: number,
+  writes: PlannedWrite[],
+  observations?: string
+): string {
   const canonical = writes
     .map(w => `${w.date} ${w.clock_in} ${w.clock_out}`)
     .sort()
     .join('\n');
-  return createHash('sha256').update(`${employeeId}\n${canonical}`).digest('hex');
+  return createHash('sha256')
+    .update(`${employeeId}\n${observations ?? ''}\n${canonical}`)
+    .digest('hex');
 }
 
-/** Workdays where the contract expects more than was tracked and no full-day leave applies */
+/**
+ * Workdays up to today where the contract expects more than was tracked and no
+ * full-day leave applies. Future dates are left out, since log_range would
+ * refuse them anyway.
+ */
 export function computeGaps(facts: PlanFacts): Gap[] {
   const gaps: Gap[] = [];
   for (const [date, day] of [...facts.days.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    if (date > facts.today) continue;
     if (day.day_type !== 'workday') continue;
     if (day.expected_minutes <= day.tracked_minutes) continue;
     const cover = facts.leaves.get(date);
@@ -354,7 +383,8 @@ export function computeGaps(facts: PlanFacts): Gap[] {
   return gaps;
 }
 
-function hours(minutes: number): string {
+/** 720 -> "12h", 750 -> "12h30" */
+export function hours(minutes: number): string {
   const whole = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${whole}h` : `${whole}h${String(rest).padStart(2, '0')}`;
@@ -375,7 +405,8 @@ export function formatPlanPreview(
   plan: BackfillPlan,
   employee: { id: number; name: string },
   range: { start: string; end: string },
-  request: PlanRequest
+  request: PlanRequest,
+  observations?: string
 ): string {
   const lines: string[] = [];
   lines.push(`Plan for ${employee.name} (${employee.id})`);
@@ -386,6 +417,9 @@ export function formatPlanPreview(
   );
   if (request.mode === 'range') {
     lines.push(`  ${request.segments.map(s => `${s.clock_in}-${s.clock_out}`).join(' and ')}`);
+  }
+  if (observations) {
+    lines.push(`  Note on every record: "${observations}"`);
   }
 
   if (plan.skippedDays.length > 0) {
