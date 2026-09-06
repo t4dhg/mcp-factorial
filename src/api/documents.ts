@@ -77,7 +77,7 @@ export async function listDocuments(
  * Get a specific document by ID
  *
  * The direct endpoint is tried first; if it answers 404 the function falls back
- * to listing all documents and filtering. (Until 9.0.1 the direct endpoint always
+ * to listing all documents and filtering. (Until 10.0.0 the direct endpoint always
  * appeared to return nothing, because the client unwrapped a `data` envelope the
  * API does not send for single records; the fallback was masking that bug.)
  *

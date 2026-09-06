@@ -60,7 +60,7 @@ export async function listEmployees(
  *
  * The direct endpoint is tried first. If it answers 404, which happens for
  * employees the API key cannot see directly, the function falls back to listing
- * all employees and filtering. (Until 9.0.1 the direct endpoint always appeared
+ * all employees and filtering. (Until 10.0.0 the direct endpoint always appeared
  * to return nothing, because the client unwrapped a `data` envelope the API does
  * not send for single records; the fallback was masking that bug.)
  */
