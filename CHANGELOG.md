@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [10.1.0] - 2026-09-06
+
+### Added
+
+- **`audit` action** on `factorial_attendance`: one row per calendar day in a range with day type, expected and tracked minutes, leave cover, the shifts on record and a status (`complete`, `missing`, `over`, `weekend`, `bank_holiday`, `on_leave`, `half_day_leave`, `future`), followed by the same ledger as JSON. It reads the same four sources the planner uses, so an audit and a backfill always agree.
+- **`jitter_minutes`** on `log_range` and `log_days`: each written time varies by up to the given number of minutes from the pattern, derived deterministically from the employee, the date and the segment. The preview lists the exact times, the confirmation token binds to them, and a retry recognises its own earlier writes. Segments never cross each other or midnight. Records still carry `source: "api"`.
+- The `log_range` and `log_days` preview now lists every record it will write when there are 62 or fewer.
+- **`tolerance_minutes`** on `gaps` and `audit` (default 15): a day within that many minutes of its expected total counts as complete, so real clock-ins and jittered backfills do not read as shortfalls.
+
 ## [10.0.0] - 2026-09-06
 
 ### Added
