@@ -172,9 +172,13 @@ export async function getDocumentDownloadUrls(
   // Get OAuth2 access token
   const accessToken = await getOAuth2AccessToken();
 
-  // The download-urls endpoint uses API version 2025-01-01
+  // The download-urls endpoint uses API version 2025-01-01, which predates the
+  // string-identifier migration and expects numeric ids on the wire, as this
+  // server sent before 2026-07-01 became the default. This request bypasses
+  // factorialRequest, so stringifyIdentifiers does not apply here.
   const downloadUrlsEndpoint =
     'https://api.factorialhr.com/api/2025-01-01/resources/documents/download-urls/bulk-create';
+  const wireDocumentIds = documentIds.map(Number);
 
   debug('Requesting document download URLs with OAuth2', { documentIds });
 
@@ -185,7 +189,7 @@ export async function getDocumentDownloadUrls(
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify({ document_ids: documentIds }),
+    body: JSON.stringify({ document_ids: wireDocumentIds }),
   });
 
   if (!response.ok) {
