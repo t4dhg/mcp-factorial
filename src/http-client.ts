@@ -157,6 +157,40 @@ async function handleResponse<T>(
 }
 
 /**
+ * Keys that carry a Factorial resource identifier: `id`, `ids`, `*_id`, `*_ids`.
+ */
+const IDENTIFIER_KEY = /^(id|ids|.+_id|.+_ids)$/;
+
+/**
+ * Serialise identifiers in a request body as strings.
+ *
+ * Since API version 2026-07-01 Factorial types every `id` and `*_id` field as a
+ * string in request payloads as well as in responses (see
+ * https://apidoc.factorialhr.com/changelog/string-migration-of-resource-identifiers).
+ * The tools still accept numeric identifiers from callers, so numbers (and
+ * arrays of numbers) under identifier keys are converted here, at the HTTP
+ * boundary, before the body is sent. Nested objects and arrays are handled;
+ * everything else is passed through untouched.
+ */
+export function stringifyIdentifiers(value: unknown, key?: string): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => stringifyIdentifiers(item, key));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        stringifyIdentifiers(v, k),
+      ])
+    );
+  }
+  if (typeof value === 'number' && key !== undefined && IDENTIFIER_KEY.test(key)) {
+    return String(value);
+  }
+  return value;
+}
+
+/**
  * Make an HTTP request with retry logic
  * Supports both read (GET) and write (POST, PUT, PATCH, DELETE) operations
  */
@@ -168,6 +202,7 @@ export async function factorialRequest<T>(
   const method = options.method ?? 'GET';
   const url = buildUrl(endpoint, options.params);
   const timeout = options.timeout ?? config.timeout;
+  const body = options.body ? JSON.stringify(stringifyIdentifiers(options.body)) : undefined;
 
   // Write operations should not retry by default (except with idempotency key)
   const defaultMaxRetries = method === 'GET' ? config.maxRetries : options.idempotencyKey ? 2 : 1;
@@ -201,7 +236,7 @@ export async function factorialRequest<T>(
       const response = await fetch(url, {
         method,
         headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
+        body,
         signal: controller.signal,
       });
 
