@@ -12,6 +12,7 @@ const {
   factorialRequest,
   fetchOne,
   fetchList,
+  fetchPage,
   postOne,
   patchOne,
   deleteOne,
@@ -473,6 +474,84 @@ describe('HTTP Client', () => {
       const result = await fetchList('/employees/employees');
 
       expect(result).toEqual([]);
+    });
+
+    // Factorial pages list endpoints at 100 items and says so in
+    // meta.has_next_page (verified live on 2026-09-06 on estimated_times and
+    // worked_times: 249 days came back as 100 + 100 + 49). Reading only the
+    // first page made every date-window feature go blind after day 100.
+    it('follows meta.has_next_page until every page has been read', async () => {
+      const page = (from: number, count: number, hasNext: boolean) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: Array.from({ length: count }, (_, i) => ({ id: from + i })),
+          meta: { has_next_page: hasNext, has_previous_page: from > 0, total: 249, limit: 100 },
+        }),
+      });
+      mockFetch
+        .mockResolvedValueOnce(page(0, 100, true))
+        .mockResolvedValueOnce(page(100, 100, true))
+        .mockResolvedValueOnce(page(200, 49, false));
+
+      const result = await fetchList<{ id: number }>('/attendance/estimated_times', {
+        params: { employee_ids: [2], start_on: '2026-01-01', end_on: '2026-09-06' },
+      });
+
+      expect(result).toHaveLength(249);
+      expect(result[0].id).toBe(0);
+      expect(result[248].id).toBe(248);
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      const urls = mockFetch.mock.calls.map(([url]) => new URL(url as string));
+      expect(urls[0].searchParams.has('page')).toBe(false);
+      expect(urls[1].searchParams.get('page')).toBe('2');
+      expect(urls[2].searchParams.get('page')).toBe('3');
+      // The filter parameters travel with every page
+      expect(urls[2].searchParams.getAll('employee_ids[]')).toEqual(['2']);
+      expect(urls[2].searchParams.get('end_on')).toBe('2026-09-06');
+    });
+
+    it('stops after one request when the endpoint is not paginateable', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: 1 }],
+          meta: { has_next_page: false, total: 1, limit: null, paginateable: false },
+        }),
+      });
+      const result = await fetchList('/attendance/shifts');
+      expect(result).toHaveLength(1);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to loop forever when has_next_page never turns false', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 1 }], meta: { has_next_page: true } }),
+      });
+      await expect(fetchList('/employees/employees')).rejects.toThrow(/more than 1000 pages/);
+    });
+  });
+
+  describe('fetchPage', () => {
+    it('reads exactly the requested page and returns the meta with it', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: 3 }],
+          meta: { has_next_page: true, has_previous_page: true, total: 250, limit: 1 },
+        }),
+      });
+      const result = await fetchPage<{ id: number }>('/timeoff/leaves', {
+        params: { page: 3, limit: 1 },
+      });
+      expect(result.data).toEqual([{ id: 3 }]);
+      expect(result.meta?.total).toBe(250);
+      expect(result.meta?.has_next_page).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 

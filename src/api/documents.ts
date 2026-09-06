@@ -2,7 +2,7 @@
  * Document API endpoints: Folders, Documents, Downloads
  */
 
-import { fetchList, fetchOne } from '../http-client.js';
+import { fetchList, fetchOne, fetchPage } from '../http-client.js';
 import { cached, CACHE_TTL } from '../cache.js';
 import { debug } from '../config.js';
 import { isOAuth2Configured, getOAuth2AccessToken } from '../oauth.js';
@@ -53,24 +53,24 @@ export async function listDocuments(
     const fullParams = baseParams ? `${baseParams}&${employeeIdsParam}` : employeeIdsParam;
 
     // Make request with custom query string
-    const documents = await fetchList<Document>(`${ENDPOINTS.documents}?${fullParams}`);
+    const page = await fetchPage<Document>(`${ENDPOINTS.documents}?${fullParams}`);
 
-    debug(`listDocuments returned ${documents.length} documents`, {
-      sampleDocument: documents[0],
-      missingNames: documents.filter(d => !d.filename).length,
+    debug(`listDocuments returned ${page.data.length} documents`, {
+      sampleDocument: page.data[0],
+      missingNames: page.data.filter(d => !d.filename).length,
     });
 
-    return paginateResponse(documents, params.page, params.limit);
+    return paginateResponse(page.data, params.page, params.limit, page.meta?.total);
   }
 
-  const documents = await fetchList<Document>(ENDPOINTS.documents, { params: queryParams });
+  const page = await fetchPage<Document>(ENDPOINTS.documents, { params: queryParams });
 
-  debug(`listDocuments returned ${documents.length} documents`, {
-    sampleDocument: documents[0],
-    missingNames: documents.filter(d => !d.filename).length,
+  debug(`listDocuments returned ${page.data.length} documents`, {
+    sampleDocument: page.data[0],
+    missingNames: page.data.filter(d => !d.filename).length,
   });
 
-  return paginateResponse(documents, params.page, params.limit);
+  return paginateResponse(page.data, params.page, params.limit, page.meta?.total);
 }
 
 /**

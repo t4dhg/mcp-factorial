@@ -44,6 +44,7 @@ export {
 // Time Off
 export {
   listLeaves,
+  listLeavesInRange,
   getLeave,
   listLeaveTypes,
   getLeaveType,
