@@ -103,7 +103,7 @@ The API-first re-verification of every schema against live `2026-07-01` response
 - **Confirmation gate for `delete_task`, `delete_time` and `delete_session`**: these three delete operations accepted a `confirm` parameter but never checked it. They are now gated like the other destructive operations.
 - **Path traversal in document downloads**: `downloadDocument()` joined the Factorial-supplied document name straight onto the caller's `output_dir`. A document named with `..` segments could write outside that directory. Names are now reduced to a single path segment and the resolved path is verified to stay inside `output_dir`.
 
-The three issues above were reported by Syed Anas Mohiuddin. Fixing them surfaced three more, found in the course of the fix:
+The three issues above were reported by Syed Anas Mohiuddin (@SyedAnas01). Fixing them surfaced three more, found in the course of the fix:
 
 - **Confirmation warnings read "null"**: `getWarningMessage()` returned `null` for medium-risk operations, but the confirmation gate interpolates the result into the message it shows. `delete_shift`, `cancel_leave` and `reject_leave` were prompting with the literal text "null" in place of the impact description. It now returns a message for any operation requiring confirmation, whatever its risk level.
 - **Gating an operation with no policy is now a compile error**: `checkConfirmation()` took a plain `string`, so a name absent from `OPERATION_POLICIES` fell silently through to the permissive default. That is the root cause of the `delete_application` bug. It now takes an `OperationName` union derived from the policy table, so the same mistake fails the build.
@@ -124,7 +124,7 @@ A second review of that work found two more ungated deletes and a data-loss bug:
 
 ### Documentation
 
-- **Audit logging**: the README described the audit trail as being "for compliance". The log is in-process, in-memory, capped at 1000 entries, and not retrievable through any tool, so the README now says exactly that and points to FactorialHR's own activity log as the system of record. Also reported by Syed Anas Mohiuddin.
+- **Audit logging**: the README described the audit trail as being "for compliance". The log is in-process, in-memory, capped at 1000 entries, and not retrievable through any tool, so the README now says exactly that and points to FactorialHR's own activity log as the system of record. Also reported by Syed Anas Mohiuddin (@SyedAnas01).
 - **High-risk operations**: the README listed 5 of the 14 operations that require `confirm: true`. The list is now complete.
 - **Added `SECURITY.md`** with a private reporting route, scope, and response expectations.
 
