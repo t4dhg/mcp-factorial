@@ -17,6 +17,7 @@ const {
   deleteOne,
   postAction,
   stringifyIdentifiers,
+  unwrapRecord,
 } = await import('../../http-client.js');
 
 // Import error types for assertions
@@ -395,6 +396,21 @@ describe('HTTP Client', () => {
   });
 
   describe('fetchOne', () => {
+    // Factorial returns single records at the top level; only list endpoints
+    // wrap in { data, meta }. Verified live on 2026-09-06 against
+    // /employees/employees/{id} and /teams/teams/{id} on API 2026-07-01.
+    it('returns a bare record as the API sends it', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: '1', name: 'Test Employee', data: null }),
+      });
+
+      const result = await fetchOne<{ id: string; name: string }>('/employees/employees/1');
+
+      expect(result).toEqual({ id: '1', name: 'Test Employee', data: null });
+    });
+
     it('should unwrap single item from response', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -405,6 +421,26 @@ describe('HTTP Client', () => {
       const result = await fetchOne<{ id: number; name: string }>('/employees/employees/1');
 
       expect(result).toEqual({ id: 1, name: 'Test Employee' });
+    });
+  });
+
+  describe('unwrapRecord', () => {
+    it('unwraps a { data: record } envelope', () => {
+      expect(unwrapRecord({ data: { id: '1' } })).toEqual({ id: '1' });
+    });
+
+    it('returns a bare record untouched, including one that has a data field', () => {
+      expect(unwrapRecord({ id: '1', data: null })).toEqual({ id: '1', data: null });
+      expect(unwrapRecord({ id: '1', data: 'x' })).toEqual({ id: '1', data: 'x' });
+    });
+
+    it('does not treat a list envelope as a record', () => {
+      expect(unwrapRecord({ data: [{ id: '1' }] })).toEqual({ data: [{ id: '1' }] });
+    });
+
+    it('passes through non-object bodies', () => {
+      expect(unwrapRecord(undefined)).toBeUndefined();
+      expect(unwrapRecord(null)).toBeNull();
     });
   });
 
@@ -495,6 +531,20 @@ describe('HTTP Client', () => {
   });
 
   describe('postOne', () => {
+    it('returns a bare created record as the API sends it', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({ id: '10', first_name: 'John' }),
+      });
+
+      const result = await postOne<{ id: string; first_name: string }>('/employees/employees', {
+        first_name: 'John',
+      });
+
+      expect(result).toEqual({ id: '10', first_name: 'John' });
+    });
+
     it('should create resource and return data', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
