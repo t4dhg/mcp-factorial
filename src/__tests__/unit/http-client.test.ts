@@ -8,8 +8,16 @@ vi.stubGlobal('fetch', mockFetch);
 vi.stubEnv('FACTORIAL_API_KEY', 'test-api-key');
 
 // Import after mocking
-const { factorialRequest, fetchOne, fetchList, postOne, patchOne, deleteOne, postAction } =
-  await import('../../http-client.js');
+const {
+  factorialRequest,
+  fetchOne,
+  fetchList,
+  postOne,
+  patchOne,
+  deleteOne,
+  postAction,
+  stringifyIdentifiers,
+} = await import('../../http-client.js');
 
 // Import error types for assertions
 const {
@@ -429,6 +437,60 @@ describe('HTTP Client', () => {
       const result = await fetchList('/employees/employees');
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('identifiers in request bodies', () => {
+    // Since API 2026-07-01 every id and *_id field is a string in request
+    // payloads. Tools still take numbers, so the conversion happens here.
+    it('converts numeric identifier fields to strings, including arrays and nested objects', () => {
+      const body = {
+        id: 42,
+        employee_id: 7,
+        leave_type_id: null,
+        team_ids: [1, 2],
+        ids: [3],
+        nested: { manager_id: 9, items: [{ location_id: 4 }] },
+      };
+
+      expect(stringifyIdentifiers(body)).toEqual({
+        id: '42',
+        employee_id: '7',
+        leave_type_id: null,
+        team_ids: ['1', '2'],
+        ids: ['3'],
+        nested: { manager_id: '9', items: [{ location_id: '4' }] },
+      });
+    });
+
+    it('leaves non-identifier numbers and already-string identifiers alone', () => {
+      const body = {
+        employee_id: '36893488147419100',
+        minutes: 480,
+        salary_amount: 3500000,
+        video_id_count: 3,
+        valid: true,
+        description: 'text',
+      };
+
+      expect(stringifyIdentifiers(body)).toEqual(body);
+    });
+
+    it('sends identifiers as strings on the wire', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({ id: '10' }),
+      });
+
+      await postOne('/timeoff/leaves', {
+        employee_id: 5,
+        leave_type_id: 2,
+        start_on: '2025-02-01',
+      });
+
+      const sent = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(sent).toEqual({ employee_id: '5', leave_type_id: '2', start_on: '2025-02-01' });
     });
   });
 
