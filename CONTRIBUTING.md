@@ -164,6 +164,16 @@ Releases are **staged by CI and promoted by a human**. Pushing a tag does not pu
 
    `npm stage reject <stage-id>` discards it instead.
 
+   Check the `shasum` reported by `npm stage view` against the one in the workflow log. Matching means the artifact being approved is the one that workflow built.
+
+   **Run `approve` from a real terminal.** It needs a TTY to open the browser authentication flow, and fails with `EOTP` from a non-interactive shell such as an editor's task runner. With an authenticator app you can pass the code instead and it will work anywhere:
+
+   ```bash
+   npm stage approve <stage-id> --otp=123456
+   ```
+
+   A failed approve is harmless: the release stays staged and can be approved again.
+
 5. Confirm it landed:
 
    ```bash
