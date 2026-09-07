@@ -74,6 +74,8 @@ export interface PlanFacts {
   shifts: ExistingShift[];
   /** Approved leave cover per date, see expandLeaves */
   leaves: Map<string, LeaveCover>;
+  /** Dates whose timesheet has been signed off; closed for writing */
+  reviews: Set<string>;
   /** What the reads covered; absent when the facts were not read from the API */
   coverage?: FactsCoverage;
 }
@@ -137,7 +139,8 @@ export type SkipReason =
   | 'not_workable'
   | 'no_contract_data'
   | 'on_leave'
-  | 'half_day_leave';
+  | 'half_day_leave'
+  | 'signed_off';
 
 export interface SkippedDay {
   date: string;
@@ -283,6 +286,16 @@ function daySkipReason(date: string, request: PlanRequest, facts: PlanFacts): Sk
       date,
       reason: 'future_date',
       detail: `today is ${facts.today} in the zone of the machine running the server`,
+    };
+  }
+  // Applies in both modes. A signed-off date refuses a write whatever the
+  // calendar says about it, so log_days must not bypass this the way it
+  // deliberately bypasses the weekend and holiday rules.
+  if (facts.reviews.has(date)) {
+    return {
+      date,
+      reason: 'signed_off',
+      detail: 'the timesheet for this date has been signed off and is closed for writing',
     };
   }
   const day = facts.days.get(date);
@@ -529,6 +542,7 @@ export type LedgerStatus =
   | 'half_day_leave'
   | 'complete'
   | 'missing'
+  | 'short'
   | 'over';
 
 export interface LedgerDay {
@@ -539,6 +553,8 @@ export interface LedgerDay {
   leave: LeaveCover | null;
   shifts: Array<{ clock_in: string; clock_out: string | null; minutes: number | null }>;
   status: LedgerStatus;
+  /** The timesheet for this date has been signed off; it is closed for writing */
+  signed_off: boolean;
   /** tracked minus expected; negative means hours are missing */
   delta_minutes: number;
 }
@@ -574,7 +590,7 @@ export function computeLedger(
     else if (leave === 'full') status = 'on_leave';
     else if (leave) status = 'half_day_leave';
     else if (expected <= 0) status = 'not_workable';
-    else if (expected - tracked > toleranceMinutes) status = 'missing';
+    else if (expected - tracked > toleranceMinutes) status = tracked === 0 ? 'missing' : 'short';
     else if (tracked - expected > toleranceMinutes) status = 'over';
     else status = 'complete';
     return {
@@ -585,6 +601,7 @@ export function computeLedger(
       leave,
       shifts,
       status,
+      signed_off: facts.reviews.has(date),
       delta_minutes: tracked - expected,
     };
   });
@@ -666,6 +683,8 @@ export function formatPlanPreview(
         'without contract data in Factorial for the date (not written; usually before the start of employment)',
       on_leave: 'approved leave',
       half_day_leave: 'half-day leave, write it with log_days if the other half was worked',
+      signed_off:
+        'signed off in Factorial and closed for writing (ask the approver to reopen, or file an edit request)',
     };
     for (const [reason, count] of byReason) {
       const dates = plan.skippedDays.filter(d => d.reason === reason).map(d => d.date);

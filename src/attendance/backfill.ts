@@ -84,6 +84,9 @@ export async function gatherFacts(
       .filter(s => s.clock_in !== null)
       .map(s => ({ date: s.date, clock_in: s.clock_in as string, clock_out: s.clock_out })),
     leaves: expandLeaves(leaves),
+    // Wired to listReviews (Task 1) in a later task; empty until then, so no
+    // date is treated as signed off yet.
+    reviews: new Set<string>(),
     coverage: measureCoverage(enumerateDates(startOn, endOn), days, leaves.length, shifts.length),
   };
 }
