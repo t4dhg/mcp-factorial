@@ -480,7 +480,10 @@ export function registerAttendanceTool(server: McpServer) {
             });
             if (!gate.proceed) return textResponse(gate.message);
             const shift = await updateShift(args.id, input);
-            return textResponse(`Shift updated:\n\n${JSON.stringify(shift, null, 2)}`);
+            return textResponse(
+              `Shift updated: ${shift.date} ${shift.clock_in ?? '?'}-${shift.clock_out ?? 'open'}.\n\n` +
+                `${JSON.stringify(shift, null, 2)}\n\n${ENTRY_TIME_NOTE}`
+            );
           }
 
           case 'delete': {

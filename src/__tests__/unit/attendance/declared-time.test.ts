@@ -302,6 +302,49 @@ describe('declared time versus entry time', () => {
     expect(text.trimEnd().endsWith(ENTRY_TIME_NOTE)).toBe(true);
   });
 
+  it('names the resulting declared day and times and ends an update result with the entry-time note exactly once', async () => {
+    const existing = {
+      ...shiftsFixture.data[0],
+      id: '77',
+      employee_id: '2',
+      date: '2026-12-28',
+      clock_in: '09:00',
+      clock_out: '13:00',
+    };
+    mockFetch.mockImplementation(
+      async (input: string, init?: { method?: string; body?: string }) => {
+        const url = new URL(input);
+        const path = url.pathname;
+        const ok = (json: unknown, status = 200) => ({
+          ok: true,
+          status,
+          json: async () => json,
+          text: async () => '',
+        });
+        if (init?.method === 'PATCH' && path.endsWith('/attendance/shifts/77')) {
+          const body = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+          // Only clock_out was part of this update; date and clock_in keep the
+          // record's existing values, exactly as Factorial would apply a partial
+          // patch.
+          return ok({ ...existing, ...body }, 200);
+        }
+        if (path.endsWith('/attendance/shifts/77')) return ok(existing);
+        if (path.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+        throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${path}`);
+      }
+    );
+
+    const result = await call({ action: 'update', id: 77, clock_out: '14:00' });
+    const text = result.content[0].text;
+    // The declared date and clock_in were not part of this update and keep
+    // the record's current value; only clock_out, which was updated, changes.
+    expect(text).toContain('2026-12-28');
+    expect(text).toContain('09:00');
+    expect(text).toContain('14:00');
+    expect(text.split(ENTRY_TIME_NOTE)).toHaveLength(2);
+    expect(text.trimEnd().endsWith(ENTRY_TIME_NOTE)).toBe(true);
+  });
+
   it('ends a log_days preview and its written result with the entry-time note', async () => {
     routeFetch({});
     const args = {
