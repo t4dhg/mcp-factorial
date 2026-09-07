@@ -150,6 +150,7 @@ const ATTENDANCE_WRITE_CALLS = [
   'clockIn',
   'clockOut',
   'executeBackfill',
+  'createEditTimesheetRequest',
 ];
 
 function attendanceWriteArms(): Array<{ action: string; gated: boolean }> {
