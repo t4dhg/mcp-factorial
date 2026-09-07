@@ -501,6 +501,83 @@ describe('formatPlanPreview', () => {
   });
 });
 
+describe('preview shape', () => {
+  it('collapses the overlap list to one line per day above the cap', () => {
+    const shifts = [];
+    const days = new Map<
+      string,
+      { day_type: string; expected_minutes: number; tracked_minutes: number }
+    >();
+    for (let d = 1; d <= 20; d++) {
+      const date = `2026-06-${String(d).padStart(2, '0')}`;
+      days.set(date, { day_type: 'workday', expected_minutes: 480, tracked_minutes: 480 });
+      shifts.push({ date, clock_in: '09:00', clock_out: '17:00' });
+    }
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days,
+      shifts,
+      leaves: new Map(),
+      reviews: new Set(),
+    };
+    const request = {
+      mode: 'range' as const,
+      employee_id: 1,
+      dates: [...days.keys()],
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      skip_leave: true,
+    };
+    const text = formatPlanPreview(
+      buildBackfillPlan(request, facts),
+      { id: 1, name: 'X' },
+      { start: '2026-06-01', end: '2026-06-20' },
+      request
+    );
+
+    expect(text).toContain('20 segments on 20 days overlap existing shifts');
+    // At most ten days named, then a count.
+    expect(text).toContain('10 further days not listed');
+  });
+
+  it('puts the Data read line at the top when coverage is given', () => {
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days: new Map([
+        ['2026-06-01', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 0 }],
+      ]),
+      shifts: [],
+      leaves: new Map(),
+      reviews: new Set(),
+      coverage: {
+        days_in_window: 1,
+        days_with_contract_data: 1,
+        first_uncovered: null,
+        last_uncovered: null,
+        leave_records: 0,
+        shift_records: 0,
+        review_records: 0,
+      },
+    };
+    const request = {
+      mode: 'range' as const,
+      employee_id: 1,
+      dates: ['2026-06-01'],
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      skip_leave: true,
+    };
+    const text = formatPlanPreview(
+      buildBackfillPlan(request, facts),
+      { id: 1, name: 'X' },
+      { start: '2026-06-01', end: '2026-06-01' },
+      request,
+      undefined,
+      facts.coverage
+    );
+
+    expect(text.split('\n')[0]).toContain('Data read:');
+  });
+});
+
 describe('jitterSegments', () => {
   const pattern = [
     { clock_in: '09:00', clock_out: '14:00' },

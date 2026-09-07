@@ -36,7 +36,6 @@ import {
 } from '../schemas.js';
 import {
   enumerateDates,
-  formatCoverage,
   formatPlanPreview,
   hours,
   parseHHMM,
@@ -487,14 +486,14 @@ export function registerAttendanceTool(server: McpServer) {
             }
             const window = requestWindow(request);
             const { plan, facts } = await planBackfill(request, window.start, window.end);
-            const preview =
-              formatPlanPreview(
-                plan,
-                { id: employeeId, name },
-                window,
-                request,
-                args.observations
-              ) + (facts.coverage ? `\n\n${formatCoverage(facts.coverage)}` : '');
+            const preview = formatPlanPreview(
+              plan,
+              { id: employeeId, name },
+              window,
+              request,
+              args.observations,
+              facts.coverage
+            );
 
             if (plan.writes.length === 0) {
               return textResponse(`${preview}\n\nNothing to write.`);

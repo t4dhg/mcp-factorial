@@ -216,7 +216,10 @@ describe('factorial_attendance tool', () => {
     const second = await call({ ...range, confirmation_token: token });
     const text = second.content[0].text;
     expect(text).toMatch(/plan changed/);
-    expect(text).toContain('2026-12-29 09:00-13:00 overlaps existing 09:15-13:15');
+    // The overlap list now collapses to a per-day count instead of a
+    // per-segment line; this pins what the collapsed line actually renders.
+    expect(text).toContain('1 segments on 1 days overlap existing shifts and are skipped:');
+    expect(text).toContain('2026-12-29  1 segment already covered');
     expect(text).toMatch(TOKEN);
     expect(posts()).toEqual([]);
   });
