@@ -213,6 +213,14 @@ export interface Gap {
   tracked_minutes: number;
   missing_minutes: number;
   half_day_leave: 'beggining_of_day' | 'end_of_day' | null;
+  /**
+   * The timesheet for this date has been signed off and is closed for
+   * writing. log_range and log_days both skip it (daySkipReason's signed_off
+   * rule); only create_edit_request can reach it. Still reported as a gap,
+   * since the hours are genuinely missing, but the caller must not be told
+   * to fill it the same way as an open date.
+   */
+  signed_off: boolean;
 }
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -643,6 +651,7 @@ export function computeGaps(facts: PlanFacts, toleranceMinutes = DEFAULT_TOLERAN
       tracked_minutes: day.tracked_minutes,
       missing_minutes: day.expected_minutes - day.tracked_minutes,
       half_day_leave: cover ?? null,
+      signed_off: facts.reviews.has(date),
     });
   }
   return gaps;

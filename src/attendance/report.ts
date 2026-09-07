@@ -143,14 +143,34 @@ export function formatGaps(input: GapsReportInput): string {
   const rows = gaps.map(
     g =>
       `  ${g.date}  expected ${hours(g.expected_minutes)}  tracked ${hours(g.tracked_minutes)}  ` +
-      `missing ${hours(g.missing_minutes)}${g.half_day_leave ? `  (half-day leave: ${g.half_day_leave})` : ''}`
+      `missing ${hours(g.missing_minutes)}${g.half_day_leave ? `  (half-day leave: ${g.half_day_leave})` : ''}` +
+      `${g.signed_off ? '  signed off' : ''}`
   );
   const total = gaps.reduce((sum, g) => sum + g.missing_minutes, 0);
   const gapDay = gaps.length === 1 ? 'day' : 'days';
+  const signedOffGaps = gaps.filter(g => g.signed_off);
+  const openGaps = gaps.filter(g => !g.signed_off);
+  // A signed-off date is closed for writing: log_range and log_days both skip
+  // it, so telling the reader to fill every listed gap the same way sends
+  // them at a call that will refuse the ones marked "signed off" above.
+  let instruction: string;
+  if (signedOffGaps.length === 0) {
+    instruction = 'Use log_range with the same dates and your daily segments to fill them.';
+  } else if (openGaps.length === 0) {
+    instruction =
+      `Every day listed is signed off and closed for writing; log_range and log_days will refuse ` +
+      `all of them. Use create_edit_request instead, one per day, with a reason.`;
+  } else {
+    const signedOffDay = signedOffGaps.length === 1 ? 'day' : 'days';
+    instruction =
+      `Use log_range with the same dates and your daily segments to fill the days not marked ` +
+      `"signed off". The ${signedOffGaps.length} signed-off ${signedOffDay} (${signedOffGaps.map(g => g.date).join(', ')}) ` +
+      `are closed for writing; log_range and log_days will refuse them. Use create_edit_request ` +
+      'instead for those, one per day, with a reason.';
+  }
   return (
     `${gaps.length} ${gapDay} with missing hours for ${employee.name} (${employee.id}), ${hours(total)} in total.\n` +
     `${formatCoverage(coverage)}\n\n` +
-    `${rows.join('\n')}\n\nWeekends, bank holidays and full-day leave are excluded. ` +
-    'Use log_range with the same dates and your daily segments to fill them.'
+    `${rows.join('\n')}\n\nWeekends, bank holidays and full-day leave are excluded. ${instruction}`
   );
 }
