@@ -723,7 +723,7 @@ export function registerAttendanceTool(server: McpServer) {
                 }  ${r.clock_in ?? '-'}-${r.clock_out ?? '-'}  ${r.reason ?? ''}`
             );
             return textResponse(
-              `${requests.length} edit timesheet requests:\n\n${lines.join('\n')}`
+              `${requests.length} edit timesheet request${requests.length === 1 ? '' : 's'}:\n\n${lines.join('\n')}`
             );
           }
 
