@@ -10,6 +10,7 @@ const coverage: FactsCoverage = {
   leave_records: 1,
   shift_records: 2,
   review_records: 1,
+  reviews_error: null,
 };
 
 const day = (over: Partial<LedgerDay>): LedgerDay => ({
