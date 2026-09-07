@@ -157,14 +157,26 @@ describe('clock_in and clock_out with a declared moment', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('records the declared time rather than the current moment', async () => {
+  it('records the declared time rather than the current moment, as a bare HH:MM with no server offset', async () => {
     routeFetch({});
     const result = await call({ action: 'clock_in', date: '2027-01-15', time: '09:00' });
     expect(result.content[0].text).toContain('Clock in recorded for Placeholder Person (2) at');
-    expect(result.content[0].text).toMatch(/2027-01-15T09:00:00[+-]\d{2}:\d{2}/);
+    expect(result.content[0].text).toContain('2027-01-15 09:00');
+    // A declared clock_in goes through createShift (POST /attendance/shifts),
+    // never the live clock_in endpoint, so no absolute instant with a server
+    // offset is ever sent for it. Factorial applies the bare HH:MM in the
+    // company zone; the server's own zone must not matter here.
+    const allPosts = mockFetch.mock.calls.filter(
+      ([, init]) => (init as { method?: string } | undefined)?.method === 'POST'
+    );
+    expect(allPosts).toHaveLength(1);
+    expect(String(allPosts[0][0])).toContain('/attendance/shifts');
+    expect(String(allPosts[0][0])).not.toContain('/attendance/shifts/clock_in');
     const sent = posts();
     expect(sent).toHaveLength(1);
-    expect(String(sent[0].now)).toMatch(/^2027-01-15T09:00:00[+-]\d{2}:\d{2}$/);
+    expect(sent[0]).not.toHaveProperty('now');
+    expect(sent[0].clock_in).toBe('09:00');
+    expect(sent[0].date).toBe('2027-01-15');
   });
 
   it('refuses a declared moment in the future without sending a request', async () => {
@@ -183,33 +195,66 @@ describe('clock_in and clock_out with a declared moment', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("closes yesterday's open shift at the declared time and creates no second record", async () => {
-    routeFetch({
-      openShifts: [
-        {
-          id: '801',
-          employee_id: '2',
-          date: '2027-01-14',
-          reference_date: '2027-01-14',
-          clock_in: '2000-01-01T09:00:00.000Z',
-          clock_out: null,
-          status: 'opened',
-          workable: true,
-          location_type: null,
-          workplace_id: null,
-          time_settings_break_configuration_id: null,
-        },
-      ],
-    });
+  it("closes yesterday's open shift at the declared time, as a bare HH:MM with no server offset, and creates no second record", async () => {
+    mockFetch.mockImplementation(
+      async (input: string, init?: { method?: string; body?: string }) => {
+        const url = new URL(input);
+        const path = url.pathname;
+        const ok = (json: unknown, status = 200) => ({
+          ok: true,
+          status,
+          json: async () => json,
+          text: async () => '',
+        });
+        if (init?.method === 'PATCH' && path.endsWith('/attendance/shifts/801')) {
+          const body = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+          return ok({ ...shiftsFixture.data[0], id: '801', ...body }, 200);
+        }
+        if (path.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+        if (path.endsWith('/attendance/worked_times')) return ok({ data: workedFixture.data });
+        if (path.endsWith('/attendance/estimated_times'))
+          return ok({ data: estimatedFixture.data });
+        if (path.endsWith('/attendance/open_shifts')) {
+          return ok({
+            data: [
+              {
+                id: '801',
+                employee_id: '2',
+                date: '2027-01-14',
+                reference_date: '2027-01-14',
+                clock_in: '2000-01-01T09:00:00.000Z',
+                clock_out: null,
+                status: 'opened',
+                workable: true,
+                location_type: null,
+                workplace_id: null,
+                time_settings_break_configuration_id: null,
+              },
+            ],
+          });
+        }
+        throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${path}`);
+      }
+    );
     const result = await call({ action: 'clock_out', date: '2027-01-14', time: '18:00' });
     expect(result.content[0].text).toContain('Clock out recorded for Placeholder Person (2) at');
-    const allPosts = mockFetch.mock.calls.filter(
+    expect(result.content[0].text).toContain('2027-01-14 18:00');
+    // A declared clock_out updates the open shift it looked up (PATCH
+    // /attendance/shifts/:id), never the live clock_out endpoint, so no
+    // absolute instant with a server offset is ever sent for it.
+    const patches = mockFetch.mock.calls.filter(
+      ([, init]) => (init as { method?: string } | undefined)?.method === 'PATCH'
+    );
+    expect(patches).toHaveLength(1);
+    expect(String(patches[0][0])).toContain('/attendance/shifts/801');
+    const body = JSON.parse((patches[0][1] as { body: string }).body) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('now');
+    expect(body.clock_out).toBe('18:00');
+    expect(body.date).toBe('2027-01-14');
+    const posted = mockFetch.mock.calls.filter(
       ([, init]) => (init as { method?: string } | undefined)?.method === 'POST'
     );
-    expect(allPosts).toHaveLength(1);
-    expect(String(allPosts[0][0])).toContain('/attendance/shifts/clock_out');
-    const body = JSON.parse((allPosts[0][1] as { body: string }).body) as Record<string, unknown>;
-    expect(String(body.now)).toMatch(/^2027-01-14T18:00:00[+-]\d{2}:\d{2}$/);
+    expect(posted).toHaveLength(0);
   });
 
   it('refuses to clock out before the open shift started', async () => {
