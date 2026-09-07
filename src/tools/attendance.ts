@@ -37,6 +37,7 @@ import {
   DayInputSchema,
 } from '../schemas.js';
 import {
+  declaredMoment,
   enumerateDates,
   formatPlanPreview,
   hours,
@@ -107,6 +108,11 @@ export function registerAttendanceTool(server: McpServer) {
         'clock_out and status for live clocking, gaps and audit to find days that do not match ' +
         'the contract, log_range / log_days to enter many days at once, and list_edit_requests / ' +
         'create_edit_request for days whose timesheet has already been signed off. ' +
+        'Without date and time, clock_in and clock_out record the current moment; given both, ' +
+        'they record the declared moment instead, for someone who forgot to clock and knows when ' +
+        'they started or stopped. A declared moment in the future is refused before anything is ' +
+        'sent, and clock_out with a declared moment is refused if nothing is open or if it would ' +
+        'close a shift before it started. ' +
         'Bulk writes, writes for another employee and edit requests preview first: the call ' +
         'returns a plan and a confirmation_token, and nothing is written until the identical ' +
         'call is repeated with that token within 15 minutes. ' +
@@ -168,7 +174,21 @@ export function registerAttendanceTool(server: McpServer) {
             'Half day marker. "beggining_of_day" is Factorial\'s own spelling of the value and ' +
               'must be sent exactly as it is; do not correct it.'
           ),
-        date: z.string().optional().describe('Shift date YYYY-MM-DD (create, update)'),
+        date: z
+          .string()
+          .optional()
+          .describe(
+            'Shift date YYYY-MM-DD (create, update). For clock_in/clock_out, the declared day; ' +
+              'give it together with time to record a declared moment instead of the current one'
+          ),
+        time: z
+          .string()
+          .optional()
+          .describe(
+            'clock_in/clock_out: the declared time HH:MM in company local time. Without date and ' +
+              'time the action records the current moment; with them it records the declared moment. ' +
+              'Use this when the person forgot to clock and knows when they started or stopped'
+          ),
         reference_date: z
           .string()
           .optional()
@@ -485,7 +505,48 @@ export function registerAttendanceTool(server: McpServer) {
           case 'clock_out': {
             const employeeId = resolveTargetEmployeeId(args.employee_id);
             const name = await resolveEmployeeName(employeeId);
-            const now = new Date();
+            const wallClock = new Date();
+            let now = wallClock;
+            const declared = args.date !== undefined || args.time !== undefined;
+            if (declared) {
+              if (args.date === undefined || args.time === undefined) {
+                return textResponse(
+                  'Error: date and time must be given together to declare a moment. Give both, or ' +
+                    'neither to record the current moment.'
+                );
+              }
+              now = declaredMoment(args.date, args.time);
+              // A declared moment in the future is never a record of work done.
+              if (now.getTime() > wallClock.getTime()) {
+                return textResponse(
+                  `Error: ${args.date} ${args.time} is in the future. A shift records work that has ` +
+                    'already happened, so the declared moment must not be later than now.'
+                );
+              }
+            }
+
+            if (args.action === 'clock_out' && declared) {
+              const open = await listOpenShifts(employeeId);
+              if (open.length === 0) {
+                return textResponse(
+                  `Nothing is open for ${name} (${employeeId}), so there is no shift to close at ` +
+                    `${args.date} ${args.time}. Nothing was written. To record a whole past shift, ` +
+                    'use action create with date, clock_in and clock_out.'
+                );
+              }
+              const shift = open[0];
+              const startedAt = declaredMoment(
+                shift.date,
+                shift.clock_in.includes('T') ? shift.clock_in.slice(11, 16) : shift.clock_in
+              );
+              if (now.getTime() < startedAt.getTime()) {
+                return textResponse(
+                  `Error: ${args.date} ${args.time} is before the open shift started ` +
+                    `(${shift.date} ${shift.clock_in}). Nothing was written.`
+                );
+              }
+            }
+
             const input = {
               employee_id: employeeId,
               location_type: args.location_type,
@@ -493,12 +554,17 @@ export function registerAttendanceTool(server: McpServer) {
               observations: args.observations,
             };
             const verb = args.action === 'clock_in' ? 'Clock in' : 'Clock out';
+            const moment = declared ? `${args.date} ${args.time}` : `now (${formatLocalIso(now)})`;
             const gate = requireTargetConfirmation({
               operation: args.action,
               employeeId,
-              // The preview is bound to the person and the payload, not the second.
-              fingerprint: payloadFingerprint({ action: args.action, input }),
-              preview: `${verb} ${name} (${employeeId}) now (${formatLocalIso(now)})`,
+              // Bound to the person, the payload and the declared moment (if any), not the second.
+              fingerprint: payloadFingerprint({
+                action: args.action,
+                input,
+                declared: declared ? { date: args.date, time: args.time } : null,
+              }),
+              preview: `${verb} ${name} (${employeeId}) ${moment}`,
               token: args.confirmation_token,
             });
             if (!gate.proceed) return textResponse(gate.message);
