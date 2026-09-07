@@ -847,9 +847,45 @@ describe('create_edit_request and list_edit_requests', () => {
       throw new Error(`unexpected fetch ${path}`);
     });
     const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
-    expect(text).toContain('1 edit timesheet requests');
+    expect(text).toContain('1 edit timesheet request:');
+    expect(text).not.toContain('1 edit timesheet requests');
     expect(text).toContain('2025-02-03');
     expect(text).toContain('pending');
+  });
+
+  it('uses the plural for more than one edit timesheet request', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/attendance/edit_timesheet_requests')) {
+        return jsonResponse({
+          data: [
+            {
+              id: '6',
+              request_type: 'create_shift',
+              employee_id: '2',
+              date: '2025-02-03',
+              clock_in: '09:00',
+              clock_out: '17:00',
+              approved: null,
+              reason: 'Hours worked but never clocked',
+            },
+            {
+              id: '7',
+              request_type: 'update_shift',
+              employee_id: '2',
+              date: '2025-02-04',
+              clock_in: '09:00',
+              clock_out: '17:00',
+              approved: true,
+              reason: 'Wrong clock out',
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
+    expect(text).toContain('2 edit timesheet requests:');
   });
 
   it('reports no edit timesheet requests on record when there are none', async () => {
