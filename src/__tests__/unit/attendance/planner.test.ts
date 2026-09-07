@@ -41,6 +41,7 @@ function decemberFacts(overrides: Partial<PlanFacts> = {}): PlanFacts {
     days,
     shifts: [],
     leaves: new Map(),
+    reviews: new Set<string>(),
     ...overrides,
   };
 }
@@ -470,7 +471,13 @@ describe('formatPlanPreview', () => {
       ...rangeRequest({ segments: [morning, afternoon], jitter_minutes: 6 }),
       dates,
     };
-    const facts: PlanFacts = { today: '2026-06-01', days, shifts: [], leaves: new Map() };
+    const facts: PlanFacts = {
+      today: '2026-06-01',
+      days,
+      shifts: [],
+      leaves: new Map(),
+      reviews: new Set<string>(),
+    };
     const big = buildBackfillPlan(request, facts);
     expect(big.writes.length).toBe(100);
     const text = formatPlanPreview(
@@ -615,5 +622,100 @@ describe('jitterSegments', () => {
     expect(row.day_type).toBeNull();
     expect(row.expected_minutes).toBe(0);
     expect(computeLedger(['2026-12-28'], facts)[0].status).not.toBe('no_contract_data');
+  });
+});
+
+describe('short versus missing', () => {
+  const facts = (tracked: number): PlanFacts => ({
+    today: '2026-12-31',
+    days: new Map([
+      ['2026-12-28', { day_type: 'workday', expected_minutes: 480, tracked_minutes: tracked }],
+    ]),
+    shifts: [],
+    leaves: new Map(),
+    reviews: new Set<string>(),
+  });
+
+  it('reports a day with nothing tracked as missing', () => {
+    const [day] = computeLedger(['2026-12-28'], facts(0), 15);
+    expect(day.status).toBe('missing');
+    expect(day.delta_minutes).toBe(-480);
+  });
+
+  it('reports a day tracked but under tolerance as short', () => {
+    const [day] = computeLedger(['2026-12-28'], facts(463), 15);
+    expect(day.status).toBe('short');
+    expect(day.delta_minutes).toBe(-17);
+  });
+
+  it('counts a day within tolerance as complete', () => {
+    const [day] = computeLedger(['2026-12-28'], facts(470), 15);
+    expect(day.status).toBe('complete');
+  });
+});
+
+describe('signed_off', () => {
+  const reviewedFacts = (tracked: number): PlanFacts => ({
+    today: '2026-12-31',
+    days: new Map([
+      ['2026-12-28', { day_type: 'workday', expected_minutes: 480, tracked_minutes: tracked }],
+    ]),
+    shifts: [],
+    leaves: new Map(),
+    reviews: new Set(['2026-12-28']),
+  });
+
+  it('marks a signed-off day without replacing its status', () => {
+    const [day] = computeLedger(['2026-12-28'], reviewedFacts(0), 15);
+    expect(day.signed_off).toBe(true);
+    expect(day.status).toBe('missing');
+  });
+
+  it('marks a signed-off day that is merely short', () => {
+    const [day] = computeLedger(['2026-12-28'], reviewedFacts(463), 15);
+    expect(day.signed_off).toBe(true);
+    expect(day.status).toBe('short');
+  });
+
+  it('leaves an unreviewed day unmarked', () => {
+    const facts = reviewedFacts(0);
+    facts.reviews = new Set();
+    const [day] = computeLedger(['2026-12-28'], facts, 15);
+    expect(day.signed_off).toBe(false);
+  });
+
+  it('skips a signed-off date instead of planning writes into it', () => {
+    const plan = buildBackfillPlan(
+      {
+        mode: 'range',
+        employee_id: 1,
+        dates: ['2026-12-28'],
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+        skip_leave: true,
+      },
+      reviewedFacts(0)
+    );
+    expect(plan.writes).toHaveLength(0);
+    expect(plan.skippedDays).toEqual([
+      {
+        date: '2026-12-28',
+        reason: 'signed_off',
+        detail: 'the timesheet for this date has been signed off and is closed for writing',
+      },
+    ]);
+  });
+
+  it('skips a signed-off date in log_days too, where the calendar rules do not apply', () => {
+    const plan = buildBackfillPlan(
+      {
+        mode: 'days',
+        employee_id: 1,
+        days: [{ date: '2026-12-28', segments: [{ clock_in: '09:00', clock_out: '17:00' }] }],
+        skip_leave: true,
+      },
+      reviewedFacts(0)
+    );
+    expect(plan.writes).toHaveLength(0);
+    expect(plan.skippedDays[0].reason).toBe('signed_off');
   });
 });
