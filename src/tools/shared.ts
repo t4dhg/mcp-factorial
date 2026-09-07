@@ -60,6 +60,8 @@ export const CATEGORIES = {
       'audit',
       'log_range',
       'log_days',
+      'list_edit_requests',
+      'create_edit_request',
     ],
   },
   documents: {

@@ -685,3 +685,164 @@ describe('factorial_attendance tool', () => {
     expect(text).not.toContain('2026-11-01 09:00-17:00');
   });
 });
+
+describe('create_edit_request and list_edit_requests', () => {
+  let call: Handler;
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    clearCache();
+    clearResolvedNames();
+    confirmationManager.clear();
+    vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2027-01-15T10:00:00Z'));
+    call = captureHandler();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function jsonResponse(json: unknown) {
+    return { ok: true, status: 200, json: async () => json, text: async () => '' };
+  }
+
+  it('previews an edit request before filing it, and files it on the second call', async () => {
+    mockFetch.mockImplementation(async (input: string, init?: { method?: string }) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/employees/employees/2')) return jsonResponse(EMPLOYEE);
+      if (init?.method === 'POST' && path.endsWith('/attendance/edit_timesheet_requests')) {
+        return jsonResponse({ id: '6', request_type: 'create_shift', employee_id: '2' });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    });
+
+    const args = {
+      action: 'create_edit_request',
+      employee_id: 2,
+      date: '2025-02-03',
+      clock_in: '09:00',
+      clock_out: '17:00',
+      reason: 'Hours worked but never clocked',
+    };
+
+    const first = (await call(args)).content[0].text;
+    expect(first).toContain('Nothing has been written');
+    expect(first).toContain('2025-02-03');
+    expect(first).toContain('Hours worked but never clocked');
+
+    const token = TOKEN.exec(first)?.[1];
+    const second = (await call({ ...args, confirmation_token: token })).content[0].text;
+    expect(second).toContain('Edit request 6 filed');
+  });
+
+  it('refuses to file an edit request with no reason', async () => {
+    const text = (await call({ action: 'create_edit_request', employee_id: 2, date: '2025-02-03' }))
+      .content[0].text;
+    expect(text).toContain('reason is required');
+  });
+
+  it('refuses to file a create_shift edit request with no date, before any token is issued', async () => {
+    const text = (
+      await call({ action: 'create_edit_request', employee_id: 2, reason: 'Forgot to clock in' })
+    ).content[0].text;
+    expect(text).toContain('date (YYYY-MM-DD) is required');
+    expect(text).not.toMatch(TOKEN);
+  });
+
+  it('refuses to file an update_shift edit request with no attendance_shift_id', async () => {
+    const text = (
+      await call({
+        action: 'create_edit_request',
+        employee_id: 2,
+        request_type: 'update_shift',
+        reason: 'Wrong clock out time',
+      })
+    ).content[0].text;
+    expect(text).toContain('attendance_shift_id is required');
+    expect(text).not.toMatch(TOKEN);
+  });
+
+  it('refuses to file a delete_shift edit request with no attendance_shift_id', async () => {
+    const text = (
+      await call({
+        action: 'create_edit_request',
+        employee_id: 2,
+        request_type: 'delete_shift',
+        reason: 'Duplicate record',
+      })
+    ).content[0].text;
+    expect(text).toContain('attendance_shift_id is required');
+    expect(text).not.toMatch(TOKEN);
+  });
+
+  it('passes attendance_shift_id through to the created request for update_shift', async () => {
+    let postedBody: Record<string, unknown> | undefined;
+    mockFetch.mockImplementation(
+      async (input: string, init?: { method?: string; body?: string }) => {
+        const path = new URL(input).pathname;
+        if (path.endsWith('/employees/employees/2')) return jsonResponse(EMPLOYEE);
+        if (init?.method === 'POST' && path.endsWith('/attendance/edit_timesheet_requests')) {
+          postedBody = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+          return jsonResponse({ id: '7', request_type: 'update_shift', employee_id: '2' });
+        }
+        throw new Error(`unexpected fetch ${path}`);
+      }
+    );
+
+    const args = {
+      action: 'create_edit_request',
+      employee_id: 2,
+      request_type: 'update_shift',
+      attendance_shift_id: 42,
+      clock_out: '18:00',
+      reason: 'Left later than recorded',
+    };
+    const preview = (await call(args)).content[0].text;
+    expect(preview).toContain('for shift 42');
+    const token = TOKEN.exec(preview)?.[1];
+    await call({ ...args, confirmation_token: token });
+    // Identifier-shaped fields are stringified before the request body is
+    // serialized (http-client.ts stringifyIdentifiers), matching how Factorial
+    // returns ids, so the number the caller passed arrives on the wire as a string.
+    expect(postedBody?.attendance_shift_id).toBe('42');
+  });
+
+  it('lists edit timesheet requests', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/attendance/edit_timesheet_requests')) {
+        return jsonResponse({
+          data: [
+            {
+              id: '6',
+              request_type: 'create_shift',
+              employee_id: '2',
+              date: '2025-02-03',
+              clock_in: '09:00',
+              clock_out: '17:00',
+              approved: null,
+              reason: 'Hours worked but never clocked',
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
+    expect(text).toContain('1 edit timesheet requests');
+    expect(text).toContain('2025-02-03');
+    expect(text).toContain('pending');
+  });
+
+  it('reports no edit timesheet requests on record when there are none', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/attendance/edit_timesheet_requests')) return jsonResponse({ data: [] });
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
+    expect(text).toBe('No edit timesheet requests on record.');
+  });
+});

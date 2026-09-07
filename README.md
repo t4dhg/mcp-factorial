@@ -39,7 +39,7 @@ The MCP server uses a hierarchical tool structure for optimal context usage. Ins
 | `factorial_locations`   | Location management           | list, get, create, update, delete                  |
 | `factorial_contracts`   | Contract/salary data          | list, get_with_employee, by_job_role, by_job_level |
 | `factorial_time_off`    | Leave management              | 10 actions                                         |
-| `factorial_attendance`  | Shifts and registro horario   | 12 actions incl. clock_in, audit, log_range        |
+| `factorial_attendance`  | Shifts and registro horario   | 14 actions incl. clock_in, audit, log_range        |
 | `factorial_documents`   | Document management           | 8 actions (downloads require OAuth2 - see below)   |
 | `factorial_job_catalog` | Job roles/levels              | list_roles, get_role, list_levels                  |
 | `factorial_projects`    | Project management            | 16 actions for projects, tasks, workers, time      |
@@ -75,21 +75,21 @@ factorial_discover({ category: 'employees' });
 
 ### 124 Operations Across 14 Categories
 
-| Category        | Operations                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------ |
-| **Employees**   | list, get, search, create, update, terminate                                                           |
-| **Teams**       | list, get, create, update, delete                                                                      |
-| **Locations**   | list, get, create, update, delete                                                                      |
-| **Time Off**    | list_leaves, get_leave, list_types, get_type, list_allowances, create, update, cancel, approve, reject |
-| **Attendance**  | list, get, create, update, delete, clock_in, clock_out, status, gaps, audit, log_range, log_days       |
-| **Projects**    | 16 operations for projects, tasks, workers, time records                                               |
-| **Training**    | 12 operations for trainings, sessions, enrollments                                                     |
-| **Work Areas**  | list, get, create, update, archive, unarchive                                                          |
-| **ATS**         | 17 operations for job postings, candidates, applications, hiring stages                                |
-| **Payroll**     | list/get supplements, tax identifiers, family situations (read-only)                                   |
-| **Documents**   | 8 operations for folders, documents, and downloads (⚠️ downloads require OAuth2)                       |
-| **Job Catalog** | list_roles, get_role, list_levels (read-only)                                                          |
-| **Contracts**   | list, get_with_employee, by_job_role, by_job_level (read-only)                                         |
+| Category        | Operations                                                                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Employees**   | list, get, search, create, update, terminate                                                                                              |
+| **Teams**       | list, get, create, update, delete                                                                                                         |
+| **Locations**   | list, get, create, update, delete                                                                                                         |
+| **Time Off**    | list_leaves, get_leave, list_types, get_type, list_allowances, create, update, cancel, approve, reject                                    |
+| **Attendance**  | list, get, create, update, delete, clock_in, clock_out, status, gaps, audit, log_range, log_days, list_edit_requests, create_edit_request |
+| **Projects**    | 16 operations for projects, tasks, workers, time records                                                                                  |
+| **Training**    | 12 operations for trainings, sessions, enrollments                                                                                        |
+| **Work Areas**  | list, get, create, update, archive, unarchive                                                                                             |
+| **ATS**         | 17 operations for job postings, candidates, applications, hiring stages                                                                   |
+| **Payroll**     | list/get supplements, tax identifiers, family situations (read-only)                                                                      |
+| **Documents**   | 8 operations for folders, documents, and downloads (⚠️ downloads require OAuth2)                                                          |
+| **Job Catalog** | list_roles, get_role, list_levels (read-only)                                                                                             |
+| **Contracts**   | list, get_with_employee, by_job_role, by_job_level (read-only)                                                                            |
 
 ### Attendance and Registro Horario
 
@@ -400,6 +400,7 @@ Always gated, whatever the target, because volume is its own hazard:
 
 - `factorial_attendance({ action: 'log_range' })` - Writes one or more shift records per workable day in a range
 - `factorial_attendance({ action: 'log_days' })` - Writes an explicit list of days
+- `factorial_attendance({ action: 'create_edit_request' })` - Files a request to change a timesheet, which notifies a person, so it is gated even for the configured identity
 
 Re-running a bulk call after a partial failure is safe against its own earlier writes: the planner re-reads existing shifts and skips whatever overlaps. It does not protect against another writer between the read and the writes.
 
