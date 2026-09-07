@@ -19,6 +19,7 @@ const {
   postAction,
   stringifyIdentifiers,
   unwrapRecord,
+  extractApiMessage,
 } = await import('../../http-client.js');
 
 // Import error types for assertions
@@ -725,5 +726,26 @@ describe('HTTP Client', () => {
         })
       );
     });
+  });
+});
+
+describe('extractApiMessage', () => {
+  it('reads the nested errors array Factorial returns for DTO failures', () => {
+    expect(extractApiMessage({ errors: { errors: ['Missing required prop `employee_id`'] } })).toBe(
+      'Missing required prop `employee_id`'
+    );
+  });
+
+  it('reads a flat errors array', () => {
+    expect(extractApiMessage({ errors: ['Resource # not found'] })).toBe('Resource # not found');
+  });
+
+  it('reads a plain message', () => {
+    expect(extractApiMessage({ message: 'Nope' })).toBe('Nope');
+  });
+
+  it('returns undefined when there is nothing to quote', () => {
+    expect(extractApiMessage(null)).toBeUndefined();
+    expect(extractApiMessage({})).toBeUndefined();
   });
 });

@@ -107,14 +107,30 @@ function buildUrl(endpoint: string, params?: Record<string, QueryParamValue>): s
 /**
  * Parse error response body
  */
-function parseErrorBody(
-  errorText: string
-): { errors?: Record<string, string[]>; message?: string } | null {
+function parseErrorBody(errorText: string): unknown {
   try {
-    return JSON.parse(errorText) as { errors?: Record<string, string[]>; message?: string };
+    return JSON.parse(errorText);
   } catch {
     return null;
   }
+}
+
+/**
+ * Pull a quotable sentence out of an error body. Factorial uses three shapes:
+ * `{errors: {errors: [...]}}` for DTO validation, `{errors: [...]}` for missing
+ * resources, and `{message: "..."}` elsewhere.
+ */
+export function extractApiMessage(body: unknown): string | undefined {
+  if (body === null || typeof body !== 'object') return undefined;
+  const record = body as { errors?: unknown; message?: unknown };
+  if (typeof record.message === 'string' && record.message !== '') return record.message;
+  const errors = record.errors;
+  if (Array.isArray(errors) && typeof errors[0] === 'string') return errors[0];
+  if (errors !== null && typeof errors === 'object') {
+    const nested = (errors as { errors?: unknown }).errors;
+    if (Array.isArray(nested) && typeof nested[0] === 'string') return nested[0];
+  }
+  return undefined;
 }
 
 /**
@@ -139,19 +155,26 @@ async function handleResponse<T>(
   const errorData = parseErrorBody(errorText);
   debug(`API error (${response.status})`, { endpoint, method, error: errorText });
 
+  const validationBody = errorData as {
+    errors?: Record<string, string[]>;
+    message?: string;
+  } | null;
+
   switch (response.status) {
     case 400:
-      throw new ValidationError(endpoint, formatValidationErrors(errorData), { raw: errorData });
+      throw new ValidationError(endpoint, formatValidationErrors(validationBody), {
+        raw: errorData,
+      });
     case 401:
       throw new AuthenticationError(endpoint);
     case 403:
-      throw new AuthorizationError(endpoint);
+      throw new AuthorizationError(endpoint, extractApiMessage(errorData), { raw: errorData });
     case 404:
       throw new NotFoundError(endpoint);
     case 409:
-      throw new ConflictError(endpoint, errorData?.message || 'Resource conflict');
+      throw new ConflictError(endpoint, validationBody?.message || 'Resource conflict');
     case 422:
-      throw new UnprocessableEntityError(endpoint, formatValidationErrors(errorData), {
+      throw new UnprocessableEntityError(endpoint, formatValidationErrors(validationBody), {
         raw: errorData,
       });
     case 429: {
