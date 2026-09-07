@@ -25,6 +25,8 @@ import {
   clockIn,
   clockOut,
   formatLocalIso,
+  listEditTimesheetRequests,
+  createEditTimesheetRequest,
 } from '../api/index.js';
 import {
   hhmm,
@@ -102,10 +104,12 @@ export function registerAttendanceTool(server: McpServer) {
       title: 'FactorialHR Attendance',
       description:
         'Attendance (registro horario): list/get/create/update/delete shift records, clock_in, ' +
-        'clock_out and status for live clocking, gaps to find days with missing hours, and ' +
-        'log_range / log_days to enter many days at once. Bulk writes and writes for another ' +
-        'employee return a preview plus a confirmation_token first; nothing is written until the ' +
-        'call is repeated with that token. Times are HH:MM in company local time.',
+        'clock_out and status for live clocking, gaps to find days with missing hours, ' +
+        'log_range / log_days to enter many days at once, and list_edit_requests / ' +
+        'create_edit_request to change a day that is already signed off. Bulk writes, writes for ' +
+        'another employee, and create_edit_request all return a preview plus a confirmation_token ' +
+        'first; nothing is written and nobody is notified until the call is repeated with that ' +
+        'token. Times are HH:MM in company local time.',
       inputSchema: {
         action: z
           .enum([
@@ -121,6 +125,8 @@ export function registerAttendanceTool(server: McpServer) {
             'audit',
             'log_range',
             'log_days',
+            'list_edit_requests',
+            'create_edit_request',
           ])
           .describe('Action'),
         id: z.number().optional().describe('Shift ID (get, update, delete)'),
@@ -259,6 +265,24 @@ export function registerAttendanceTool(server: McpServer) {
         page: z.number().optional().default(1).describe('Page number (list, client-side)'),
         limit: z.number().optional().default(100).describe('Items per page (list, client-side)'),
         confirm: z.boolean().optional().describe('Confirm delete'),
+        reason: z
+          .string()
+          .optional()
+          .describe('Why the timesheet needs changing (create_edit_request, required)'),
+        request_type: z
+          .enum(['create_shift', 'delete_shift', 'update_shift'])
+          .optional()
+          .describe(
+            'What the edit request asks for (create_edit_request, default create_shift). ' +
+              'create_shift requires date; update_shift and delete_shift require attendance_shift_id'
+          ),
+        attendance_shift_id: z
+          .number()
+          .optional()
+          .describe(
+            'The shift this edit request refers to (create_edit_request). Required for ' +
+              'update_shift and delete_shift, since without it the request names no shift'
+          ),
       },
     },
     async args => {
@@ -507,6 +531,82 @@ export function registerAttendanceTool(server: McpServer) {
                 format: args.format,
                 statuses: args.statuses,
               })
+            );
+          }
+
+          case 'list_edit_requests': {
+            const configured = getConfiguredEmployeeId();
+            const employeeIds =
+              args.employee_ids ??
+              (args.employee_id ? [args.employee_id] : configured ? [configured] : undefined);
+            const requests = await listEditTimesheetRequests(employeeIds);
+            if (requests.length === 0) {
+              return textResponse('No edit timesheet requests on record.');
+            }
+            const lines = requests.map(
+              r =>
+                `  ${r.date ?? '-'}  ${r.request_type.padEnd(12)} ${
+                  r.approved === true ? 'approved' : r.approved === false ? 'rejected' : 'pending'
+                }  ${r.clock_in ?? '-'}-${r.clock_out ?? '-'}  ${r.reason ?? ''}`
+            );
+            return textResponse(
+              `${requests.length} edit timesheet requests:\n\n${lines.join('\n')}`
+            );
+          }
+
+          case 'create_edit_request': {
+            const requestType = args.request_type ?? ('create_shift' as const);
+            if (requestType === 'create_shift' && !args.date) {
+              return textResponse(
+                'Error: date (YYYY-MM-DD) is required for a create_shift edit request'
+              );
+            }
+            if (
+              (requestType === 'update_shift' || requestType === 'delete_shift') &&
+              !args.attendance_shift_id
+            ) {
+              return textResponse(
+                `Error: attendance_shift_id is required for a ${requestType} edit request, ` +
+                  'so the request names the shift it refers to'
+              );
+            }
+            if (!args.reason || args.reason.trim() === '') {
+              return textResponse(
+                'Error: reason is required. A person approves this request and needs to know why it was filed.'
+              );
+            }
+            const employeeId = resolveTargetEmployeeId(args.employee_id);
+            const name = await resolveEmployeeName(employeeId);
+            const input = {
+              employee_id: employeeId,
+              request_type: requestType,
+              date: args.date,
+              clock_in: args.clock_in,
+              clock_out: args.clock_out,
+              reason: args.reason,
+              observations: args.observations,
+              attendance_shift_id: args.attendance_shift_id,
+            };
+            const gate = requireTargetConfirmation({
+              operation: 'create_edit_request',
+              employeeId,
+              fingerprint: payloadFingerprint(input),
+              preview:
+                `File an edit timesheet request for ${name} (${employeeId}): ${requestType}` +
+                (args.date ? ` on ${args.date}` : '') +
+                (args.attendance_shift_id ? ` for shift ${args.attendance_shift_id}` : '') +
+                ` ${args.clock_in ?? '?'}-${args.clock_out ?? '?'}\n` +
+                `Reason: ${args.reason}\n` +
+                'A person approves this request in Factorial and is notified of it.',
+              token: args.confirmation_token,
+              always: true,
+            });
+            if (!gate.proceed) return textResponse(gate.message);
+            const created = await createEditTimesheetRequest(input);
+            return textResponse(
+              `Edit request ${created.id} filed for ${name} (${employeeId}). ` +
+                'It takes effect only once someone approves it in Factorial.\n\n' +
+                JSON.stringify(created, null, 2)
             );
           }
 
