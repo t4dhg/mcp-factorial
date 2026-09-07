@@ -46,6 +46,7 @@ import type { PlanRequest, PlannedWrite } from '../attendance/planner.js';
 import { formatAudit, formatGaps } from '../attendance/report.js';
 import {
   buildLedger,
+  CONSECUTIVE_FAILURE_ABORT,
   executeBackfill,
   findGaps,
   planBackfill,
@@ -518,16 +519,29 @@ export function registerAttendanceTool(server: McpServer) {
               `Wrote ${result.written.length} of ${plan.writes.length} shift records for ${name} (${employeeId}), ${hours(writtenMinutes)}.`,
             ];
             if (result.failed.length > 0) {
-              const failed = result.failed[0];
-              const remaining = plan.writes.length - result.written.length - 1;
               lines.push('');
               lines.push(
-                `Stopped at ${failed.date} ${failed.clock_in}-${failed.clock_out}: ${failed.error}`
+                `${result.failed.length} record${result.failed.length === 1 ? '' : 's'} failed:`
               );
-              if (remaining > 0) lines.push(`${remaining} further records were not attempted.`);
+              for (const failure of result.failed.slice(0, 20)) {
+                lines.push(
+                  `  ${failure.date} ${failure.clock_in}-${failure.clock_out}: ${failure.error}`
+                );
+              }
+              if (result.failed.length > 20) {
+                lines.push(`  ... ${result.failed.length - 20} further failures not listed ...`);
+              }
+              if (result.abortedEarly) {
+                lines.push('');
+                lines.push(
+                  `Stopped after ${CONSECUTIVE_FAILURE_ABORT} failures in a row, which points at the ` +
+                    `request rather than the records. ${result.notAttempted.length} records were not attempted.`
+                );
+              }
               lines.push('');
               lines.push(RETRY_NOTE);
-            } else {
+            }
+            if (result.written.length > 0) {
               lines.push('');
               lines.push(describeWrites(result.written));
               lines.push('');
