@@ -83,6 +83,22 @@ describe('declaredMoment', () => {
     expect(() => declaredMoment('2026-03-02', '9:00')).toThrow();
     expect(() => declaredMoment('2026-03-02', '24:00')).toThrow();
   });
+
+  it('rejects a date that does not exist rather than rolling it over', () => {
+    // Date.parse silently rolls 2026-02-30 over into 2026-03-02; a typo must
+    // never write to a different day than the one the caller typed.
+    expect(() => declaredMoment('2026-02-30', '09:00')).toThrow();
+    expect(() => declaredMoment('2026-13-01', '09:00')).toThrow();
+    // 2025 is not a leap year, so February has 28 days.
+    expect(() => declaredMoment('2025-02-29', '09:00')).toThrow();
+  });
+
+  it('accepts a real leap day', () => {
+    const d = declaredMoment('2024-02-29', '09:00');
+    expect(d.getFullYear()).toBe(2024);
+    expect(d.getMonth()).toBe(1);
+    expect(d.getDate()).toBe(29);
+  });
 });
 
 describe('clock_in and clock_out with a declared moment', () => {
@@ -106,6 +122,22 @@ describe('clock_in and clock_out with a declared moment', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('refuses date or time given alone, without writing anything', async () => {
+    routeFetch({});
+    // Warm the employee-name cache first (a read, and not the thing under
+    // test) so the assertion below isolates the together-refusal itself.
+    await call({ action: 'clock_in', date: '2027-01-15', time: '10:00' });
+    mockFetch.mockClear();
+
+    const dateOnly = await call({ action: 'clock_in', date: '2027-01-15' });
+    expect(dateOnly.content[0].text).toMatch(/date and time must be given together/);
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    const timeOnly = await call({ action: 'clock_out', time: '09:00' });
+    expect(timeOnly.content[0].text).toMatch(/date and time must be given together/);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('records the declared time rather than the current moment', async () => {

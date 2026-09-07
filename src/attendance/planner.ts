@@ -217,8 +217,23 @@ export function intervalsOverlap(a: [number, number], b: [number, number]): bool
 }
 
 function assertDate(value: string): void {
-  if (!DATE.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+  const match = DATE.exec(value);
+  const parsed = match ? Date.parse(`${value}T00:00:00Z`) : NaN;
+  if (!match || Number.isNaN(parsed)) {
     throw new Error(`Date "${value}" must be YYYY-MM-DD`);
+  }
+  // Date.parse silently rolls an impossible date (2026-02-30) over into the
+  // next valid one (2026-03-02). A rolled-over date must be rejected, not
+  // written to a different day than the caller typed: reparse the accepted
+  // instant and compare it against the three numbers actually given.
+  const rolled = new Date(parsed);
+  const [year, month, day] = value.split('-').map(Number);
+  if (
+    rolled.getUTCFullYear() !== year ||
+    rolled.getUTCMonth() !== month - 1 ||
+    rolled.getUTCDate() !== day
+  ) {
+    throw new Error(`Date "${value}" does not exist`);
   }
 }
 
