@@ -150,7 +150,7 @@ This guide is for the model driving the tool. Every step below is a call to the 
 - **Times are applied by Factorial in the company zone.** HH:MM goes in and comes back as the same wall-clock time. The server never converts between zones, so there is nothing to compensate for.
 - An audit covers **one employee**. The day counts in its header sum to the number of days in the window, which is the cheapest check that you are reading the whole range.
 - \`list\` returns one employee's shifts by default (the configured identity). Pass \`employee_ids: []\` for the whole company, which is rarely what you want.
-- **\`over\` by a few minutes is normal.** Real clocks are not exact and the tolerance already allows for it. Report over days, but do not propose edits for them unless someone asks.
+- **\`over\` means the tracked minutes exceed expected by more than the tolerance**, so it is never merely rounding: a forgotten clock-out or a shift entered twice are the common causes. Report every \`over\` day with the size of the excess; never delete or overwrite records to correct one on your own initiative, ask the person whose record it is instead.
 - Every \`gaps\`, \`audit\` and bulk preview starts with a **Data read** line saying how many days of the window have contract data and how many leave, shift and signed-off records were read. If it reports uncovered days that do not precede the start of employment, stop and report; do not write. If it reports fewer leave records than you expect for the window, say so before reasoning about leave; a leave the server did not read is a leave the planner will happily write over.
 - The server reads every page of every list, so a window of any length is read completely. There is no need to split a range into chunks unless the result is too large to read; if it is, use \`format: "summary"\` on \`audit\` or split by month.
 
@@ -161,10 +161,11 @@ This guide is for the model driving the tool. Every step below is a call to the 
 
 Example report, which is the shape to copy:
 
-> 1 January to 6 September 2026, 249 days. Expected 1416h, of which 1272h on workdays; tracked 1269h55.
+> 1 January to 6 September 2026, 249 days. Expected 1416h, of which 1272h on workdays; tracked 1243h15.
 > 143 days complete, 14 bank holidays, 72 weekend days, 4 on leave.
-> 9 days missing entirely: 12 March, 14 April, ... (72h).
-> 7 days over by a few minutes, which is normal for real clocks; no action.
+> 3 days missing entirely: 12 March, 3 June, 14 August (24h).
+> 6 days short, tracked but under expected by more than the tolerance: 15 March, 2 April, 9 April, 20 May, 4 July, 11 August (10h short across them).
+> 7 days over by more than the tolerance, 5h15 in excess in total: 6 February, 13 February, ... A forgotten clock-out or a duplicated shift are the likely causes; ask before treating them as settled.
 > Nothing is signed off, so any of the above can still be corrected.
 
 3. Write nothing. An audit is read-only.
