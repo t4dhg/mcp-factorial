@@ -30,6 +30,8 @@ import {
   EstimatedTimeSchema,
   WorkedTimeSchema,
   AttendanceReviewSchema,
+  EditTimesheetRequestSchema,
+  CreateEditTimesheetRequestInputSchema,
   CreateShiftInputSchema,
   UpdateShiftInputSchema,
   ClockInputSchema,
@@ -38,6 +40,8 @@ import {
   type EstimatedTime,
   type WorkedTime,
   type AttendanceReview,
+  type EditTimesheetRequest,
+  type CreateEditTimesheetRequestInput,
   type CreateShiftInput,
   type UpdateShiftInput,
   type ClockInput,
@@ -240,6 +244,38 @@ export async function listReviews(options: DailyTimesOptions): Promise<Attendanc
     },
   });
   return parseArray('AttendanceReview', AttendanceReviewSchema, data);
+}
+
+/**
+ * Edit timesheet requests, Factorial's route for changing a signed-off day.
+ *
+ * Hours cannot be written directly onto a reviewed date; a request is filed and
+ * whoever approves timesheets decides.
+ */
+export async function listEditTimesheetRequests(
+  employeeIds?: number[]
+): Promise<EditTimesheetRequest[]> {
+  const data = await fetchList<unknown>(ENDPOINTS.editTimesheetRequests, {
+    params: { employee_ids: employeeIds },
+  });
+  return parseArray('EditTimesheetRequest', EditTimesheetRequestSchema, data);
+}
+
+/** File a request to change a timesheet. This notifies whoever approves them. */
+export async function createEditTimesheetRequest(
+  input: CreateEditTimesheetRequestInput
+): Promise<EditTimesheetRequest> {
+  const body = CreateEditTimesheetRequestInputSchema.parse(input);
+  return auditedOperation(
+    AuditAction.CREATE,
+    'edit_timesheet_request',
+    body.employee_id,
+    async () => {
+      const created = await postOne<unknown>(ENDPOINTS.editTimesheetRequests, body);
+      cache.invalidatePrefix('shifts');
+      return parseData('EditTimesheetRequest', EditTimesheetRequestSchema, created);
+    }
+  );
 }
 
 async function clockAction(
