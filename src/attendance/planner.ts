@@ -103,10 +103,14 @@ export function measureCoverage(
 
 /** One line for the header of an audit, gaps or preview */
 export function formatCoverage(coverage: FactsCoverage): string {
+  const day = coverage.days_in_window === 1 ? 'day' : 'days';
+  const leaveRecord = coverage.leave_records === 1 ? 'leave record' : 'leave records';
+  const shiftRecord = coverage.shift_records === 1 ? 'shift record' : 'shift records';
+  const signedOffDay = coverage.review_records === 1 ? 'signed-off day' : 'signed-off days';
   const base =
-    `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} days, ` +
-    `${coverage.leave_records} leave records, ${coverage.shift_records} shift records, ` +
-    `${coverage.review_records} signed-off days.`;
+    `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} ${day}, ` +
+    `${coverage.leave_records} ${leaveRecord}, ${coverage.shift_records} ${shiftRecord}, ` +
+    `${coverage.review_records} ${signedOffDay}.`;
   if (coverage.days_with_contract_data === coverage.days_in_window) return base;
   return (
     `${base} Days without contract data (${coverage.first_uncovered} to ${coverage.last_uncovered}) ` +
@@ -693,8 +697,10 @@ export function formatPlanPreview(
   lines.push(`Plan for ${employee.name} (${employee.id})`);
   lines.push(`${range.start} .. ${range.end}`);
   lines.push('');
+  const totalsDay = plan.totals.days === 1 ? 'day' : 'days';
+  const totalsRecord = plan.totals.records === 1 ? 'shift record' : 'shift records';
   lines.push(
-    `  ${plan.totals.days} days to write, ${plan.totals.records} shift records, ${hours(plan.totals.minutes)}`
+    `  ${plan.totals.days} ${totalsDay} to write, ${plan.totals.records} ${totalsRecord}, ${hours(plan.totals.minutes)}`
   );
   if (request.mode === 'range') {
     lines.push(`  ${request.segments.map(s => `${s.clock_in}-${s.clock_out}`).join(' and ')}`);
@@ -703,13 +709,15 @@ export function formatPlanPreview(
     lines.push(`  Note on every record: "${observations}"`);
   }
   if (request.variation_minutes && request.variation_minutes > 0) {
+    const variationMinute = request.variation_minutes === 1 ? 'minute' : 'minutes';
     lines.push(
-      `  Each day starts up to ${request.variation_minutes} minutes earlier or later than the pattern, the whole day moving together (fixed per day, listed below).`
+      `  Each day starts up to ${request.variation_minutes} ${variationMinute} earlier or later than the pattern, the whole day moving together (fixed per day, listed below).`
     );
   }
   if (request.jitter_minutes && request.jitter_minutes > 0) {
+    const jitterMinute = request.jitter_minutes === 1 ? 'minute' : 'minutes';
     lines.push(
-      `  Each time varies by up to ${request.jitter_minutes} minutes from the pattern (fixed per record, listed below).`
+      `  Each time varies by up to ${request.jitter_minutes} ${jitterMinute} from the pattern (fixed per record, listed below).`
     );
   }
   if (plan.writes.length > 0) {
@@ -726,7 +734,7 @@ export function formatPlanPreview(
       const hidden = plan.writes.length - head.length - tail.length;
       for (const w of head) lines.push(record(w));
       lines.push(
-        `    ... ${hidden} more records not listed; the confirmation token binds to all of them ...`
+        `    ... ${hidden} more record${hidden === 1 ? '' : 's'} not listed; the confirmation token binds to all of them ...`
       );
       for (const w of tail) lines.push(record(w));
     }
@@ -734,7 +742,9 @@ export function formatPlanPreview(
 
   if (plan.skippedDays.length > 0) {
     lines.push('');
-    lines.push(`  Skipping ${plan.skippedDays.length} days:`);
+    lines.push(
+      `  Skipping ${plan.skippedDays.length} day${plan.skippedDays.length === 1 ? '' : 's'}:`
+    );
     const byReason = countBy(plan.skippedDays);
     const labels: Record<SkipReason, string> = {
       future_date: 'in the future',
@@ -772,8 +782,9 @@ export function formatPlanPreview(
       lines.push(`    ${date}  ${count} segment${count === 1 ? '' : 's'} already covered`);
     }
     if (dates.length > PREVIEW_SKIP_DAYS_MAX) {
+      const further = dates.length - PREVIEW_SKIP_DAYS_MAX;
       lines.push(
-        `    ... ${dates.length - PREVIEW_SKIP_DAYS_MAX} further days not listed; run audit with format: "table" to see them all ...`
+        `    ... ${further} further day${further === 1 ? '' : 's'} not listed; run audit with format: "table" to see them all ...`
       );
     }
   }

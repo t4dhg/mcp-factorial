@@ -117,7 +117,7 @@ describe('factorial_attendance tool', () => {
     vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '2');
     routeFetch({ shifts: [shiftsFixture.data[0]] });
     const mine = await call({ action: 'list', start_on: '2026-12-01', end_on: '2026-12-31' });
-    expect(mine.content[0].text).toContain('shifts for employee 2 (');
+    expect(mine.content[0].text).toContain('Found 1 shift for employee 2 (');
     const listUrl = new URL(
       mockFetch.mock.calls.find(([u]) => /attendance\/shifts/.test(u as string))![0] as string
     );
@@ -422,7 +422,7 @@ describe('factorial_attendance tool', () => {
     const text = (await call(audit)).content[0].text;
     expect(text).toContain('Attendance audit for Placeholder Person (2), 2026-12-24 to 2026-12-31');
     expect(text).toContain(
-      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift records, 0 signed-off days.'
+      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift record, 0 signed-off days.'
     );
     expect(text).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
     // Weekends, complete days, and bank holidays are counted in the summary
@@ -614,7 +614,7 @@ describe('factorial_attendance tool', () => {
     };
     const first = await call(args);
     const text = first.content[0].text;
-    expect(text).toContain('1 days to write, 1 shift records, 4h');
+    expect(text).toContain('1 day to write, 1 shift record, 4h');
     expect(text).toMatch(/1 in the future \(2027-02-01\)/);
     const token = TOKEN.exec(text)?.[1];
     await call({ ...args, confirmation_token: token });

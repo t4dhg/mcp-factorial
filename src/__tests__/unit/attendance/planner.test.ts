@@ -7,11 +7,13 @@ import {
   varySegments,
   enumerateDates,
   expandLeaves,
+  formatCoverage,
   formatPlanPreview,
   intervalsOverlap,
   parseHHMM,
   planFingerprint,
   validateSegments,
+  type FactsCoverage,
   type PlanFacts,
 } from '../../../attendance/planner.js';
 
@@ -975,5 +977,115 @@ describe('exclude_dates', () => {
       facts
     );
     expect(plan.writes.map(w => w.date)).toEqual(['2026-06-01']);
+  });
+});
+
+describe('noun agreement in rendered counts (pluralisation sweep)', () => {
+  it('formatCoverage uses the singular noun for every field at 1, and the plural otherwise', () => {
+    const singular: FactsCoverage = {
+      days_in_window: 1,
+      days_with_contract_data: 1,
+      first_uncovered: null,
+      last_uncovered: null,
+      leave_records: 1,
+      shift_records: 1,
+      review_records: 1,
+    };
+    expect(formatCoverage(singular)).toBe(
+      'Data read: contract data for 1 of 1 day, 1 leave record, 1 shift record, 1 signed-off day.'
+    );
+
+    const plural: FactsCoverage = {
+      days_in_window: 2,
+      days_with_contract_data: 2,
+      first_uncovered: null,
+      last_uncovered: null,
+      leave_records: 2,
+      shift_records: 2,
+      review_records: 2,
+    };
+    expect(formatCoverage(plural)).toBe(
+      'Data read: contract data for 2 of 2 days, 2 leave records, 2 shift records, 2 signed-off days.'
+    );
+  });
+
+  it('says "Skipping 1 day" rather than "Skipping 1 days" when only one day is skipped', () => {
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days: new Map([
+        ['2026-06-06', { day_type: 'saturday', expected_minutes: 0, tracked_minutes: 0 }],
+        ['2026-06-08', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 0 }],
+      ]),
+      shifts: [],
+      leaves: new Map(),
+      reviews: new Set(),
+    };
+    const request = {
+      mode: 'range' as const,
+      employee_id: 1,
+      dates: ['2026-06-06', '2026-06-08'],
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      skip_leave: true,
+    };
+    const plan = buildBackfillPlan(request, facts);
+    const text = formatPlanPreview(
+      plan,
+      { id: 1, name: 'X' },
+      { start: '2026-06-06', end: '2026-06-08' },
+      request
+    );
+    expect(text).toContain('Skipping 1 day:');
+    expect(text).not.toContain('Skipping 1 days:');
+  });
+
+  it('agrees the variation and jitter minute count in the singular', () => {
+    const facts = decemberFacts();
+    const request = rangeRequest({ segments: [morning], variation_minutes: 1, jitter_minutes: 1 });
+    const plan = buildBackfillPlan(request, facts);
+    const text = formatPlanPreview(
+      plan,
+      { id: 2, name: 'Placeholder Person' },
+      { start: '2026-12-21', end: '2026-12-31' },
+      request
+    );
+    expect(text).toContain('up to 1 minute earlier or later than the pattern');
+    expect(text).toContain('varies by up to 1 minute from the pattern');
+    expect(text).not.toContain('1 minutes');
+  });
+
+  it('agrees "further day" in the singular when exactly one day is left off the overlap list', () => {
+    const shifts = [];
+    const days = new Map<
+      string,
+      { day_type: string; expected_minutes: number; tracked_minutes: number }
+    >();
+    // PREVIEW_SKIP_DAYS_MAX is 10, so 11 overlapping days leaves exactly one further day unlisted.
+    for (let d = 1; d <= 11; d++) {
+      const date = `2026-06-${String(d).padStart(2, '0')}`;
+      days.set(date, { day_type: 'workday', expected_minutes: 480, tracked_minutes: 480 });
+      shifts.push({ date, clock_in: '09:00', clock_out: '17:00' });
+    }
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days,
+      shifts,
+      leaves: new Map(),
+      reviews: new Set(),
+    };
+    const request = {
+      mode: 'range' as const,
+      employee_id: 1,
+      dates: [...days.keys()],
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      skip_leave: true,
+    };
+    const text = formatPlanPreview(
+      buildBackfillPlan(request, facts),
+      { id: 1, name: 'X' },
+      { start: '2026-06-01', end: '2026-06-11' },
+      request
+    );
+    expect(text).toContain('1 further day not listed');
+    expect(text).not.toContain('1 further days not listed');
   });
 });
