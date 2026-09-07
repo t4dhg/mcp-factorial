@@ -40,6 +40,21 @@ function delta(minutes: number): string {
   return `  (${minutes > 0 ? '+' : ''}${minutes} min)`;
 }
 
+/**
+ * Minutes actually owed for a day, as distinct from `expected_minutes`, which
+ * comes straight from the contract pattern and does not know about leave or
+ * holidays. A bank holiday, full-day leave, not-workable day, or future date
+ * owes nothing. A half-day leave owes half; the planner does not prorate
+ * `expected_minutes` itself, so a half-day-leave day still reports a full
+ * day's expected minutes and would otherwise overstate what was owed by half
+ * a contract day. Every other day owes its full expected minutes.
+ */
+function minutesOwed(d: LedgerDay): number {
+  if (['bank_holiday', 'on_leave', 'not_workable', 'future'].includes(d.status)) return 0;
+  if (d.status === 'half_day_leave') return Math.round(d.expected_minutes / 2);
+  return d.expected_minutes;
+}
+
 export function ledgerRow(d: LedgerDay): string {
   const shifts = d.shifts.length
     ? d.shifts.map(sh => `${sh.clock_in}-${sh.clock_out ?? 'open'}`).join(' ')
@@ -64,9 +79,7 @@ export function formatAudit(input: AuditReportInput): string {
   // expected counts bank holidays and leave at full contract minutes, because
   // that is what the contract pattern says about those days. It is not the
   // number tracked hours should be compared against, so give both.
-  const workdayExpected = ledger
-    .filter(d => !['bank_holiday', 'on_leave', 'not_workable', 'future'].includes(d.status))
-    .reduce((sum, d) => sum + d.expected_minutes, 0);
+  const workdayExpected = ledger.reduce((sum, d) => sum + minutesOwed(d), 0);
   const signedOff = ledger.filter(d => d.signed_off).length;
   const summary = [...counts.entries()].map(([k, v]) => `${v} ${k}`).join(', ');
   const header =
@@ -81,19 +94,25 @@ export function formatAudit(input: AuditReportInput): string {
   if (format === 'json') {
     return `${header}\n\nMachine-readable ledger:\n${JSON.stringify(ledger)}`;
   }
+  const statusFilter = input.statuses && input.statuses.length > 0 ? input.statuses : undefined;
   const listed =
     format === 'table'
       ? ledger
-      : input.statuses && input.statuses.length > 0
-        ? ledger.filter(d => input.statuses?.includes(d.status))
+      : statusFilter
+        ? ledger.filter(d => statusFilter.includes(d.status))
         : ledger.filter(d => !QUIET_STATUSES.has(d.status));
   const rows = listed.map(ledgerRow);
   const footer =
     format === 'table'
       ? ''
-      : `\n\n${listed.length} of ${ledger.length} days listed; complete days, weekends, bank holidays, ` +
-        'approved leave, days the contract does not expect work, and future dates are only counted above. ' +
-        'Pass statuses: ["missing"] to narrow further, format: "table" for every day, or format: "json" for the ledger.';
+      : statusFilter
+        ? `\n\n${listed.length} of ${ledger.length} days listed; filtered to status ` +
+          `${statusFilter.map(s => `"${s}"`).join(', ')}. Every other day in the window was omitted by ` +
+          'that filter, not because it is settled. Drop statuses to see the default summary, ' +
+          'format: "table" for every day, or format: "json" for the ledger.'
+        : `\n\n${listed.length} of ${ledger.length} days listed; complete days, weekends, bank holidays, ` +
+          'approved leave, days the contract does not expect work, and future dates are only counted above. ' +
+          'Pass statuses: ["missing"] to narrow further, format: "table" for every day, or format: "json" for the ledger.';
   return `${header}\n\n${rows.length > 0 ? rows.join('\n') : '  (nothing needs attention)'}${footer}`;
 }
 

@@ -3,8 +3,8 @@ import { formatAudit } from '../../../attendance/report.js';
 import type { FactsCoverage, LedgerDay } from '../../../attendance/planner.js';
 
 const coverage: FactsCoverage = {
-  days_in_window: 4,
-  days_with_contract_data: 4,
+  days_in_window: 5,
+  days_with_contract_data: 5,
   first_uncovered: null,
   last_uncovered: null,
   leave_records: 1,
@@ -42,12 +42,19 @@ const ledger: LedgerDay[] = [
     delta_minutes: -480,
     signed_off: true,
   }),
+  day({
+    date: '2026-03-06',
+    status: 'half_day_leave',
+    leave: 'beggining_of_day',
+    tracked_minutes: 240,
+    delta_minutes: -240,
+  }),
 ];
 
 const input = {
   employee: { id: 7, name: 'Someone' },
   startOn: '2026-03-02',
-  endOn: '2026-03-05',
+  endOn: '2026-03-06',
   ledger,
   coverage,
   toleranceMinutes: 15,
@@ -63,10 +70,17 @@ describe('formatAudit', () => {
 
   it('reports the workable target beside the raw expected total', () => {
     const text = formatAudit(input);
-    // 4 days at 480 is 32h expected; the bank holiday is not work to be made up,
-    // so the workable target is the other three days, 24h.
-    expect(text).toContain('Expected 32h');
-    expect(text).toContain('workday expected 24h');
+    // 5 days at 480 is 40h expected. The bank holiday owes nothing (excluded);
+    // the half-day-leave day owes half a contract day (240 of its 480), not
+    // the full day and not zero. So the workable target is:
+    //   short (480) + over (480) + bank_holiday (0) + missing (480) + half_day_leave (240)
+    //   = 1680 min = 28h.
+    // Counting the half-day-leave day at its full expected minutes would give 32h
+    // (silently overstating what was owed); excluding it entirely like the bank
+    // holiday would give 24h (hiding the half day that genuinely was owed). Both
+    // are different numbers from the correct 28h, which is what this pins.
+    expect(text).toContain('Expected 40h');
+    expect(text).toContain('workday expected 28h');
   });
 
   it('marks a signed-off day in its row', () => {
@@ -94,5 +108,16 @@ describe('formatAudit', () => {
   it('lists every day in table format', () => {
     const text = formatAudit({ ...input, format: 'table' });
     expect(text).toContain('2026-03-04');
+  });
+
+  it('tells the truth in the footer when statuses filters the list', () => {
+    // With statuses supplied, rows are missing because they didn't match the
+    // filter, not because they are settled. The generic quiet-set sentence
+    // ("complete days, weekends, bank holidays... are only counted above") is
+    // false in this case, since e.g. the missing day was omitted by the
+    // filter, not because it was counted as settled.
+    const text = formatAudit({ ...input, statuses: ['over'] });
+    expect(text).toContain('filtered to status "over"');
+    expect(text).not.toContain('complete days, weekends, bank holidays');
   });
 });
