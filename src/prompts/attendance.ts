@@ -9,6 +9,13 @@
  * Nothing is written by a prompt itself; writes happen only through the
  * factorial_attendance tool and its confirmation gate.
  *
+ * A prompt is invisible to the model in some clients: Claude Code surfaces
+ * it to the human only, as a slash command, with no way for the model to
+ * read it. Each prompt's numbered procedure is lifted into a module-level
+ * constant and published as a resource at factorial://prompts/<name>, as
+ * well as spliced into the prompt message itself, so the two can never
+ * drift apart.
+ *
  * The guide resource (factorial://guides/registro-horario) is the same
  * knowledge for a model that discovers resources on its own.
  */
@@ -30,6 +37,7 @@ import { formatAudit, formatGaps, ledgerRow } from '../attendance/report.js';
 export const GUIDE_URI = 'factorial://guides/registro-horario';
 
 const SEGMENT = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Parse the `segments` prompt argument. Prompt arguments are strings, so the
@@ -73,6 +81,44 @@ export function parseSegmentsArg(text: string): Segment[] {
   }
   validateSegments(segments);
   return segments;
+}
+
+interface DayEntryArg {
+  date: string;
+  segments: string;
+}
+
+/**
+ * Parse the `days` argument of `attendance_fill_days`: a JSON array of
+ * explicit dates, each with its own daily pattern as a `segments` string
+ * in the same shape `parseSegmentsArg` takes.
+ */
+export function parseDaysArg(text: string): Array<{ date: string; segments: Segment[] }> {
+  const trimmed = text.trim();
+  if (trimmed === '') {
+    throw new Error(
+      'days is required, for example [{"date":"2026-03-02","segments":"09:00-14:00"}]'
+    );
+  }
+  const parsed: unknown = JSON.parse(trimmed);
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('days must be a non-empty JSON array of {date, segments}');
+  }
+  return parsed.map((item: unknown) => {
+    if (
+      item === null ||
+      typeof item !== 'object' ||
+      typeof (item as DayEntryArg).date !== 'string' ||
+      typeof (item as DayEntryArg).segments !== 'string'
+    ) {
+      throw new Error('each day needs a date ("YYYY-MM-DD" string) and a segments string');
+    }
+    const { date, segments } = item as DayEntryArg;
+    if (!DATE.test(date)) {
+      throw new Error(`date "${date}" must be YYYY-MM-DD`);
+    }
+    return { date, segments: parseSegmentsArg(segments) };
+  });
 }
 
 /** Sum of a daily pattern in minutes */
@@ -135,6 +181,78 @@ const STATUS_LEGEND = [
   'timesheet has been reviewed and is closed for writing whatever its status says.',
 ].join(' ');
 
+/**
+ * Procedure text per prompt: the numbered steps a model follows. Each is
+ * spliced verbatim into its prompt's message and, unmodified, into the
+ * resource at factorial://prompts/<name>, so the two can never drift apart.
+ * `missing` and `short` are distinct statuses (nothing on record at all,
+ * versus some hours tracked but under expected by more than the tolerance),
+ * so every procedure below that reports on a window covers them separately
+ * rather than under one combined "missing" label.
+ */
+const AUDIT_PROCEDURE = [
+  'Do this:',
+  '1. Read the Data read line. If it names days without contract data that are not before the start of employment, say so first and treat the audit as unreliable.',
+  '2. Report expected vs workday expected vs tracked hours for the window and the count of days per status.',
+  '3. List every missing day (nothing on record) separately from every short day (some hours, not enough), with the hours involved, grouped by month. List over days. Mention half_day_leave days whose worked half has no record.',
+  '4. Name any day marked signed off; those cannot be corrected by writing hours, only through create_edit_request.',
+  '5. If nothing needs attention, say so in one line.',
+  '6. Write nothing. This is a read-only report.',
+].join('\n');
+
+const FILL_PROCEDURE = [
+  'Do this, in order:',
+  '1. Read the Data read line. If it names days without contract data that are not before the start of employment, stop and report; do not write.',
+  '2. Tell the person which days are short (some hours tracked, not enough) and which are missing (nothing on record), and ask whether any of them were not worked (illness without a leave record, a day off). Exclude such days by narrowing the range or by running the call on the sub-ranges around them. Never invent hours.',
+  '3. Preview the write with log_range. Nothing is written by this call.',
+  '4. Show the person the preview: how many days and records, the hours, and every skipped day with its reason. Ask them to confirm.',
+  '5. Only after they confirm, repeat exactly the same call adding the confirmation_token from the preview. The token lasts 15 minutes and matches only that plan. If it expired, run the preview again.',
+  '6. If the result says the write stopped part way, re-run the identical call; the planner writes only what is still missing.',
+  '7. Verify with audit and report what changed. Every workday should read complete.',
+].join('\n');
+
+const TODAY_PROCEDURE = [
+  'Decide as follows:',
+  '1. Check status. If the employee is clocked in (an open shift), write nothing and report that a shift is open.',
+  '2. If the status is complete, weekend, bank_holiday, on_leave, not_workable or future, write nothing and report in one line why.',
+  '3. If the status is no_contract_data, write nothing and report that Factorial has no contract data for today.',
+  '4. If the status is half_day_leave, write nothing and report it; the worked half needs a person to say which half it was.',
+  '5. If the status is short (some hours already tracked, not enough), write nothing and report the partial day; a person decides how to complete it.',
+  '6. If the status is missing and no shift is on record, preview the write with log_days. Then, in this same session, repeat the identical call adding the confirmation_token from the preview. This unattended confirmation is allowed only when the employee is the configured identity (FACTORIAL_EMPLOYEE_ID).',
+  '7. If the status is missing but a shift is already on record for today, write nothing and report the partial day; a person decides how to complete it.',
+  '8. Verify with audit and report in one line what was written or why nothing was.',
+].join('\n');
+
+const RECONCILE_PROCEDURE = [
+  'Do this:',
+  '1. Read the Data read line. If it names days without contract data that are not before the start of employment, say so first and treat the audit as unreliable.',
+  '2. Match each missing day (nothing on record) and each short day (some hours, not enough) against the known absences above.',
+  '3. Report only the days that disagree: a day with no hours that the person did not say was an absence, and an absence they did state that shows as complete or over.',
+  '4. Say explicitly which known absences have no matching leave record in Factorial, since those are the ones that need a leave request rather than hours.',
+  '5. Write nothing. This is a read-only reconciliation.',
+].join('\n');
+
+const FILL_DAYS_PROCEDURE = [
+  'Do this, in order:',
+  '1. Read the status of each requested day above. If any is signed off, its shift cannot be written; tell the person to use create_edit_request for it instead.',
+  '2. If any requested day already shows complete or over, ask the person before writing over it; log_days refuses a segment that overlaps an existing shift, so drop days that do not need one.',
+  '3. Preview the write with log_days. Nothing is written by this call.',
+  '4. Show the person the preview: how many days and records, the hours, and every skipped day with its reason. Ask them to confirm.',
+  '5. Only after they confirm, repeat exactly the same call adding the confirmation_token from the preview. The token lasts 15 minutes and matches only that plan. If it expired, run the preview again.',
+  '6. If the result says the write stopped part way, re-run the identical call; the planner writes only what is still missing.',
+  '7. Verify with audit over the same dates and report what changed.',
+  '8. Write nothing for a day not listed. Never invent hours.',
+].join('\n');
+
+/** Procedure text per prompt, published as a resource as well as embedded in the prompt */
+const PROMPT_BODIES = new Map<string, string>([
+  ['attendance_audit', AUDIT_PROCEDURE],
+  ['attendance_fill', FILL_PROCEDURE],
+  ['attendance_today', TODAY_PROCEDURE],
+  ['attendance_reconcile', RECONCILE_PROCEDURE],
+  ['attendance_fill_days', FILL_DAYS_PROCEDURE],
+]);
+
 export const REGISTRO_HORARIO_GUIDE = `# Registro horario with factorial_attendance
 
 This guide is for the model driving the tool. Every step below is a call to the \`factorial_attendance\` tool with an \`action\`. Times are HH:MM in company local time. Dates are YYYY-MM-DD.
@@ -190,6 +308,16 @@ Example report, which is the shape to copy:
 
 MCP has no scheduler. To run this daily, schedule it in the client: in Claude Code, \`/schedule\` creates a routine that invokes the \`attendance_today\` prompt, and \`/loop\` repeats it while a session is open; any cron can run \`claude -p\` with the prompt as its input.
 
+## Workflow D: reconcile against what you already know
+
+1. Gather the known absences the person can state from memory (days off, sick days, trips), as free text.
+2. \`attendance_reconcile\` runs the audit and reports only the days that disagree with that statement: a day with no hours the person did not mention, or a stated absence that shows as complete or over instead. Read-only.
+
+## Workflow E: log specific days out of pattern
+
+1. For dates that do not follow the regular daily pattern (a Saturday worked, a half day), state each date and its own segments.
+2. \`attendance_fill_days\` (or \`log_days\` directly) builds one call for the whole list, previewed and confirmed the same way as Workflow B.
+
 ## Rules that always apply
 
 - Never write hours for someone other than the person asking unless they name that employee explicitly; the tool requires a confirmation token for it, and so should you.
@@ -205,8 +333,9 @@ export interface AttendancePromptDeps {
 }
 
 /**
- * Register the three attendance prompts and the guide resource on a server.
- * `deps.now` exists for tests; the server uses the wall clock.
+ * Register the five attendance prompts, the guide resource, and a resource
+ * per prompt publishing its procedure text, on a server. `deps.now` exists
+ * for tests; the server uses the wall clock.
  */
 export function registerAttendancePrompts(server: McpServer, deps: AttendancePromptDeps = {}) {
   const today = () => localToday((deps.now ?? (() => new Date()))());
@@ -218,7 +347,7 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
       title: 'Registro horario guide',
       description:
         "How to audit, fill and maintain an employee's registro horario (attendance record) with " +
-        'the factorial_attendance tool: what the data means, the three workflows, and the rules.',
+        'the factorial_attendance tool: what the data means, the five workflows, and the rules.',
       mimeType: 'text/markdown',
     },
     uri => ({
@@ -267,12 +396,9 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
           '',
           report,
           '',
-          'Do this:',
-          '1. Read the Data read line. If it names days without contract data that are not before the start of employment, say so first and treat the audit as unreliable.',
-          '2. Report expected vs tracked hours for the window and the count of days per status.',
-          '3. List every missing day with the hours missing on it, grouped by month. List over days. Mention half_day_leave days whose worked half has no record.',
-          '4. If nothing needs attention, say so in one line.',
-          '5. Write nothing. This is a read-only report. If the person then wants to fill the gaps, use the attendance_fill prompt or follow Workflow B in the guide (' +
+          AUDIT_PROCEDURE,
+          '',
+          'If the person then wants to fill the gaps, use the attendance_fill prompt or follow Workflow B in the guide (' +
             GUIDE_URI +
             ').',
           '',
@@ -348,14 +474,10 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
           '',
           gapsReport,
           '',
-          'Do this, in order:',
-          '1. Read the Data read line. If it names days without contract data that are not before the start of employment, stop and report; do not write.',
-          '2. Tell the person which days are short and ask whether any of them were not worked (illness without a leave record, a day off). Exclude such days by narrowing the range or by running the call on the sub-ranges around them. Never invent hours.',
-          `3. Preview the write. Nothing is written by this call: ${toolCall(rangeCall)}`,
-          '4. Show the person the preview: how many days and records, the hours, and every skipped day with its reason. Ask them to confirm.',
-          '5. Only after they confirm, repeat exactly the same call adding the confirmation_token from the preview. The token lasts 15 minutes and matches only that plan. If it expired, run the preview again.',
-          '6. If the result says the write stopped part way, re-run the identical call; the planner writes only what is still missing.',
-          `7. Verify: ${toolCall({ action: 'audit', employee_id: employeeId, start_on: window.start_on, end_on: window.end_on })} and report what changed. Every workday should read complete.`,
+          FILL_PROCEDURE,
+          '',
+          `Preview call: ${toolCall(rangeCall)}`,
+          `Verify call: ${toolCall({ action: 'audit', employee_id: employeeId, start_on: window.start_on, end_on: window.end_on })}`,
           '',
           'For days worked outside the pattern (a Saturday, a half day next to half-day leave), write them one by one with action log_days, for example ' +
             toolCall({
@@ -428,18 +550,159 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
           '',
           todayReport,
           '',
-          'Decide as follows:',
-          `1. ${toolCall({ action: 'status', employee_id: employeeId })}. If the employee is clocked in (an open shift), write nothing and report that a shift is open.`,
-          '2. If the status above is complete, weekend, bank_holiday, on_leave, not_workable or future, write nothing and report in one line why.',
-          '3. If the status is no_contract_data, write nothing and report that Factorial has no contract data for today.',
-          '4. If the status is half_day_leave, write nothing and report it; the worked half needs a person to say which half it was.',
-          `5. If the status is missing and no shift is on record, preview the write: ${toolCall(daysCall)}. Then, in this same session, repeat the identical call adding the confirmation_token from the preview. This unattended confirmation is allowed only when the employee is the configured identity (FACTORIAL_EMPLOYEE_ID)${explicit !== undefined ? '; an explicit employee_id was given, so confirm that it is the configured identity before proceeding, and otherwise stop and ask' : ''}.`,
-          '6. If the status is missing but a shift is already on record for today, write nothing and report the partial day; a person decides how to complete it.',
-          `7. Verify with ${toolCall({ action: 'audit', employee_id: employeeId, start_on: date, end_on: date })} and report in one line what was written or why nothing was.`,
+          TODAY_PROCEDURE,
+          '',
+          `Status call: ${toolCall({ action: 'status', employee_id: employeeId })}`,
+          `Preview call for a missing day with no shift on record: ${toolCall(daysCall)}. The confirmation_token from that preview is reused in the identical call, in this same session, only when the employee is the configured identity (FACTORIAL_EMPLOYEE_ID)${explicit !== undefined ? '; an explicit employee_id was given, so confirm that it is the configured identity before proceeding, and otherwise stop and ask' : ''}.`,
+          `Verify call: ${toolCall({ action: 'audit', employee_id: employeeId, start_on: date, end_on: date })}`,
           '',
           `Full guide: ${GUIDE_URI}`,
         ].join('\n')
       );
     }
   );
+
+  server.registerPrompt(
+    'attendance_reconcile',
+    {
+      title: 'Reconcile registro horario against known absences',
+      description:
+        "Audit an employee's registro horario for a window and list only the days that disagree " +
+        'with a stated list of known absences. Read-only.',
+      argsSchema: {
+        known_absences: z
+          .string()
+          .describe('Free text: the days off, sick days and trips you already know about'),
+        start_on: z
+          .string()
+          .optional()
+          .describe('Start date YYYY-MM-DD (default: 1st of this month)'),
+        end_on: z.string().optional().describe('End date YYYY-MM-DD (default: today)'),
+        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+      },
+    },
+    async ({ known_absences, start_on, end_on, employee_id }) => {
+      const employeeId = resolveTargetEmployeeId(parseOptionalInt(employee_id, 'employee_id'));
+      const name = await resolveEmployeeName(employeeId);
+      const window = resolveWindow(start_on, end_on, today());
+      const report = await preRead('the audit', async () => {
+        const { ledger, coverage } = await buildLedger(employeeId, window.start_on, window.end_on);
+        return formatAudit({
+          employee: { id: employeeId, name },
+          startOn: window.start_on,
+          endOn: window.end_on,
+          ledger,
+          coverage,
+          toleranceMinutes: DEFAULT_TOLERANCE_MINUTES,
+          format: 'summary',
+        });
+      });
+      return userMessage(
+        [
+          `Reconcile the registro horario of ${name} (${employeeId}) from ${window.start_on} to ${window.end_on} against what is already known.`,
+          '',
+          'Known absences, as stated by the person:',
+          known_absences,
+          '',
+          'The audit has already been run for you:',
+          '',
+          report,
+          '',
+          RECONCILE_PROCEDURE,
+          '',
+          STATUS_LEGEND,
+        ].join('\n')
+      );
+    }
+  );
+
+  server.registerPrompt(
+    'attendance_fill_days',
+    {
+      title: 'Log specific registro horario days',
+      description:
+        'Enter registro horario for a list of explicit dates, each with its own daily pattern (a ' +
+        'Saturday worked, a half day), as one log_days call through a preview the person confirms. ' +
+        'Defaults to FACTORIAL_EMPLOYEE_ID.',
+      argsSchema: {
+        days: z
+          .string()
+          .describe(
+            'JSON array of explicit days: [{"date":"2026-03-02","segments":"09:00-14:00, 15:00-18:00"}, ...]'
+          ),
+        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+        observations: z
+          .string()
+          .optional()
+          .describe('Note stored on every record, e.g. why the hours are being entered now'),
+        jitter_minutes: z
+          .string()
+          .optional()
+          .describe('Vary each time by up to this many minutes (default 8, 0 for exact times)'),
+      },
+    },
+    async ({ days, employee_id, observations, jitter_minutes }) => {
+      const employeeId = resolveTargetEmployeeId(parseOptionalInt(employee_id, 'employee_id'));
+      const name = await resolveEmployeeName(employeeId);
+      const entries = parseDaysArg(days);
+      const jitter = parseOptionalInt(jitter_minutes, 'jitter_minutes') ?? 8;
+      const note =
+        observations && observations.trim() !== ''
+          ? observations.trim()
+          : `Entered from explicit days on ${today()}`;
+      const dates = entries.map(e => e.date).sort();
+      const rangeStart = dates[0];
+      const rangeEnd = dates[dates.length - 1];
+      const report = await preRead('the requested days', async () => {
+        const { ledger, coverage } = await buildLedger(employeeId, rangeStart, rangeEnd);
+        const rows = ledger
+          .filter(d => dates.includes(d.date))
+          .map(ledgerRow)
+          .join('\n');
+        return `${formatCoverage(coverage)}\n${rows}`;
+      });
+      const daysCall = {
+        action: 'log_days',
+        employee_id: employeeId,
+        days: entries.map(e => ({ date: e.date, segments: e.segments })),
+        jitter_minutes: jitter,
+        observations: note,
+      };
+      return userMessage(
+        [
+          `Log explicit registro horario days for ${name} (${employeeId}): ${dates.join(', ')}.`,
+          '',
+          'The status of each requested day has already been read for you:',
+          '',
+          report,
+          '',
+          FILL_DAYS_PROCEDURE,
+          '',
+          `Preview call: ${toolCall(daysCall)}`,
+          `Verify call: ${toolCall({ action: 'audit', employee_id: employeeId, start_on: rangeStart, end_on: rangeEnd })}`,
+          '',
+          STATUS_LEGEND,
+          '',
+          `Full guide: ${GUIDE_URI}`,
+        ].join('\n')
+      );
+    }
+  );
+
+  // A prompt is invisible to the model in some clients: Claude Code surfaces
+  // them to the human as slash commands only, and offers no way to read one.
+  // The same procedure as a resource is readable by the party that has to
+  // follow it.
+  for (const [name, body] of PROMPT_BODIES) {
+    server.registerResource(
+      `prompt_${name}`,
+      `factorial://prompts/${name}`,
+      {
+        title: `Procedure: ${name}`,
+        description: `The steps the ${name} prompt lays out, readable without invoking it.`,
+        mimeType: 'text/markdown',
+      },
+      uri => ({ contents: [{ uri: uri.href, mimeType: 'text/markdown', text: body }] })
+    );
+  }
 }

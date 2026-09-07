@@ -19,6 +19,14 @@ const {
 const { clearResolvedNames } = await import('../../../attendance/identity.js');
 const { clearCache } = await import('../../../api.js');
 
+const PROMPT_NAMES = [
+  'attendance_audit',
+  'attendance_fill',
+  'attendance_today',
+  'attendance_reconcile',
+  'attendance_fill_days',
+];
+
 type PromptHandler = (
   args: Record<string, string | undefined>
 ) => Promise<{ messages: Array<{ role: string; content: { type: string; text: string } }> }>;
@@ -191,12 +199,8 @@ describe('attendance prompts', () => {
     vi.useRealTimers();
   });
 
-  it('registers three prompts and the guide resource', () => {
-    expect([...prompts.keys()].sort()).toEqual([
-      'attendance_audit',
-      'attendance_fill',
-      'attendance_today',
-    ]);
+  it('registers five prompts and the guide resource', () => {
+    expect([...prompts.keys()].sort()).toEqual([...PROMPT_NAMES].sort());
     const guide = resources.get('registro_horario_guide');
     expect(guide?.uri).toBe(GUIDE_URI);
     const contents = guide!.handler(new URL(GUIDE_URI)).contents[0];
@@ -207,6 +211,25 @@ describe('attendance prompts', () => {
     }
     expect(contents.text).toContain('confirmation_token');
     expect(contents.text).toContain('MCP has no scheduler');
+  });
+
+  it('publishes every prompt body as a readable resource', () => {
+    const uris = [...resources.values()].map(r => r.uri);
+    for (const name of PROMPT_NAMES) {
+      expect(prompts.has(name)).toBe(true);
+      expect(uris).toContain(`factorial://prompts/${name}`);
+    }
+  });
+
+  it('serves the procedure text when the resource is read', () => {
+    const entry = [...resources.values()].find(
+      r => r.uri === 'factorial://prompts/attendance_audit'
+    );
+    expect(entry).toBeDefined();
+    const out = entry!.handler(new URL(entry!.uri)).contents[0].text;
+    expect(out).toContain('Data read');
+    expect(out).toMatch(/missing day \(nothing on record\)/);
+    expect(out).toMatch(/short day \(some hours, not enough\)/);
   });
 
   it('audit prompt embeds the audit for the current month and instructs a read-only report', async () => {
@@ -320,5 +343,70 @@ describe('attendance prompts', () => {
     ({ prompts } = capture());
     routeFetch();
     await expect(prompts.get('attendance_audit')!.handler({})).rejects.toThrow();
+  });
+
+  it('audit prompt lists missing and short days separately rather than as one combined status', async () => {
+    routeFetch();
+    const out = text(await prompts.get('attendance_audit')!.handler({}));
+    expect(out).toMatch(/missing day \(nothing on record\) separately from every short day/);
+  });
+
+  it('reconcile lists only the days that disagree with the stated absences', async () => {
+    routeFetch();
+    const out = text(
+      await prompts.get('attendance_reconcile')!.handler({
+        known_absences: '12 March was a day off',
+        start_on: '2026-03-01',
+        end_on: '2026-03-31',
+      })
+    );
+    expect(out).toContain('12 March was a day off');
+    expect(out).toContain('disagree');
+    expect(out).not.toMatch(/Write nothing\. This is a read-only report\./);
+    expect(out).toMatch(/Write nothing\. This is a read-only reconciliation\./);
+  });
+
+  it('fill_days prompt builds a single log_days call from explicit day entries', async () => {
+    routeFetch();
+    const days = JSON.stringify([
+      { date: '2026-12-24', segments: '09:00-13:00' },
+      { date: '2026-12-28', segments: '09:00-14:00, 15:00-18:00' },
+    ]);
+    const out = text(await prompts.get('attendance_fill_days')!.handler({ days }));
+    const call = /factorial_attendance\((\{"action":"log_days".*?\})\)/.exec(out);
+    expect(call).not.toBeNull();
+    expect(JSON.parse(call![1])).toEqual({
+      action: 'log_days',
+      employee_id: 2,
+      days: [
+        { date: '2026-12-24', segments: [{ clock_in: '09:00', clock_out: '13:00' }] },
+        {
+          date: '2026-12-28',
+          segments: [
+            { clock_in: '09:00', clock_out: '14:00' },
+            { clock_in: '15:00', clock_out: '18:00' },
+          ],
+        },
+      ],
+      jitter_minutes: 8,
+      observations: expect.any(String),
+    });
+    expect(out).toMatch(/Ask them to confirm/);
+    expect(out).toMatch(/signed off/);
+    expect(out).toContain('2026-12-24, 2026-12-28');
+  });
+
+  it('fill_days prompt rejects malformed days JSON before reading anything', async () => {
+    routeFetch();
+    await expect(
+      prompts.get('attendance_fill_days')!.handler({ days: 'not json' })
+    ).rejects.toThrow();
+  });
+
+  it('fill_days prompt rejects a day missing its date', async () => {
+    routeFetch();
+    await expect(
+      prompts.get('attendance_fill_days')!.handler({ days: '[{"segments":"09:00-13:00"}]' })
+    ).rejects.toThrow(/date/);
   });
 });
