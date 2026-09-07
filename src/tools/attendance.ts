@@ -45,7 +45,7 @@ import {
   planFingerprint,
 } from '../attendance/planner.js';
 import type { PlanRequest, PlannedWrite } from '../attendance/planner.js';
-import { formatAudit, formatGaps } from '../attendance/report.js';
+import { formatAudit, formatGaps, ENTRY_TIME_NOTE } from '../attendance/report.js';
 import {
   buildLedger,
   CONSECUTIVE_FAILURE_ABORT,
@@ -445,7 +445,8 @@ export function registerAttendanceTool(server: McpServer) {
             if (!gate.proceed) return textResponse(gate.message);
             const shift = await createShift(input);
             return textResponse(
-              `Shift created for ${name} (${employeeId}):\n\n${JSON.stringify(shift, null, 2)}`
+              `Shift created for ${name} (${employeeId}): ${args.date} ${args.clock_in ?? '?'}-${args.clock_out ?? 'open'}.\n\n` +
+                `${JSON.stringify(shift, null, 2)}\n\n${ENTRY_TIME_NOTE}`
             );
           }
 
@@ -572,7 +573,7 @@ export function registerAttendanceTool(server: McpServer) {
               args.action === 'clock_in' ? await clockIn(input, now) : await clockOut(input, now);
             return textResponse(
               `${verb} recorded for ${name} (${employeeId}) at ${formatLocalIso(now)}:\n\n` +
-                JSON.stringify(shift, null, 2)
+                `${JSON.stringify(shift, null, 2)}\n\n${ENTRY_TIME_NOTE}`
             );
           }
 
@@ -830,9 +831,7 @@ export function registerAttendanceTool(server: McpServer) {
               lines.push('');
               lines.push(describeWrites(result.written));
               lines.push('');
-              lines.push(
-                'Records carry source "api", so they are distinguishable from live clocks in Factorial\'s activity log.'
-              );
+              lines.push(ENTRY_TIME_NOTE);
             }
             return textResponse(lines.join('\n'));
           }
