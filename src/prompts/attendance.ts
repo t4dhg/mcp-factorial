@@ -210,7 +210,7 @@ const AUDIT_PROCEDURE = [
 const FILL_PROCEDURE = [
   'Do this, in order:',
   '1. Read the Data read line. If it names days without contract data that are not before the start of employment, stop and report; do not write.',
-  '2. Tell the person which days are short (some hours tracked, not enough) and which are missing (nothing on record), and ask whether any of them were not worked (illness without a leave record, a day off). Exclude such days by narrowing the range or by running the call on the sub-ranges around them. Never invent hours.',
+  '2. Tell the person which days are short (some hours tracked, not enough) and which are missing (nothing on record), and ask whether any of them were not worked (illness without a leave record, a day off). Put such days in exclude_dates, which keeps the whole range as one call and shows the exclusions in the preview; prefer this to narrowing the range or running it on sub-ranges. Never invent hours.',
   '3. Preview the write with log_range. Nothing is written by this call.',
   '4. Show the person the preview: how many days and records, the hours, and every skipped day with its reason. Ask them to confirm.',
   '5. Only after they confirm, repeat exactly the same call adding the confirmation_token from the preview. The token lasts 15 minutes and matches only that plan. If it expired, run the preview again.',
@@ -441,15 +441,36 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
         jitter_minutes: z
           .string()
           .optional()
-          .describe('Vary each time by up to this many minutes (default 8, 0 for exact times)'),
+          .describe(
+            'Vary each time within a day by up to this many minutes (default 8, 0 for exact ' +
+              'times). Varies segments within a day; it cannot make the start time drift across ' +
+              'days, which is what variation_minutes is for.'
+          ),
+        variation_minutes: z
+          .string()
+          .optional()
+          .describe(
+            'Shift each whole day by up to this many minutes, so the start time drifts from day ' +
+              'to day (default 0, no drift). Use together with jitter_minutes when reconstructing ' +
+              'a long stretch: jitter varies segments within a day, this varies the day as a whole.'
+          ),
       },
     },
-    async ({ segments, start_on, end_on, employee_id, observations, jitter_minutes }) => {
+    async ({
+      segments,
+      start_on,
+      end_on,
+      employee_id,
+      observations,
+      jitter_minutes,
+      variation_minutes,
+    }) => {
       const employeeId = resolveTargetEmployeeId(parseOptionalInt(employee_id, 'employee_id'));
       const name = await resolveEmployeeName(employeeId);
       const window = resolveWindow(start_on, end_on, today());
       const pattern = parseSegmentsArg(segments);
       const jitter = parseOptionalInt(jitter_minutes, 'jitter_minutes') ?? 8;
+      const variation = parseOptionalInt(variation_minutes, 'variation_minutes') ?? 0;
       const note =
         observations && observations.trim() !== ''
           ? observations.trim()
@@ -471,6 +492,7 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
         end_on: window.end_on,
         segments: pattern,
         jitter_minutes: jitter,
+        variation_minutes: variation,
         observations: note,
       };
       return userMessage(
