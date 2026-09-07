@@ -222,6 +222,22 @@ function assertDate(value: string): void {
   }
 }
 
+/**
+ * Turn a company-local day and wall-clock time into a Date in the zone the
+ * server runs in, which is the zone `formatLocalIso` stamps an offset from.
+ *
+ * This exists so a person who forgot to clock can say when they actually
+ * started or stopped. The declared moment is what Factorial records as the
+ * working time; the moment of the API call is recorded separately by Factorial
+ * as created_at and cannot be set through the API.
+ */
+export function declaredMoment(date: string, time: string): Date {
+  assertDate(date);
+  const minutes = parseHHMM(time);
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(year, month - 1, day, Math.floor(minutes / 60), minutes % 60, 0, 0);
+}
+
 /** Every date from start to end inclusive */
 export function enumerateDates(start: string, end: string): string[] {
   assertDate(start);
