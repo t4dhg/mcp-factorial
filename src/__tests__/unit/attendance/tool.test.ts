@@ -30,6 +30,22 @@ function captureHandler(): Handler {
   return handler;
 }
 
+/** Sibling of captureHandler that keeps the registered config instead of discarding it */
+function captureConfig(): {
+  description: string;
+  inputSchema: Record<string, { description?: string }>;
+} {
+  let config: { description: string; inputSchema: Record<string, unknown> } | undefined;
+  const fake = {
+    registerTool: (_name: string, cfg: typeof config, _fn: unknown) => {
+      config = cfg;
+    },
+  } as unknown as McpServer;
+  registerAttendanceTool(fake);
+  if (!config) throw new Error('tool not registered');
+  return config as never;
+}
+
 const TOKEN = /confirmation_token: ([0-9a-f]{32})/;
 const EMPLOYEE = {
   id: '2',
@@ -844,5 +860,33 @@ describe('create_edit_request and list_edit_requests', () => {
     });
     const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
     expect(text).toBe('No edit timesheet requests on record.');
+  });
+});
+
+describe('tool descriptions', () => {
+  it('describes the confirmation flow and the time zone contract', () => {
+    const { description } = captureConfig();
+    expect(description).toContain('confirmation_token');
+    expect(description).toContain('15 minutes');
+    expect(description).toContain('company zone');
+    expect(description).toContain('no_contract_data');
+  });
+
+  it('says jitter preserves each segment length, and points at variation_minutes', () => {
+    const { inputSchema } = captureConfig();
+    const jitter = inputSchema.jitter_minutes.description ?? '';
+    expect(jitter).toContain('keeping its length');
+    expect(jitter).toContain('variation_minutes');
+  });
+
+  it("warns that beggining_of_day is Factorial's own spelling", () => {
+    const { inputSchema } = captureConfig();
+    expect(inputSchema.half_day.description ?? '').toContain('do not correct it');
+  });
+
+  it('uses no em-dash in any description', () => {
+    const { description, inputSchema } = captureConfig();
+    const all = [description, ...Object.values(inputSchema).map(f => f.description ?? '')];
+    for (const text of all) expect(text).not.toContain('—');
   });
 });

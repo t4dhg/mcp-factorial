@@ -104,12 +104,28 @@ export function registerAttendanceTool(server: McpServer) {
       title: 'FactorialHR Attendance',
       description:
         'Attendance (registro horario): list/get/create/update/delete shift records, clock_in, ' +
-        'clock_out and status for live clocking, gaps to find days with missing hours, ' +
-        'log_range / log_days to enter many days at once, and list_edit_requests / ' +
-        'create_edit_request to change a day that is already signed off. Bulk writes, writes for ' +
-        'another employee, and create_edit_request all return a preview plus a confirmation_token ' +
-        'first; nothing is written and nobody is notified until the call is repeated with that ' +
-        'token. Times are HH:MM in company local time.',
+        'clock_out and status for live clocking, gaps and audit to find days that do not match ' +
+        'the contract, log_range / log_days to enter many days at once, and list_edit_requests / ' +
+        'create_edit_request for days whose timesheet has already been signed off. ' +
+        'Bulk writes, writes for another employee and edit requests preview first: the call ' +
+        'returns a plan and a confirmation_token, and nothing is written until the identical ' +
+        'call is repeated with that token within 15 minutes. ' +
+        'audit, gaps and every preview begin with a Data read line saying how much of the window ' +
+        'was actually read; audit reports a day Factorial returned nothing for as ' +
+        'no_contract_data, and log_range never writes such a day (log_days, which takes explicit ' +
+        'dates, will). Times are HH:MM in company local time, applied by Factorial in the ' +
+        'company zone; the server never converts.\n\n' +
+        'Declared time versus entry time: a shift carries two independent sets of timestamps. ' +
+        'The declared working time is date, clock_in, clock_out and, for a shift that crosses ' +
+        'midnight, reference_date; these are inputs, and they are what the attendance sheet and ' +
+        'the hour totals show. Separately, Factorial sets created_at, updated_at, in_source and ' +
+        'out_source on the server to record when and how the record was entered; they are ' +
+        'read-only through this API and no action here can set or change them. For example, a ' +
+        'record written on 2026-09-07 for 2024-01-02 09:59 comes back with date: 2024-01-02, ' +
+        'clock_in: 09:59, created_at of 2026-09-07 and in_source: api; that is the correct and ' +
+        'only correct outcome. Both facts are true at once: a backfilled record shows the real ' +
+        "working day on the attendance sheet while Factorial's activity log shows it was entered " +
+        'later through the API.',
       inputSchema: {
         action: z
           .enum([
@@ -145,12 +161,22 @@ export function registerAttendanceTool(server: McpServer) {
         ids: z.array(z.number()).optional().describe('Shift IDs (list)'),
         updated_at: z.string().optional().describe('Shifts updated at this date (list)'),
         workable: z.boolean().optional().describe('Filter or set the workable flag'),
-        half_day: z.enum(HALF_DAY_VALUES).optional().describe('Half day marker'),
+        half_day: z
+          .enum(HALF_DAY_VALUES)
+          .optional()
+          .describe(
+            'Half day marker. "beggining_of_day" is Factorial\'s own spelling of the value and ' +
+              'must be sent exactly as it is; do not correct it.'
+          ),
         date: z.string().optional().describe('Shift date YYYY-MM-DD (create, update)'),
         reference_date: z
           .string()
           .optional()
-          .describe('Reference date YYYY-MM-DD (create, update)'),
+          .describe(
+            'The day an overnight shift is attributed to (create, update). It must equal date ' +
+              'unless the shift crosses midnight. This is not when the record was entered; that ' +
+              'is created_at, which Factorial sets and is read-only.'
+          ),
         clock_in: z
           .union([hhmm, isoWithOffset])
           .optional()
@@ -188,17 +214,23 @@ export function registerAttendanceTool(server: McpServer) {
           .optional()
           .default(0)
           .describe(
-            'log_range/log_days: vary each written time by up to this many minutes so a month of ' +
-              'entries does not all read 09:00 exactly. Recommended 5 to 10 when reconstructing ' +
-              'approximate hours. Deterministic per record; the preview lists the exact times.'
+            'log_range/log_days: shift each segment by up to this many minutes, normally keeping ' +
+              'its length (only a segment that would otherwise run into its neighbour or past ' +
+              'midnight is shortened instead), so a month of entries does not all read 09:00 ' +
+              'exactly. Recommended 5 to 10 when reconstructing approximate hours. It varies ' +
+              'segments within a day; for the start time to drift from day to day use ' +
+              'variation_minutes. Deterministic per record, so the preview lists the exact times ' +
+              'that will be written.'
           ),
         format: z
           .enum(['summary', 'table', 'json'])
           .optional()
           .default('summary')
           .describe(
-            'audit: "summary" (default) lists only the days that need attention, "table" lists every ' +
-              'day, "json" returns the full ledger as JSON'
+            'audit: "summary" (default) lists only the days that need attention, "table" lists ' +
+              'every day, "json" returns the full ledger. expected counts bank holidays and ' +
+              'leave at full contract minutes; the header also gives the workday expected ' +
+              'total, which is the number tracked hours should meet.'
           ),
         tolerance_minutes: z
           .number()
@@ -208,7 +240,9 @@ export function registerAttendanceTool(server: McpServer) {
           .optional()
           .default(15)
           .describe(
-            'gaps/audit: a day within this many minutes of the expected total counts as complete (default 15)'
+            'gaps/audit: a day within this many minutes of the expected total counts as complete ' +
+              '(default 15). Real clocks are never exact, so a day a few minutes over is normal ' +
+              'and needs no correction.'
           ),
         statuses: z
           .array(
@@ -256,14 +290,34 @@ export function registerAttendanceTool(server: McpServer) {
           .default('full')
           .describe(
             'list: "compact" returns date, clock_in, clock_out, minutes and in_source only; ' +
-              '"full" returns every field of the record'
+              '"full" (default) returns id, employee_id, date, clock_in, clock_out, minutes, ' +
+              'in_source and observations. Neither is every field of the raw record; use ' +
+              'action: "get" for the complete record.'
           ),
         confirmation_token: z
           .string()
           .optional()
-          .describe('Token from a previous preview, to execute a gated write'),
-        page: z.number().optional().default(1).describe('Page number (list, client-side)'),
-        limit: z.number().optional().default(100).describe('Items per page (list, client-side)'),
+          .describe(
+            'Token from a previous preview, to execute a gated write. Valid for 15 minutes and ' +
+              'bound to exactly the plan that was previewed; if anything changed in between it ' +
+              'is refused and a fresh preview is returned.'
+          ),
+        page: z
+          .number()
+          .optional()
+          .default(1)
+          .describe(
+            'Page number (list, client-side). The API returns every record in range in one ' +
+              'response, so paging only slices output that has already been read.'
+          ),
+        limit: z
+          .number()
+          .optional()
+          .default(100)
+          .describe(
+            'Items per page (list, client-side). The API returns every record in range in one ' +
+              'response, so this only slices output that has already been read.'
+          ),
         confirm: z.boolean().optional().describe('Confirm delete'),
         reason: z
           .string()
