@@ -123,6 +123,8 @@ export interface RangeRequest {
   skip_leave: boolean;
   /** Vary each written time by up to this many minutes, deterministically per record */
   jitter_minutes?: number;
+  /** Shift each whole day by up to this many minutes, deterministically per day */
+  variation_minutes?: number;
 }
 
 export interface DaysRequest {
@@ -132,6 +134,8 @@ export interface DaysRequest {
   skip_leave: boolean;
   /** Vary each written time by up to this many minutes, deterministically per record */
   jitter_minutes?: number;
+  /** Shift each whole day by up to this many minutes, deterministically per day */
+  variation_minutes?: number;
 }
 
 export type PlanRequest = RangeRequest | DaysRequest;
@@ -424,6 +428,38 @@ export function jitterSegments(
 }
 
 /**
+ * Shift a whole day by one offset, so the start time drifts from day to day.
+ *
+ * This is the variation `jitter_minutes` cannot produce. Jitter moves each
+ * segment of a day independently around the pattern, which varies the shape of
+ * a day but leaves every day starting near the same time. Reconstructed
+ * records that all begin at 09:00 give themselves away; this moves the whole
+ * day together, so the pattern within it survives intact.
+ *
+ * Deterministic from the employee and the date, so the preview, the token and
+ * any retry all agree. Compose it before jitter, never after.
+ */
+export function varySegments(
+  employeeId: number,
+  date: string,
+  segments: Segment[],
+  magnitude: number
+): Segment[] {
+  if (magnitude <= 0) return segments;
+  const ordered = [...segments].sort((a, b) => parseHHMM(a.clock_in) - parseHHMM(b.clock_in));
+  const offset = deterministicOffset(`variation|${employeeId}|${date}`, magnitude);
+  const earliest = parseHHMM(ordered[0].clock_in);
+  const latest = parseHHMM(ordered[ordered.length - 1].clock_out);
+  // Clamp the whole day rather than any single segment, so the offset stays
+  // uniform and no segment changes length.
+  const applied = Math.max(-earliest, Math.min(offset, END_OF_DAY - 1 - latest));
+  return ordered.map(segment => ({
+    clock_in: formatHHMM(parseHHMM(segment.clock_in) + applied),
+    clock_out: formatHHMM(parseHHMM(segment.clock_out) + applied),
+  }));
+}
+
+/**
  * Build the plan. Skip reasons are evaluated in the documented order and the
  * first match wins. Explicit days skip the weekday, holiday and workability
  * rules on purpose: migration must be able to write a Saturday someone worked.
@@ -461,12 +497,14 @@ export function buildBackfillPlan(request: PlanRequest, facts: PlanFacts): Backf
       continue;
     }
     const existing = existingIntervals(facts.shifts, date);
-    const planned = jitterSegments(
+    // Variation moves the whole day; jitter then varies segments inside it.
+    const varied = varySegments(
       request.employee_id,
       date,
       segments,
-      request.jitter_minutes ?? 0
+      request.variation_minutes ?? 0
     );
+    const planned = jitterSegments(request.employee_id, date, varied, request.jitter_minutes ?? 0);
     for (const segment of planned) {
       const interval: [number, number] = [
         parseHHMM(segment.clock_in),
@@ -658,6 +696,11 @@ export function formatPlanPreview(
   if (observations) {
     lines.push(`  Note on every record: "${observations}"`);
   }
+  if (request.variation_minutes && request.variation_minutes > 0) {
+    lines.push(
+      `  Each day starts up to ${request.variation_minutes} minutes earlier or later than the pattern, the whole day moving together (fixed per day, listed below).`
+    );
+  }
   if (request.jitter_minutes && request.jitter_minutes > 0) {
     lines.push(
       `  Each time varies by up to ${request.jitter_minutes} minutes from the pattern (fixed per record, listed below).`
@@ -712,8 +755,10 @@ export function formatPlanPreview(
       byDate.set(segment.date, (byDate.get(segment.date) ?? 0) + 1);
     }
     lines.push('');
+    const segmentCount = plan.skippedSegments.length;
+    const dayCount = byDate.size;
     lines.push(
-      `  ${plan.skippedSegments.length} segments on ${byDate.size} days overlap existing shifts and are skipped:`
+      `  ${segmentCount} segment${segmentCount === 1 ? '' : 's'} on ${dayCount} day${dayCount === 1 ? '' : 's'} overlap existing shifts and are skipped:`
     );
     const dates = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
     for (const [date, count] of dates.slice(0, PREVIEW_SKIP_DAYS_MAX)) {

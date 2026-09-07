@@ -4,6 +4,7 @@ import {
   computeGaps,
   computeLedger,
   jitterSegments,
+  varySegments,
   enumerateDates,
   expandLeaves,
   formatPlanPreview,
@@ -539,6 +540,35 @@ describe('preview shape', () => {
     expect(text).toContain('10 further days not listed');
   });
 
+  it('agrees noun and number in the singular overlap case: "1 segment on 1 day", not "1 segments on 1 days"', () => {
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days: new Map([
+        ['2026-06-01', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 480 }],
+      ]),
+      shifts: [{ date: '2026-06-01', clock_in: '09:00', clock_out: '17:00' }],
+      leaves: new Map(),
+      reviews: new Set(),
+    };
+    const request = {
+      mode: 'range' as const,
+      employee_id: 1,
+      dates: ['2026-06-01'],
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      skip_leave: true,
+    };
+    const text = formatPlanPreview(
+      buildBackfillPlan(request, facts),
+      { id: 1, name: 'X' },
+      { start: '2026-06-01', end: '2026-06-01' },
+      request
+    );
+
+    expect(text).toContain('1 segment on 1 day overlap existing shifts');
+    expect(text).not.toContain('1 segments');
+    expect(text).not.toContain('1 days');
+  });
+
   it('puts the Data read line at the top when coverage is given', () => {
     const facts: PlanFacts = {
       today: '2026-12-31',
@@ -699,6 +729,77 @@ describe('jitterSegments', () => {
     expect(row.day_type).toBeNull();
     expect(row.expected_minutes).toBe(0);
     expect(computeLedger(['2026-12-28'], facts)[0].status).not.toBe('no_contract_data');
+  });
+});
+
+describe('varySegments', () => {
+  const segments = [
+    { clock_in: '09:00', clock_out: '14:00' },
+    { clock_in: '15:00', clock_out: '18:00' },
+  ];
+
+  it('shifts every segment of a day by the same offset', () => {
+    const varied = varySegments(7, '2026-03-02', segments, 30);
+    const shiftOf = (a: string, b: string) => parseHHMM(b) - parseHHMM(a);
+    const first = shiftOf(segments[0].clock_in, varied[0].clock_in);
+    expect(shiftOf(segments[0].clock_out, varied[0].clock_out)).toBe(first);
+    expect(shiftOf(segments[1].clock_in, varied[1].clock_in)).toBe(first);
+    expect(shiftOf(segments[1].clock_out, varied[1].clock_out)).toBe(first);
+  });
+
+  it('preserves the total worked minutes', () => {
+    const varied = varySegments(7, '2026-03-02', segments, 30);
+    const total = (list: typeof segments) =>
+      list.reduce((sum, s) => sum + parseHHMM(s.clock_out) - parseHHMM(s.clock_in), 0);
+    expect(total(varied)).toBe(total(segments));
+  });
+
+  it('gives different days different offsets', () => {
+    const a = varySegments(7, '2026-03-02', segments, 30)[0].clock_in;
+    const b = varySegments(7, '2026-03-03', segments, 30)[0].clock_in;
+    const c = varySegments(7, '2026-03-04', segments, 30)[0].clock_in;
+    expect(new Set([a, b, c]).size).toBeGreaterThan(1);
+  });
+
+  it('is deterministic, so a preview and its confirmation agree', () => {
+    expect(varySegments(7, '2026-03-02', segments, 30)).toEqual(
+      varySegments(7, '2026-03-02', segments, 30)
+    );
+  });
+
+  it('returns the pattern untouched at magnitude 0', () => {
+    expect(varySegments(7, '2026-03-02', segments, 0)).toEqual(segments);
+  });
+
+  it('never pushes the earliest segment before midnight or the latest past it', () => {
+    for (const date of enumerateDates('2026-03-02', '2026-03-31')) {
+      const varied = varySegments(7, date, segments, 600);
+      expect(parseHHMM(varied[0].clock_in)).toBeGreaterThanOrEqual(0);
+      expect(parseHHMM(varied[1].clock_out)).toBeLessThanOrEqual(23 * 60 + 59);
+    }
+  });
+
+  it('composes with jitter rather than cancelling or doubling it: variation moves the whole day, jitter then varies segments inside it', () => {
+    const jitterMagnitude = 5;
+    for (const [employeeId, date] of [
+      [7, '2026-03-02'],
+      [11, '2026-04-15'],
+      [22, '2026-07-09'],
+    ] as const) {
+      const variationOnly = varySegments(employeeId, date, segments, 45);
+      const composed = jitterSegments(employeeId, date, variationOnly, jitterMagnitude);
+      const dayShift = parseHHMM(variationOnly[0].clock_in) - parseHHMM(segments[0].clock_in);
+      // A day-level shift of 0 would make this seed uninformative; every seed
+      // here is checked to actually move the day, so the assertions below are
+      // pinned to real behaviour rather than a coincidence.
+      expect(dayShift).not.toBe(0);
+      // Composition means the day-level shift survives: composing does not
+      // cancel it back toward the original pattern, and jitter only adds its
+      // own bounded wobble on top, never doubling the day-level offset.
+      const composedShiftFromOriginal =
+        parseHHMM(composed[0].clock_in) - parseHHMM(segments[0].clock_in);
+      expect(Math.abs(composedShiftFromOriginal - dayShift)).toBeLessThanOrEqual(jitterMagnitude);
+    }
   });
 });
 

@@ -218,7 +218,9 @@ describe('factorial_attendance tool', () => {
     expect(text).toMatch(/plan changed/);
     // The overlap list now collapses to a per-day count instead of a
     // per-segment line; this pins what the collapsed line actually renders.
-    expect(text).toContain('1 segments on 1 days overlap existing shifts and are skipped:');
+    // Singular counts get singular nouns: "1 segment on 1 day", not
+    // "1 segments on 1 days".
+    expect(text).toContain('1 segment on 1 day overlap existing shifts and are skipped:');
     expect(text).toContain('2026-12-29  1 segment already covered');
     expect(text).toMatch(TOKEN);
     expect(posts()).toEqual([]);
