@@ -301,12 +301,29 @@ describe('attendance prompts', () => {
       end_on: '2026-12-31',
       segments: [{ clock_in: '09:00', clock_out: '13:00' }],
       jitter_minutes: 5,
+      variation_minutes: 0,
       observations: 'Entered from calendar',
     });
     expect(out).toMatch(/Ask them to confirm/);
     expect(out).toMatch(/Only after they confirm/);
     expect(out).toMatch(/Never invent hours/);
     expect(out).toContain('"action":"log_days"');
+  });
+
+  it('fill prompt passes variation_minutes through to the log_range call', async () => {
+    routeFetch();
+    const out = text(
+      await prompts.get('attendance_fill')!.handler({
+        segments: '09:00-13:00',
+        start_on: '2026-12-21',
+        end_on: '2026-12-31',
+        jitter_minutes: '5',
+        variation_minutes: '10',
+      })
+    );
+    const call = /factorial_attendance\((\{"action":"log_range".*?\})\)/.exec(out);
+    expect(call).not.toBeNull();
+    expect(JSON.parse(call![1])).toMatchObject({ jitter_minutes: 5, variation_minutes: 10 });
   });
 
   it('fill prompt rejects a malformed pattern before reading anything', async () => {
