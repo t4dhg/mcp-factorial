@@ -79,6 +79,14 @@ export interface FactsCoverage {
   leave_records: number;
   shift_records: number;
   review_records: number;
+  /**
+   * Set when the signed-off-dates read (listReviews) failed; review_records
+   * is then 0 and facts.reviews is empty, not because nothing is signed off
+   * but because it could not be read. Printed prominently: a plan built on
+   * this may queue writes to dates that are actually signed off and will be
+   * refused by Factorial.
+   */
+  reviews_error: string | null;
 }
 
 export interface PlanFacts {
@@ -102,7 +110,8 @@ export function measureCoverage(
   days: Map<string, DayFacts>,
   leaveRecords: number,
   shiftRecords: number,
-  reviewRecords: number
+  reviewRecords: number,
+  reviewsError: string | null = null
 ): FactsCoverage {
   const uncovered = dates.filter(date => !days.has(date));
   return {
@@ -113,6 +122,7 @@ export function measureCoverage(
     leave_records: leaveRecords,
     shift_records: shiftRecords,
     review_records: reviewRecords,
+    reviews_error: reviewsError,
   };
 }
 
@@ -126,11 +136,17 @@ export function formatCoverage(coverage: FactsCoverage): string {
     `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} ${day}, ` +
     `${coverage.leave_records} ${leaveRecord}, ${coverage.shift_records} ${shiftRecord}, ` +
     `${coverage.review_records} ${signedOffDay}.`;
-  if (coverage.days_with_contract_data === coverage.days_in_window) return base;
+  const reviewsWarning = coverage.reviews_error
+    ? ` Signed-off dates could not be read (${coverage.reviews_error}); none are known here, so a ` +
+      'plan below may queue writes to dates that are actually signed off and will be refused by ' +
+      'Factorial.'
+    : '';
+  if (coverage.days_with_contract_data === coverage.days_in_window)
+    return `${base}${reviewsWarning}`;
   return (
     `${base} Days without contract data (${coverage.first_uncovered} to ${coverage.last_uncovered}) ` +
     'are reported as no_contract_data and are never written; they usually precede the start of ' +
-    'employment. If that is not the case here, the read is incomplete and the result must not be trusted.'
+    `employment. If that is not the case here, the read is incomplete and the result must not be trusted.${reviewsWarning}`
   );
 }
 

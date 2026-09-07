@@ -17,6 +17,7 @@ import {
   localToday,
 } from '../api/attendance.js';
 import { listLeavesInRange } from '../api/time-off.js';
+import type { AttendanceReview } from '../schemas.js';
 import {
   buildBackfillPlan,
   computeGaps,
@@ -49,14 +50,33 @@ export async function gatherFacts(
   // meta.has_next_page). estimated_times and worked_times page at 100 days,
   // so a single-page read once made every window over 100 days go blind
   // after day 100 and report the rest as not workable.
+  // listReviews is the only read this function isolates: it is a newer,
+  // less-verified signal (verified against one tenant on one day) than the
+  // others, and it fails closed for writing (daySkipReason treats a date not
+  // in facts.reviews as not signed off). Letting it reject the whole
+  // Promise.all would turn one tenant's 403 or schema mismatch on this one
+  // endpoint into a hard outage of every attendance read (audit, gaps,
+  // log_range, log_days and all five prompts), not just the signed-off
+  // signal it actually carries.
   const range = { employee_ids: [employeeId], start_on: startOn, end_on: endOn };
-  const [worked, estimated, shifts, leaves, reviews] = await Promise.all([
+  const [worked, estimated, shifts, leaves, reviewsResult] = await Promise.all([
     listWorkedTimes(range),
     listEstimatedTimes(range),
     listShiftsInRange([employeeId], startOn, endOn),
     listLeavesInRange([employeeId], startOn, endOn),
-    listReviews(range),
+    listReviews(range).then(
+      (reviews): { reviews: AttendanceReview[]; error: string | null } => ({
+        reviews,
+        error: null,
+      }),
+      (error: unknown): { reviews: AttendanceReview[]; error: string | null } => ({
+        reviews: [],
+        error: error instanceof Error ? error.message : String(error),
+      })
+    ),
   ]);
+  const reviews = reviewsResult.reviews;
+  const reviewsError = reviewsResult.error;
 
   const days = new Map<string, DayFacts>();
   for (const day of worked) {
@@ -92,7 +112,8 @@ export async function gatherFacts(
       days,
       leaves.length,
       shifts.length,
-      reviews.length
+      reviews.length,
+      reviewsError
     ),
   };
 }

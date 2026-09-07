@@ -67,6 +67,45 @@ describe('gatherFacts', () => {
     expect(facts.reviews.size).toBe(0);
     expect(facts.coverage?.review_records).toBe(0);
   });
+
+  it('degrades to an empty review set instead of failing the whole read when listReviews rejects', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      const ok = (json: unknown) => ({ ok: true, status: 200, json: async () => json });
+      if (path.endsWith('/attendance/worked_times'))
+        return ok({
+          data: [
+            {
+              id: '1',
+              employee_id: '7',
+              date: '2025-02-03',
+              day_type: 'workday',
+              tracked_minutes: 0,
+            },
+          ],
+        });
+      if (path.endsWith('/attendance/estimated_times'))
+        return ok({
+          data: [{ id: '1', employee_id: '7', date: '2025-02-03', expected_minutes: 480 }],
+        });
+      if (path.endsWith('/attendance/reviews')) {
+        return { ok: false, status: 403, text: async () => 'Forbidden', json: async () => ({}) };
+      }
+      if (path.endsWith('/attendance/shifts')) return ok({ data: [] });
+      if (path.endsWith('/timeoff/leaves')) return ok({ data: [] });
+      throw new Error(`unexpected fetch ${path}`);
+    });
+
+    // A rejected listReviews must not reject gatherFacts itself: audit, gaps,
+    // log_range, log_days and the prompts all depend on this read for
+    // everything, not just the signed-off signal.
+    const facts = await gatherFacts(7, '2025-02-03', '2025-02-03');
+
+    expect(facts.reviews.size).toBe(0);
+    expect(facts.coverage?.review_records).toBe(0);
+    expect(facts.coverage?.reviews_error).toBeTruthy();
+    expect(facts.days.get('2025-02-03')).toBeDefined();
+  });
 });
 
 /** Fail the POST for any date in `failDates`, succeed for the rest */

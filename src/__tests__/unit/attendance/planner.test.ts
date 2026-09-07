@@ -990,6 +990,7 @@ describe('noun agreement in rendered counts (pluralisation sweep)', () => {
       leave_records: 1,
       shift_records: 1,
       review_records: 1,
+      reviews_error: null,
     };
     expect(formatCoverage(singular)).toBe(
       'Data read: contract data for 1 of 1 day, 1 leave record, 1 shift record, 1 signed-off day.'
@@ -1003,10 +1004,28 @@ describe('noun agreement in rendered counts (pluralisation sweep)', () => {
       leave_records: 2,
       shift_records: 2,
       review_records: 2,
+      reviews_error: null,
     };
     expect(formatCoverage(plural)).toBe(
       'Data read: contract data for 2 of 2 days, 2 leave records, 2 shift records, 2 signed-off days.'
     );
+  });
+
+  it('formatCoverage warns when signed-off dates could not be read, saying a plan may queue refused writes', () => {
+    const coverage: FactsCoverage = {
+      days_in_window: 1,
+      days_with_contract_data: 1,
+      first_uncovered: null,
+      last_uncovered: null,
+      leave_records: 0,
+      shift_records: 0,
+      review_records: 0,
+      reviews_error: 'Forbidden',
+    };
+    const rendered = formatCoverage(coverage);
+    expect(rendered).toContain('Signed-off dates could not be read (Forbidden)');
+    expect(rendered).toMatch(/queue writes to dates that are actually signed off/);
+    expect(rendered).toMatch(/refused by Factorial/);
   });
 
   it('says "Skipping 1 day" rather than "Skipping 1 days" when only one day is skipped', () => {
