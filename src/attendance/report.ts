@@ -16,17 +16,37 @@ export interface AuditReportInput {
   coverage: FactsCoverage;
   toleranceMinutes: number;
   format: AuditFormat;
+  /** Restrict the summary to these statuses; absent means the default quiet set applies */
+  statuses?: LedgerDay['status'][];
 }
 
-/** Statuses an audit summary lists; the rest are counted in the header only */
-const QUIET_STATUSES = new Set<LedgerDay['status']>(['complete', 'weekend', 'future']);
+/**
+ * Statuses the summary counts rather than lists. These are the days that need
+ * no attention: a bank holiday and a full-day leave are as settled as a
+ * complete day, and listing 14 of them buried the 9 that mattered.
+ */
+const QUIET_STATUSES = new Set<LedgerDay['status']>([
+  'complete',
+  'weekend',
+  'future',
+  'bank_holiday',
+  'on_leave',
+  'not_workable',
+]);
+
+/** `+20 min`, `-17 min`, or blank when the day matches its expectation */
+function delta(minutes: number): string {
+  if (minutes === 0) return '';
+  return `  (${minutes > 0 ? '+' : ''}${minutes} min)`;
+}
 
 export function ledgerRow(d: LedgerDay): string {
   const shifts = d.shifts.length
     ? d.shifts.map(sh => `${sh.clock_in}-${sh.clock_out ?? 'open'}`).join(' ')
     : '-';
   const leave = d.leave ? `  leave:${d.leave}` : '';
-  return `  ${d.date}  ${(d.day_type ?? '-').padEnd(12)} ${d.status.padEnd(16)} expected ${hours(d.expected_minutes).padEnd(6)} tracked ${hours(d.tracked_minutes).padEnd(6)} ${shifts}${leave}`;
+  const locked = d.signed_off ? '  signed off' : '';
+  return `  ${d.date}  ${(d.day_type ?? '-').padEnd(12)} ${d.status.padEnd(16)} expected ${hours(d.expected_minutes).padEnd(6)} tracked ${hours(d.tracked_minutes).padEnd(6)} ${shifts}${delta(d.delta_minutes)}${leave}${locked}`;
 }
 
 /** Count ledger days per status, in first-seen order */
@@ -41,10 +61,19 @@ export function formatAudit(input: AuditReportInput): string {
   const counts = countStatuses(ledger);
   const expected = ledger.reduce((sum, d) => sum + d.expected_minutes, 0);
   const tracked = ledger.reduce((sum, d) => sum + d.tracked_minutes, 0);
+  // expected counts bank holidays and leave at full contract minutes, because
+  // that is what the contract pattern says about those days. It is not the
+  // number tracked hours should be compared against, so give both.
+  const workdayExpected = ledger
+    .filter(d => !['bank_holiday', 'on_leave', 'not_workable', 'future'].includes(d.status))
+    .reduce((sum, d) => sum + d.expected_minutes, 0);
+  const signedOff = ledger.filter(d => d.signed_off).length;
   const summary = [...counts.entries()].map(([k, v]) => `${v} ${k}`).join(', ');
   const header =
     `Attendance audit for ${employee.name} (${employee.id}), ${startOn} to ${endOn}\n` +
-    `Expected ${hours(expected)} across the range, tracked ${hours(tracked)}; days: ${summary}.\n` +
+    `Expected ${hours(expected)} across the range (workday expected ${hours(workdayExpected)}, ` +
+    `the target tracked hours should meet), tracked ${hours(tracked)}; days: ${summary}` +
+    `${signedOff > 0 ? `; ${signedOff} signed off and closed for writing` : ''}.\n` +
     `${formatCoverage(coverage)}\n` +
     'Expected comes from the contract pattern; day type and bank holidays from the company ' +
     'calendar in Factorial; leave from approved timeoff records. Times are HH:MM company local. ' +
@@ -52,13 +81,19 @@ export function formatAudit(input: AuditReportInput): string {
   if (format === 'json') {
     return `${header}\n\nMachine-readable ledger:\n${JSON.stringify(ledger)}`;
   }
-  const listed = format === 'table' ? ledger : ledger.filter(d => !QUIET_STATUSES.has(d.status));
+  const listed =
+    format === 'table'
+      ? ledger
+      : input.statuses && input.statuses.length > 0
+        ? ledger.filter(d => input.statuses?.includes(d.status))
+        : ledger.filter(d => !QUIET_STATUSES.has(d.status));
   const rows = listed.map(ledgerRow);
   const footer =
     format === 'table'
       ? ''
-      : `\n\n${listed.length} of ${ledger.length} days listed; complete days, weekends and future dates are ` +
-        'only counted above. Pass format: "table" for every day or format: "json" for the ledger.';
+      : `\n\n${listed.length} of ${ledger.length} days listed; complete days, weekends, bank holidays, ` +
+        'approved leave, days the contract does not expect work, and future dates are only counted above. ' +
+        'Pass statuses: ["missing"] to narrow further, format: "table" for every day, or format: "json" for the ledger.';
   return `${header}\n\n${rows.length > 0 ? rows.join('\n') : '  (nothing needs attention)'}${footer}`;
 }
 

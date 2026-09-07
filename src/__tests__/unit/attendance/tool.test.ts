@@ -419,11 +419,13 @@ describe('factorial_attendance tool', () => {
     expect(text).toContain(
       'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift records, 0 signed-off days.'
     );
-    expect(text).toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
     expect(text).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
-    // Weekends and complete days are counted in the summary line, not listed
+    // Weekends, complete days, and bank holidays are counted in the summary
+    // line, not listed
     expect(text).not.toMatch(/2026-12-26\s+saturday/);
+    expect(text).not.toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
     expect(text).toMatch(/2 weekend/);
+    expect(text).toMatch(/3 bank_holiday/);
     expect(text).not.toContain('Machine-readable ledger');
     expect(text).toContain('format: "table"');
   });
