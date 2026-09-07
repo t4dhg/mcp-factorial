@@ -125,6 +125,8 @@ export interface RangeRequest {
   jitter_minutes?: number;
   /** Shift each whole day by up to this many minutes, deterministically per day */
   variation_minutes?: number;
+  /** Dates inside the range to leave alone, for days not worked */
+  exclude_dates?: string[];
 }
 
 export interface DaysRequest {
@@ -148,7 +150,8 @@ export type SkipReason =
   | 'no_contract_data'
   | 'on_leave'
   | 'half_day_leave'
-  | 'signed_off';
+  | 'signed_off'
+  | 'excluded';
 
 export interface SkippedDay {
   date: string;
@@ -297,6 +300,9 @@ function daySkipReason(date: string, request: PlanRequest, facts: PlanFacts): Sk
       reason: 'future_date',
       detail: `today is ${facts.today} in the zone of the machine running the server`,
     };
+  }
+  if (request.mode === 'range' && request.exclude_dates?.includes(date)) {
+    return { date, reason: 'excluded', detail: 'listed in exclude_dates' };
   }
   // Applies in both modes. A signed-off date refuses a write whatever the
   // calendar says about it, so log_days must not bypass this the way it
@@ -741,6 +747,7 @@ export function formatPlanPreview(
       half_day_leave: 'half-day leave, write it with log_days if the other half was worked',
       signed_off:
         'signed off in Factorial and closed for writing (ask the approver to reopen, or file an edit request)',
+      excluded: 'excluded by the caller',
     };
     for (const [reason, count] of byReason) {
       const dates = plan.skippedDays.filter(d => d.reason === reason).map(d => d.date);

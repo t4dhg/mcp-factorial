@@ -897,3 +897,83 @@ describe('signed_off', () => {
     expect(plan.skippedDays[0].reason).toBe('signed_off');
   });
 });
+
+describe('exclude_dates', () => {
+  it('leaves excluded dates out and says they were excluded on purpose', () => {
+    const days = new Map([
+      ['2026-06-01', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 0 }],
+      ['2026-06-02', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 0 }],
+    ]);
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days,
+      shifts: [],
+      leaves: new Map(),
+      reviews: new Set(),
+    };
+    const plan = buildBackfillPlan(
+      {
+        mode: 'range',
+        employee_id: 1,
+        dates: ['2026-06-01', '2026-06-02'],
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+        skip_leave: true,
+        exclude_dates: ['2026-06-01'],
+      },
+      facts
+    );
+    expect(plan.writes.map(w => w.date)).toEqual(['2026-06-02']);
+    expect(plan.skippedDays[0]).toEqual({
+      date: '2026-06-01',
+      reason: 'excluded',
+      detail: 'listed in exclude_dates',
+    });
+  });
+
+  it('takes priority over signed_off, since the caller explicitly asked to skip it', () => {
+    const days = new Map([
+      ['2026-06-01', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 0 }],
+    ]);
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days,
+      shifts: [],
+      leaves: new Map(),
+      reviews: new Set(['2026-06-01']),
+    };
+    const plan = buildBackfillPlan(
+      {
+        mode: 'range',
+        employee_id: 1,
+        dates: ['2026-06-01'],
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+        skip_leave: true,
+        exclude_dates: ['2026-06-01'],
+      },
+      facts
+    );
+    expect(plan.skippedDays[0].reason).toBe('excluded');
+  });
+
+  it('has no effect in log_days mode, which has no calendar concept to exclude from', () => {
+    const facts: PlanFacts = {
+      today: '2026-12-31',
+      days: new Map([
+        ['2026-06-01', { day_type: 'workday', expected_minutes: 480, tracked_minutes: 0 }],
+      ]),
+      shifts: [],
+      leaves: new Map(),
+      reviews: new Set(),
+    };
+    const plan = buildBackfillPlan(
+      {
+        mode: 'days',
+        employee_id: 1,
+        days: [{ date: '2026-06-01', segments: [{ clock_in: '09:00', clock_out: '17:00' }] }],
+        skip_leave: true,
+      },
+      facts
+    );
+    expect(plan.writes.map(w => w.date)).toEqual(['2026-06-01']);
+  });
+});
