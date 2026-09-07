@@ -90,7 +90,7 @@ export function formatAudit(input: AuditReportInput): string {
     `${formatCoverage(coverage)}\n` +
     'Expected comes from the contract pattern; day type and bank holidays from the company ' +
     'calendar in Factorial; leave from approved timeoff records. Times are HH:MM company local. ' +
-    `A day within ${toleranceMinutes} minutes of its expected total counts as complete.`;
+    `A day within ${toleranceMinutes} minute${toleranceMinutes === 1 ? '' : 's'} of its expected total counts as complete.`;
   if (format === 'json') {
     return `${header}\n\nMachine-readable ledger:\n${JSON.stringify(ledger)}`;
   }
@@ -102,15 +102,16 @@ export function formatAudit(input: AuditReportInput): string {
         ? ledger.filter(d => statusFilter.includes(d.status))
         : ledger.filter(d => !QUIET_STATUSES.has(d.status));
   const rows = listed.map(ledgerRow);
+  const ledgerDay = ledger.length === 1 ? 'day' : 'days';
   const footer =
     format === 'table'
       ? ''
       : statusFilter
-        ? `\n\n${listed.length} of ${ledger.length} days listed; filtered to status ` +
+        ? `\n\n${listed.length} of ${ledger.length} ${ledgerDay} listed; filtered to status ` +
           `${statusFilter.map(s => `"${s}"`).join(', ')}. Every other day in the window was omitted by ` +
           'that filter, not because it is settled. Drop statuses to see the default summary, ' +
           'format: "table" for every day, or format: "json" for the ledger.'
-        : `\n\n${listed.length} of ${ledger.length} days listed; complete days, weekends, bank holidays, ` +
+        : `\n\n${listed.length} of ${ledger.length} ${ledgerDay} listed; complete days, weekends, bank holidays, ` +
           'approved leave, days the contract does not expect work, and future dates are only counted above. ' +
           'Pass statuses: ["missing"] to narrow further, format: "table" for every day, or format: "json" for the ledger.';
   return `${header}\n\n${rows.length > 0 ? rows.join('\n') : '  (nothing needs attention)'}${footer}`;
@@ -140,8 +141,9 @@ export function formatGaps(input: GapsReportInput): string {
       `missing ${hours(g.missing_minutes)}${g.half_day_leave ? `  (half-day leave: ${g.half_day_leave})` : ''}`
   );
   const total = gaps.reduce((sum, g) => sum + g.missing_minutes, 0);
+  const gapDay = gaps.length === 1 ? 'day' : 'days';
   return (
-    `${gaps.length} days with missing hours for ${employee.name} (${employee.id}), ${hours(total)} in total.\n` +
+    `${gaps.length} ${gapDay} with missing hours for ${employee.name} (${employee.id}), ${hours(total)} in total.\n` +
     `${formatCoverage(coverage)}\n\n` +
     `${rows.join('\n')}\n\nWeekends, bank holidays and full-day leave are excluded. ` +
     'Use log_range with the same dates and your daily segments to fill them.'

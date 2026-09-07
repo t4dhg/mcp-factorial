@@ -81,7 +81,8 @@ function describeWrites(writes: PlannedWrite[]): string {
   return [...byMonth.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(
-      ([month, e]) => `  ${month}  ${e.days.size} days, ${e.records} records, ${hours(e.minutes)}`
+      ([month, e]) =>
+        `  ${month}  ${e.days.size} day${e.days.size === 1 ? '' : 's'}, ${e.records} record${e.records === 1 ? '' : 's'}, ${hours(e.minutes)}`
     )
     .join('\n');
 }
@@ -250,7 +251,7 @@ export function registerAttendanceTool(server: McpServer) {
               observations: s.observations,
             }));
             return textResponse(
-              `Found ${result.meta.total} shifts ${scope} (${formatPaginationInfo(result.meta)}; paging is ` +
+              `Found ${result.meta.total} shift${result.meta.total === 1 ? '' : 's'} ${scope} (${formatPaginationInfo(result.meta)}; paging is ` +
                 `client-side, the API returned everything in range). Times are HH:MM company local.\n\n` +
                 JSON.stringify(summary, null, 2)
             );
@@ -515,7 +516,7 @@ export function registerAttendanceTool(server: McpServer) {
               0
             );
             const lines = [
-              `Wrote ${result.written.length} of ${plan.writes.length} shift records for ${name} (${employeeId}), ${hours(writtenMinutes)}.`,
+              `Wrote ${result.written.length} of ${plan.writes.length} shift record${plan.writes.length === 1 ? '' : 's'} for ${name} (${employeeId}), ${hours(writtenMinutes)}.`,
             ];
             if (result.failed.length > 0) {
               lines.push('');
@@ -528,13 +529,16 @@ export function registerAttendanceTool(server: McpServer) {
                 );
               }
               if (result.failed.length > 20) {
-                lines.push(`  ... ${result.failed.length - 20} further failures not listed ...`);
+                const remaining = result.failed.length - 20;
+                lines.push(
+                  `  ... ${remaining} further failure${remaining === 1 ? '' : 's'} not listed ...`
+                );
               }
               if (result.abortedEarly) {
                 lines.push('');
                 lines.push(
                   `Stopped after ${CONSECUTIVE_FAILURE_ABORT} failures in a row, which points at the ` +
-                    `request rather than the records. ${result.notAttempted.length} records were not attempted.`
+                    `request rather than the records. ${result.notAttempted.length} record${result.notAttempted.length === 1 ? '' : 's'} not attempted.`
                 );
               }
               lines.push('');

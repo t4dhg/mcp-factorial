@@ -172,7 +172,7 @@ describe('attendance prompts', () => {
       })
     );
     expect(out).toContain('with the daily pattern 09:00-13:00 (4h a day)');
-    expect(out).toContain('1 days with missing hours for Placeholder Person (2), 4h in total.');
+    expect(out).toContain('1 day with missing hours for Placeholder Person (2), 4h in total.');
     const call = /factorial_attendance\((\{"action":"log_range".*?\})\)/.exec(out);
     expect(call).not.toBeNull();
     expect(JSON.parse(call![1])).toEqual({
