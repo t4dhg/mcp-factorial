@@ -9,6 +9,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { ENTRY_TIME_NOTE } from './report.js';
 
 /** A working segment on one day, in company local wall-clock time */
 export interface Segment {
@@ -818,6 +819,11 @@ export function formatPlanPreview(
         `    ... ${further} further day${further === 1 ? '' : 's'} not listed; run audit with format: "table" to see them all ...`
       );
     }
+  }
+
+  if (plan.writes.length > 0) {
+    lines.push('');
+    lines.push(ENTRY_TIME_NOTE);
   }
 
   return lines.join('\n');

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import shiftsFixture from '../../fixtures/shifts.json' with { type: 'json' };
+import estimatedFixture from '../../fixtures/estimated-times.json' with { type: 'json' };
+import workedFixture from '../../fixtures/worked-times.json' with { type: 'json' };
 
 vi.stubEnv('FACTORIAL_API_KEY', 'test-key');
 
@@ -12,6 +14,7 @@ const { confirmationManager } = await import('../../../confirmation.js');
 const { clearResolvedNames } = await import('../../../attendance/identity.js');
 const { clearCache } = await import('../../../api.js');
 const { declaredMoment } = await import('../../../attendance/planner.js');
+const { ENTRY_TIME_NOTE } = await import('../../../attendance/report.js');
 
 type Handler = (args: Record<string, unknown>) => Promise<{ content: Array<{ text: string }> }>;
 
@@ -35,7 +38,12 @@ const EMPLOYEE = {
 };
 
 /** Route mocked fetches by URL, for the clock_in/clock_out declared-moment paths */
-function routeFetch(routes: { openShifts?: unknown[] }) {
+function routeFetch(routes: {
+  openShifts?: unknown[];
+  shifts?: unknown[];
+  leaves?: unknown[];
+  reviews?: unknown[];
+}) {
   mockFetch.mockImplementation(async (input: string, init?: { method?: string; body?: string }) => {
     const url = new URL(input);
     const path = url.pathname;
@@ -56,8 +64,17 @@ function routeFetch(routes: { openShifts?: unknown[] }) {
       const body = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
       return ok({ ...shiftsFixture.data[0], ...body, id: '902', minutes: 60 }, 201);
     }
+    if (init?.method === 'POST' && path.endsWith('/attendance/shifts')) {
+      const body = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+      return ok({ ...shiftsFixture.data[0], ...body, id: '999', minutes: 240 }, 201);
+    }
     if (path.endsWith('/employees/employees/2')) return ok(EMPLOYEE);
+    if (path.endsWith('/attendance/worked_times')) return ok({ data: workedFixture.data });
+    if (path.endsWith('/attendance/estimated_times')) return ok({ data: estimatedFixture.data });
+    if (path.endsWith('/attendance/shifts')) return ok({ data: routes.shifts ?? [] });
     if (path.endsWith('/attendance/open_shifts')) return ok({ data: routes.openShifts ?? [] });
+    if (path.endsWith('/timeoff/leaves')) return ok({ data: routes.leaves ?? [] });
+    if (path.endsWith('/attendance/reviews')) return ok({ data: routes.reviews ?? [] });
     throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${path}`);
   });
 }
@@ -234,5 +251,95 @@ describe('clock_in and clock_out with a declared moment', () => {
     const sent = posts();
     expect(sent).toHaveLength(1);
     expect(String(sent[0].now)).toMatch(/^2027-01-15T14:00:00[+-]\d{2}:\d{2}$/);
+  });
+});
+
+const LOG_TOKEN = /confirmation_token: ([0-9a-f]{32})/;
+
+describe('declared time versus entry time', () => {
+  let call: Handler;
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    clearCache();
+    clearResolvedNames();
+    confirmationManager.clear();
+    // Own identity so create and clock_in proceed without a confirmation
+    // token; log_days is always gated regardless, per requireTargetConfirmation.
+    vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '2');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2027, 0, 15, 14, 0, 0));
+    call = captureHandler();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const createArgs = {
+    action: 'create',
+    employee_id: 2,
+    date: '2024-01-02',
+    clock_in: '09:59',
+    clock_out: '14:29',
+  };
+
+  it('names the declared day and times in a create result', async () => {
+    routeFetch({});
+    const result = await call(createArgs);
+    const text = result.content[0].text;
+    expect(text).toContain('2024-01-02');
+    expect(text).toContain('09:59');
+    expect(text).toContain('14:29');
+  });
+
+  it('ends a create result with the entry-time note exactly once', async () => {
+    routeFetch({});
+    const result = await call(createArgs);
+    const text = result.content[0].text;
+    // split on the note: exactly one occurrence means exactly two pieces
+    expect(text.split(ENTRY_TIME_NOTE)).toHaveLength(2);
+    expect(text.trimEnd().endsWith(ENTRY_TIME_NOTE)).toBe(true);
+  });
+
+  it('ends a log_days preview and its written result with the entry-time note', async () => {
+    routeFetch({});
+    const args = {
+      action: 'log_days',
+      employee_id: 2,
+      days: [{ date: '2026-12-25', segments: [{ clock_in: '09:00', clock_out: '13:00' }] }],
+    };
+    const preview = await call(args);
+    const previewText = preview.content[0].text;
+    expect(previewText.split(ENTRY_TIME_NOTE)).toHaveLength(2);
+    const token = LOG_TOKEN.exec(previewText)?.[1];
+    expect(token).toBeDefined();
+
+    const written = await call({ ...args, confirmation_token: token });
+    const writtenText = written.content[0].text;
+    expect(writtenText.split(ENTRY_TIME_NOTE)).toHaveLength(2);
+    expect(writtenText.trimEnd().endsWith(ENTRY_TIME_NOTE)).toBe(true);
+  });
+
+  it('never sends created_at or updated_at in any write body', async () => {
+    routeFetch({});
+    await call(createArgs);
+    await call({ action: 'clock_in', date: '2027-01-15', time: '09:00' });
+    const args = {
+      action: 'log_days',
+      employee_id: 2,
+      days: [{ date: '2026-12-25', segments: [{ clock_in: '09:00', clock_out: '13:00' }] }],
+    };
+    const preview = await call(args);
+    const token = LOG_TOKEN.exec(preview.content[0].text)?.[1];
+    expect(token).toBeDefined();
+    await call({ ...args, confirmation_token: token });
+
+    const bodies = posts();
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const body of bodies) {
+      expect(body).not.toHaveProperty('created_at');
+      expect(body).not.toHaveProperty('updated_at');
+    }
   });
 });

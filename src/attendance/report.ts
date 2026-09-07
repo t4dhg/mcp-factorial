@@ -8,6 +8,21 @@ import { formatCoverage, hours, type FactsCoverage, type Gap, type LedgerDay } f
 
 export type AuditFormat = 'summary' | 'table' | 'json';
 
+/**
+ * Printed once on every attendance write result and preview.
+ *
+ * A backfilled record shows the real working day and hours on the attendance
+ * sheet, while Factorial's own activity log shows it was entered later through
+ * the API. Both are true at once, and neither can be altered through the API.
+ * Saying so plainly stops a user believing either that the entry is hidden or
+ * that the working time is wrong.
+ */
+export const ENTRY_TIME_NOTE =
+  'Declared working time is the date, clock in and clock out above, and that is what the ' +
+  'attendance sheet and the hour totals show. Separately, Factorial stamps created_at, ' +
+  'updated_at and in_source/out_source with the moment and channel of entry; those are set by ' +
+  'Factorial, are visible in its activity log, and cannot be set or changed through the API.';
+
 export interface AuditReportInput {
   employee: { id: number; name: string };
   startOn: string;

@@ -884,6 +884,28 @@ describe('tool descriptions', () => {
     expect(inputSchema.half_day.description ?? '').toContain('do not correct it');
   });
 
+  it('carries the declared time versus entry time passage', () => {
+    const { description } = captureConfig();
+    expect(description).toContain('Declared time versus entry time');
+    expect(description).toContain(
+      'Factorial sets created_at, updated_at, in_source and out_source on the server'
+    );
+    expect(description).toContain(
+      'read-only through this API and no action here can set or change them'
+    );
+  });
+
+  it('says fields returns eight fixed fields, not every field of the record', () => {
+    const { inputSchema } = captureConfig();
+    const fields = inputSchema.fields.description ?? '';
+    expect(fields).toContain(
+      '"full" (default) returns id, employee_id, date, clock_in, clock_out, minutes, ' +
+        'in_source and observations'
+    );
+    expect(fields).toContain('Neither is every field of the raw record');
+    expect(fields).not.toContain('every field of the record');
+  });
+
   it('uses no em-dash in any description', () => {
     const { description, inputSchema } = captureConfig();
     const all = [description, ...Object.values(inputSchema).map(f => f.description ?? '')];
