@@ -20,6 +20,7 @@ import { buildLedger, findGaps } from '../attendance/backfill.js';
 import { resolveEmployeeName, resolveTargetEmployeeId } from '../attendance/identity.js';
 import {
   DEFAULT_TOLERANCE_MINUTES,
+  formatCoverage,
   hours,
   validateSegments,
   type Segment,
@@ -125,11 +126,13 @@ async function preRead(label: string, read: () => Promise<string>): Promise<stri
 }
 
 const STATUS_LEGEND = [
-  'Statuses: complete (tracked within tolerance of expected), missing (hours short), over (hours in',
-  'excess), weekend, bank_holiday, on_leave (approved full-day leave), half_day_leave (approved half',
-  'day; the other half may be missing), not_workable (the contract expects 0 minutes), no_contract_data',
+  'Statuses: complete (tracked within tolerance of expected), missing (nothing on record at all),',
+  'short (hours tracked but under expected by more than the tolerance), over (hours in excess),',
+  'weekend, bank_holiday, on_leave (approved full-day leave), half_day_leave (approved half day; the',
+  'other half may be missing), not_workable (the contract expects 0 minutes), no_contract_data',
   '(Factorial returned nothing for the date; usually before the start of employment, never a fact about',
-  'hours), future (after today, never written).',
+  'hours), future (after today, never written). Separately, a day may be marked signed off, meaning its',
+  'timesheet has been reviewed and is closed for writing whatever its status says.',
 ].join(' ');
 
 export const REGISTRO_HORARIO_GUIDE = `# Registro horario with factorial_attendance
@@ -143,31 +146,46 @@ This guide is for the model driving the tool. Every step below is a call to the 
 - **Day type** and bank holidays come from the company calendar in Factorial (\`worked_times.day_type\`).
 - **Leave** comes from approved \`timeoff/leaves\` records. Pending or rejected leave does not count.
 - ${STATUS_LEGEND}
-- Every \`gaps\`, \`audit\` and bulk preview starts with a **Data read** line saying how many days of the window have contract data and how many leave and shift records were read. If it reports uncovered days that do not precede the start of employment, stop and report; do not write.
+- **Signed off** days have had their timesheet reviewed in Factorial. They are closed for writing: a shift POST on one is refused with a 403. The server reads them, marks them in an audit, and skips them in a plan, so a preview never queues a write that cannot succeed. To correct one, use \`create_edit_request\`, which files a request for a person to approve; filing it notifies whoever approves timesheets. Do not try to write the hours directly.
+- **Times are applied by Factorial in the company zone.** HH:MM goes in and comes back as the same wall-clock time. The server never converts between zones, so there is nothing to compensate for.
+- An audit covers **one employee**. The day counts in its header sum to the number of days in the window, which is the cheapest check that you are reading the whole range.
+- \`list\` returns one employee's shifts by default (the configured identity). Pass \`employee_ids: []\` for the whole company, which is rarely what you want.
+- **\`over\` by a few minutes is normal.** Real clocks are not exact and the tolerance already allows for it. Report over days, but do not propose edits for them unless someone asks.
+- Every \`gaps\`, \`audit\` and bulk preview starts with a **Data read** line saying how many days of the window have contract data and how many leave, shift and signed-off records were read. If it reports uncovered days that do not precede the start of employment, stop and report; do not write. If it reports fewer leave records than you expect for the window, say so before reasoning about leave; a leave the server did not read is a leave the planner will happily write over.
 - The server reads every page of every list, so a window of any length is read completely. There is no need to split a range into chunks unless the result is too large to read; if it is, use \`format: "summary"\` on \`audit\` or split by month.
 
 ## Workflow A: audit and report
 
 1. \`audit\` with \`start_on\`, \`end_on\` (default \`format\` is \`summary\`: only the days needing attention).
-2. Read the Data read line first. Then report: expected vs tracked for the window, the list of \`missing\` days with how much is missing on each, any \`over\` days, any \`half_day_leave\` days whose worked half is untracked, and any \`no_contract_data\` days with the warning above.
+2. Read the Data read line first. Then report: expected vs workday expected vs tracked for the window, the \`missing\` days (nothing on record) separately from the \`short\` days (some hours, not enough), any \`over\` days, any \`half_day_leave\` days whose worked half is untracked, any \`no_contract_data\` days with the warning above, and any days marked signed off.
+
+Example report, which is the shape to copy:
+
+> 1 January to 6 September 2026, 249 days. Expected 1416h, of which 1272h on workdays; tracked 1269h55.
+> 143 days complete, 14 bank holidays, 72 weekend days, 4 on leave.
+> 9 days missing entirely: 12 March, 14 April, ... (72h).
+> 7 days over by a few minutes, which is normal for real clocks; no action.
+> Nothing is signed off, so any of the above can still be corrected.
+
 3. Write nothing. An audit is read-only.
 
 ## Workflow B: fill what is missing
 
 1. \`gaps\` for the window to see which workdays are short and by how much.
 2. Ask the person for their usual daily pattern if you do not have it, as segments such as \`[{"clock_in":"09:00","clock_out":"14:00"},{"clock_in":"15:00","clock_out":"18:00"}]\`. Never invent hours; the record is a legal document of time actually worked.
-3. \`log_range\` with \`start_on\`, \`end_on\`, \`segments\`, and usually \`jitter_minutes\` (5 to 10) and an \`observations\` note saying why the records are being entered now. The first call returns a **preview** and a \`confirmation_token\`; nothing is written. The preview skips weekends, bank holidays, approved leave, days the contract does not expect work, future dates, days without contract data, and any segment overlapping an existing shift.
+3. \`log_range\` with \`start_on\`, \`end_on\`, \`segments\`, and usually \`jitter_minutes\` (5 to 10) and an \`observations\` note saying why the records are being entered now. The first call returns a **preview** and a \`confirmation_token\`; nothing is written. The preview skips weekends, bank holidays, approved leave, days the contract does not expect work, future dates, days without contract data, signed-off days, and any segment overlapping an existing shift. Backfilled records show the real working day and hours on the attendance sheet; Factorial's activity log separately shows they were entered later through the API. Both are correct, and neither can be altered.
 4. Show the preview to the person and ask them to confirm. Only then repeat the identical call with \`confirmation_token\`. The token lasts 15 minutes and matches exactly that plan. A bulk write always needs this step; there is no way around it and you must not look for one.
-5. Days the person did not work in the range (sick without a leave record, a day off) must be excluded: either narrow the range, or run \`log_range\` on the sub-ranges around them. Days worked outside the pattern (a Saturday, a half day) are written one by one with \`log_days\`, which takes explicit dates and segments and skips only future dates, approved leave and overlaps.
+5. Days the person did not work in the range (sick without a leave record, a day off) go in \`exclude_dates\`, which keeps the whole range as one call and shows the exclusions in the preview. Prefer this to narrowing the range or running sub-ranges. Days worked outside the pattern (a Saturday, a half day) are written with \`log_days\`, which takes explicit dates and segments.
 6. If the write stops part way, the result says where. Re-running the identical call is safe: the planner re-reads existing shifts and writes only what is still missing.
-7. \`audit\` the same window again and report what changed. Every workday should now read \`complete\`.
+7. \`audit\` the same window again and report what changed. Every workday should now read \`complete\`. A day already signed off still reads whatever it read before; that is corrected only through \`create_edit_request\`, not by re-running the write.
 
 ## Workflow C: today's record (for a daily routine)
 
 1. \`status\` to see whether the employee is clocked in. If a shift is open, do not write; report it.
 2. \`audit\` with \`start_on\` and \`end_on\` both set to today. If the status for today is \`complete\`, \`weekend\`, \`bank_holiday\`, \`on_leave\` or \`not_workable\`, there is nothing to do; report in one line.
 3. If today is \`missing\`, \`log_days\` with \`days: [{"date": today, "segments": [...]}]\`, the person's stated pattern, and \`jitter_minutes\`. Then repeat the same call with the returned \`confirmation_token\` in the same session, only if the target is the configured identity (\`FACTORIAL_EMPLOYEE_ID\`). For anyone else, stop and ask.
-4. Report in one line what was written or why nothing was.
+4. If today is \`short\` rather than \`missing\` (some hours are already on record, just not enough), write nothing; a person decides how to complete a partial day.
+5. Report in one line what was written or why nothing was.
 
 MCP has no scheduler. To run this daily, schedule it in the client: in Claude Code, \`/schedule\` creates a routine that invokes the \`attendance_today\` prompt, and \`/loop\` repeats it while a session is open; any cron can run \`claude -p\` with the prompt as its input.
 
@@ -176,7 +194,8 @@ MCP has no scheduler. To run this daily, schedule it in the client: in Claude Co
 - Never write hours for someone other than the person asking unless they name that employee explicitly; the tool requires a confirmation token for it, and so should you.
 - Never pass a \`confirmation_token\` without the person having seen the preview it belongs to, except in Workflow C for the configured identity.
 - Never delete or overwrite records to make an audit look right. Report discrepancies instead.
-- Prefer \`jitter_minutes\` when reconstructing approximate hours, so a month does not read 09:00 on every line. Records still carry \`source: "api"\`.
+- \`jitter_minutes\` and \`variation_minutes\` exist to stop reconstructed records reading as a machine wrote them: identical timestamps on 40 consecutive days are obviously not a record of anything. They vary the minutes of hours the person tells you they worked. They are not a licence to invent days, or to guess at hours nobody stated. If you do not know what someone worked, ask; do not smooth it over with jitter.
+- \`jitter_minutes\` varies segments within a day and cannot make the start time drift across days. \`variation_minutes\` moves a whole day together, which is what produces day-to-day drift. Use both when reconstructing a long stretch.
 - The records carry the \`observations\` note; write in it why they were entered (for example "Entered from calendar records on 2026-09-06").
 `;
 
@@ -390,7 +409,7 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
             ? `, shifts on record ${row.shifts.map(s => `${s.clock_in}-${s.clock_out ?? 'open'}`).join(' ')}`
             : ', no shifts on record') +
           `.\n${ledgerRow(row)}\n` +
-          `Data read: contract data for ${coverage.days_with_contract_data} of 1 day, ${coverage.leave_records} leave records, ${coverage.shift_records} shift records.`
+          formatCoverage(coverage)
         );
       });
       const daysCall = {
