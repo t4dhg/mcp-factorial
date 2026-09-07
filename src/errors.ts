@@ -67,17 +67,22 @@ export class AuthenticationError extends HttpError {
 
 /**
  * Authorization error (403)
+ *
+ * The message quotes whatever Factorial said. The old text asserted the API key
+ * lacked permission, which is only one of the causes and was usually the wrong
+ * one: a write into a signed-off attendance period is refused the same way, and
+ * reading "check your API key" sent people to look in the wrong place entirely.
  */
 export class AuthorizationError extends HttpError {
-  constructor(endpoint: string, context?: Record<string, unknown>) {
+  constructor(endpoint: string, apiMessage?: string, context?: Record<string, unknown>) {
+    const reason = apiMessage ? `Factorial said: ${apiMessage}.` : 'It returned no explanation.';
     super(
       403,
       endpoint,
-      'Access denied. Your API key may not have permission for this operation.',
-      {
-        isRetryable: false,
-        context,
-      }
+      `Factorial refused this request (HTTP 403). ${reason} Common causes: the attendance ` +
+        'period for the date is signed off (an audit marks such days signed_off), or the API ' +
+        'key does not have write scope for this resource.',
+      { isRetryable: false, context }
     );
     this.name = 'AuthorizationError';
   }

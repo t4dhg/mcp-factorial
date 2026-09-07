@@ -253,7 +253,7 @@ describe('API Client', () => {
         text: async () => 'Forbidden',
       });
 
-      await expect(listEmployees()).rejects.toThrow('Access denied');
+      await expect(listEmployees()).rejects.toThrow('HTTP 403');
     });
 
     it('should handle 404 errors', async () => {
