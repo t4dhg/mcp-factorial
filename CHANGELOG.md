@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [11.0.0] - 2026-09-07
+
+### Changed
+
+- **BREAKING: `missing` no longer means two different things.** A day with nothing on record reads `missing`; a day with hours tracked but under the expected total by more than the tolerance reads `short`. A consumer counting `missing` days must now count `missing` plus `short`. The audit shows the delta on every `short` (and signed-off) row, so a short day says how short it is.
+- **BREAKING: the bulk write result no longer says "Stopped at".** Every planned record is attempted and every failure is named, not just the first. Ten consecutive failures still abort the run, which reports how many records were left unattempted.
+- **BREAKING: a 403 no longer claims the API key lacks permission.** It quotes what Factorial said and names the two real causes (a signed-off period, or an actual permissions problem), because a write into a signed-off period is refused identically and the old text sent people to check a credential that was fine.
+
+### Added
+
+- **Signed-off days are detected before anything is written.** `attendance/reviews` reports which dates have had their timesheet reviewed, which is what closes a date for writing. `audit` marks them signed off, `log_range` and `log_days` skip them with that reason, and the `Data read` line counts them. A backfill over a closed month now plans nothing instead of queueing writes that are all certain to be refused.
+- **`list_edit_requests` and `create_edit_request`**, Factorial's route for correcting a signed-off day, since hours cannot be written onto a reviewed date directly. Filing a request notifies whoever approves it, so it is previewed and token-gated even for the configured identity.
+- **`clock_in` and `clock_out` accept a declared moment.** Pass `date` and `time` (`HH:MM` company local) for someone who forgot to clock and knows when they started or stopped; without them the action still records the current moment. A declared moment in the future is refused before any request is sent. A declared `clock_out` is refused when nothing is open, and when the moment precedes the open shift's start, which would otherwise write a negative-duration record.
+- **Every write result and preview states the declared working time and Factorial's entry-time note.** `date`, `clock_in` and `clock_out` are the declared working time and are what the attendance sheet and hour totals show; Factorial separately stamps `created_at`, `updated_at` and `in_source`/`out_source` with when and how the record was entered, those are visible in its own activity log, and neither can be set or changed through the API. This now appears once on create, update, `clock_in`, `clock_out`, and every bulk preview and result.
+- **`variation_minutes`** on `log_range` and `log_days`, distinct from `jitter_minutes`: it shifts a whole day by one deterministic offset so the start time drifts from day to day, which `jitter_minutes` cannot produce because it only varies segments within a day.
+- **`exclude_dates`** on `log_range`, so one call covers a range plus the days that were not worked.
+- **`statuses`** on `audit` and **`fields: "compact"`** on `list`.
+- **`workday expected`** in the audit header, beside `expected`. `expected` counts bank holidays and leave at full contract minutes and was never the number to compare tracked hours against.
+- **Two prompts**, `attendance_reconcile` and `attendance_fill_days`, and **every prompt body published as a resource** at `factorial://prompts/<name>`, since some clients surface prompts to the human only and give the model no way to read one.
+
+### Fixed
+
+- **A date that does not exist is now rejected instead of silently rolled over.** `2026-02-30` previously passed validation and `Date.parse` rolled it into 2 March, writing a declared shift to the wrong day with no refusal. A real leap day such as `2024-02-29` is still accepted normally.
+- **Noun and number agreement** was fixed across every rendered attendance count, following a sweep of `planner.ts`, `report.ts` and `attendance.ts`. Several strings previously read "1 segments on 1 days overlap" or "1 days to write, 1 shift records"; two existing tests were pinning that wrong singular output and are corrected along with the code.
+- The audit summary footer claimed to count days it was in fact listing. Bank holidays, approved leave and days the contract does not expect work are now counted rather than listed, and the footer says so accurately.
+- Previews led with the plan and buried the `Data read` line at the bottom, though the guide said every preview starts with it. It is now first, as it already was in `audit`.
+- A preview over an already-filled range printed one uncapped line per overlapping segment. It now reports a count per day and names at most ten days.
+- `list_leaves` reported pending records without distinguishing them from approved ones.
+- `factorial_discover(category: "attendance")` did not mention the guide or the prompts, which a model that had already narrowed to attendance would never otherwise find.
+- Tool and parameter descriptions still described 10.1.0: no confirmation flow, no `Data read` line, no `no_contract_data`, and a `jitter_minutes` description contradicting what jitter does since 10.2.0. They now also document the declared-time versus entry-time distinction.
+- The registro horario guide is rewritten for this release's behaviour: signed-off rules, the missing versus short distinction, the timezone contract, and a worked example whose day counts and tracked total actually reconcile under this release's statuses.
+
 ## [10.2.0] - 2026-09-06
 
 ### Fixed
