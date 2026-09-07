@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { formatAudit } from '../../../attendance/report.js';
-import type { FactsCoverage, LedgerDay } from '../../../attendance/planner.js';
+import { formatAudit, formatGaps } from '../../../attendance/report.js';
+import type { FactsCoverage, Gap, LedgerDay } from '../../../attendance/planner.js';
 
 const coverage: FactsCoverage = {
   days_in_window: 5,
@@ -120,5 +120,62 @@ describe('formatAudit', () => {
     const text = formatAudit({ ...input, statuses: ['over'] });
     expect(text).toContain('filtered to status "over"');
     expect(text).not.toContain('complete days, weekends, bank holidays');
+  });
+});
+
+describe('formatGaps', () => {
+  const gap = (over: Partial<Gap>): Gap => ({
+    date: '2026-03-02',
+    expected_minutes: 480,
+    tracked_minutes: 0,
+    missing_minutes: 480,
+    half_day_leave: null,
+    signed_off: false,
+    ...over,
+  });
+
+  it('tells the reader to use log_range when nothing is signed off', () => {
+    const text = formatGaps({
+      employee: { id: 2, name: 'Placeholder Person' },
+      startOn: '2026-03-01',
+      endOn: '2026-03-05',
+      gaps: [gap({})],
+      coverage,
+    });
+    expect(text).toContain(
+      'Use log_range with the same dates and your daily segments to fill them.'
+    );
+    expect(text).not.toContain('create_edit_request');
+  });
+
+  it('marks a signed-off gap in its row and never tells the reader log_range will take it', () => {
+    const text = formatGaps({
+      employee: { id: 2, name: 'Placeholder Person' },
+      startOn: '2026-03-01',
+      endOn: '2026-03-05',
+      gaps: [gap({ date: '2026-03-02', signed_off: true })],
+      coverage,
+    });
+    expect(text).toMatch(/2026-03-02.*signed off/);
+    expect(text).toContain('Every day listed is signed off and closed for writing');
+    expect(text).toContain('Use create_edit_request instead');
+    expect(text).not.toMatch(
+      /Use log_range with the same dates and your daily segments to fill them\./
+    );
+  });
+
+  it('splits the instruction between open and signed-off days when both are present', () => {
+    const text = formatGaps({
+      employee: { id: 2, name: 'Placeholder Person' },
+      startOn: '2026-03-01',
+      endOn: '2026-03-05',
+      gaps: [gap({ date: '2026-03-02' }), gap({ date: '2026-03-03', signed_off: true })],
+      coverage,
+    });
+    expect(text).toContain(
+      'Use log_range with the same dates and your daily segments to fill the days not marked'
+    );
+    expect(text).toContain('1 signed-off day (2026-03-03)');
+    expect(text).toContain('Use create_edit_request instead for those');
   });
 });

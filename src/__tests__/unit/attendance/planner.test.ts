@@ -438,8 +438,32 @@ describe('computeGaps', () => {
         tracked_minutes: 60,
         missing_minutes: 180,
         half_day_leave: 'end_of_day',
+        signed_off: false,
       },
     ]);
+  });
+
+  it('flags a gap on a signed-off date rather than silently dropping it', () => {
+    const facts = decemberFacts({ reviews: new Set(['2026-12-29']) });
+    facts.days.set('2026-12-28', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 240,
+    });
+    facts.days.set('2026-12-29', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 60,
+    });
+    facts.days.set('2026-12-30', {
+      day_type: 'workday',
+      expected_minutes: 240,
+      tracked_minutes: 240,
+    });
+    const gaps = computeGaps(facts);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].date).toBe('2026-12-29');
+    expect(gaps[0].signed_off).toBe(true);
   });
 });
 
