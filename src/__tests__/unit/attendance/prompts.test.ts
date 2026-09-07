@@ -9,8 +9,13 @@ vi.stubEnv('FACTORIAL_API_KEY', 'test-key');
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { registerAttendancePrompts, parseSegmentsArg, defaultWindow, GUIDE_URI } =
-  await import('../../../prompts/attendance.js');
+const {
+  registerAttendancePrompts,
+  parseSegmentsArg,
+  defaultWindow,
+  GUIDE_URI,
+  REGISTRO_HORARIO_GUIDE,
+} = await import('../../../prompts/attendance.js');
 const { clearResolvedNames } = await import('../../../attendance/identity.js');
 const { clearCache } = await import('../../../api.js');
 
@@ -91,6 +96,53 @@ describe('parseSegmentsArg', () => {
 describe('defaultWindow', () => {
   it('runs from the first of the month to today', () => {
     expect(defaultWindow('2026-12-28')).toEqual({ start_on: '2026-12-01', end_on: '2026-12-28' });
+  });
+});
+
+describe('the guide', () => {
+  const required = [
+    'short',
+    'signed off',
+    'variation_minutes',
+    'company zone',
+    'Example report',
+    'one employee',
+  ];
+  it.each(required)('covers %s', topic => {
+    expect(REGISTRO_HORARIO_GUIDE).toContain(topic);
+  });
+
+  it('uses no em-dash', () => {
+    expect(REGISTRO_HORARIO_GUIDE).not.toContain('—');
+  });
+
+  it('distinguishes missing from short and teaches signed off separately from status', () => {
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/missing \(nothing on record at all\)/);
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/short \(hours tracked but under expected/);
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/create_edit_request/);
+  });
+
+  it('explains jitter_minutes and variation_minutes are for different things', () => {
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(
+      /jitter_minutes.*varies segments within a day and cannot make the start time drift/
+    );
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/variation_minutes.*moves a whole day together/);
+  });
+
+  it('prefers exclude_dates over splitting a range in Workflow B', () => {
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/exclude_dates.*Prefer this to narrowing the range/);
+  });
+
+  it('explains that backfilled records and the activity log both stay correct', () => {
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(
+      /Backfilled records show the real working day and hours on the attendance sheet/
+    );
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/entered later through the API/);
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/Both are correct, and neither can be altered/);
+  });
+
+  it('does not document date/time arguments on clock_in or clock_out', () => {
+    expect(REGISTRO_HORARIO_GUIDE).not.toMatch(/clock_in.*\bdate\b/);
   });
 });
 
