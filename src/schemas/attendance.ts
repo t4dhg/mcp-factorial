@@ -138,6 +138,26 @@ export const WorkedTimeSchema = z
 
 export type WorkedTime = z.infer<typeof WorkedTimeSchema>;
 
+/**
+ * One signed-off date on an employee's timesheet.
+ *
+ * A date with a review record is closed for writing: Factorial answers a shift
+ * POST on it with a 403. Verified live on 2026-09-07 against the two months a
+ * field report had established were closed; the reviewed dates matched them
+ * exactly and covered nothing else.
+ */
+export const AttendanceReviewSchema = z
+  .object({
+    id: z.string(),
+    employee_id: resourceId,
+    date: dateString,
+    reviewed_at: z.string().nullable().optional(),
+    author_id: resourceId.nullable().optional(),
+  })
+  .passthrough();
+
+export type AttendanceReview = z.infer<typeof AttendanceReviewSchema>;
+
 // ============================================================================
 // Write Input Schemas
 // ============================================================================
