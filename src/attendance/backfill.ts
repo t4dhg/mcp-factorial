@@ -11,6 +11,7 @@ import { cache } from '../cache.js';
 import {
   createShift,
   listEstimatedTimes,
+  listReviews,
   listShiftsInRange,
   listWorkedTimes,
   localToday,
@@ -49,11 +50,12 @@ export async function gatherFacts(
   // so a single-page read once made every window over 100 days go blind
   // after day 100 and report the rest as not workable.
   const range = { employee_ids: [employeeId], start_on: startOn, end_on: endOn };
-  const [worked, estimated, shifts, leaves] = await Promise.all([
+  const [worked, estimated, shifts, leaves, reviews] = await Promise.all([
     listWorkedTimes(range),
     listEstimatedTimes(range),
     listShiftsInRange([employeeId], startOn, endOn),
     listLeavesInRange([employeeId], startOn, endOn),
+    listReviews(range),
   ]);
 
   const days = new Map<string, DayFacts>();
@@ -84,10 +86,14 @@ export async function gatherFacts(
       .filter(s => s.clock_in !== null)
       .map(s => ({ date: s.date, clock_in: s.clock_in as string, clock_out: s.clock_out })),
     leaves: expandLeaves(leaves),
-    // Wired to listReviews (Task 1) in a later task; empty until then, so no
-    // date is treated as signed off yet.
-    reviews: new Set<string>(),
-    coverage: measureCoverage(enumerateDates(startOn, endOn), days, leaves.length, shifts.length),
+    reviews: new Set(reviews.map(review => review.date)),
+    coverage: measureCoverage(
+      enumerateDates(startOn, endOn),
+      days,
+      leaves.length,
+      shifts.length,
+      reviews.length
+    ),
   };
 }
 

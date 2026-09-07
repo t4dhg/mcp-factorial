@@ -43,6 +43,7 @@ function routeFetch(routes: {
   shifts?: unknown[];
   openShifts?: unknown[];
   leaves?: unknown[];
+  reviews?: unknown[];
   onPost?: (body: Record<string, unknown>) => unknown;
 }) {
   mockFetch.mockImplementation(async (input: string, init?: { method?: string; body?: string }) => {
@@ -67,6 +68,7 @@ function routeFetch(routes: {
     if (path.endsWith('/attendance/shifts')) return ok({ data: routes.shifts ?? [] });
     if (path.endsWith('/attendance/open_shifts')) return ok({ data: routes.openShifts ?? [] });
     if (path.endsWith('/timeoff/leaves')) return ok({ data: routes.leaves ?? [] });
+    if (path.endsWith('/attendance/reviews')) return ok({ data: routes.reviews ?? [] });
     throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${path}`);
   });
 }
@@ -249,6 +251,7 @@ describe('factorial_attendance tool', () => {
           return ok({ data: estimatedFixture.data });
         if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: [] });
         if (url.pathname.endsWith('/timeoff/leaves')) return ok({ data: [] });
+        if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
         throw new Error(`unexpected ${url.pathname}`);
       }
     );
@@ -409,7 +412,7 @@ describe('factorial_attendance tool', () => {
     const text = (await call(audit)).content[0].text;
     expect(text).toContain('Attendance audit for Placeholder Person (2), 2026-12-24 to 2026-12-31');
     expect(text).toContain(
-      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift records.'
+      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift records, 0 signed-off days.'
     );
     expect(text).toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
     expect(text).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
@@ -479,6 +482,7 @@ describe('factorial_attendance tool', () => {
         return ok({ data: [], meta: { has_next_page: false, paginateable: false } });
       if (url.pathname.endsWith('/timeoff/leaves'))
         return ok({ data: [], meta: { has_next_page: false, total: 0, limit: 100 } });
+      if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
       throw new Error(`unexpected ${url.pathname}`);
     });
     const text = (
@@ -508,6 +512,7 @@ describe('factorial_attendance tool', () => {
         return ok({ data: estimatedFixture.data.filter(d => d.date >= '2026-12-28') });
       if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: [] });
       if (url.pathname.endsWith('/timeoff/leaves')) return ok({ data: [] });
+      if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
       throw new Error(`unexpected ${url.pathname}`);
     });
     const text = (await call(audit)).content[0].text;
@@ -560,6 +565,7 @@ describe('factorial_attendance tool', () => {
             : { data: [december], meta: { has_next_page: false, total: 101, limit: 100 } }
         );
       }
+      if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
       throw new Error(`unexpected ${url.pathname}`);
     });
     const text = (await call(range)).content[0].text;

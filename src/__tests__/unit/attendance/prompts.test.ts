@@ -50,6 +50,7 @@ function routeFetch(shifts: unknown[] = [], failPerDay = false) {
       return ok({ data: estimatedFixture.data });
     if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: shifts });
     if (url.pathname.endsWith('/timeoff/leaves')) return ok({ data: [] });
+    if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
     throw new Error(`unexpected ${url.pathname}`);
   });
 }
