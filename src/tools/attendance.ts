@@ -512,6 +512,11 @@ export function registerAttendanceTool(server: McpServer) {
             const wallClock = new Date();
             let now = wallClock;
             const declared = args.date !== undefined || args.time !== undefined;
+            // Both are set together whenever declared is true; the block below
+            // returns before this point otherwise. Narrowed once here so the
+            // declared-path calls below don't have to repeat the check.
+            let declaredDate: string | undefined;
+            let declaredTime: string | undefined;
             if (declared) {
               if (args.date === undefined || args.time === undefined) {
                 return textResponse(
@@ -519,7 +524,16 @@ export function registerAttendanceTool(server: McpServer) {
                     'neither to record the current moment.'
                 );
               }
-              now = declaredMoment(args.date, args.time);
+              declaredDate = args.date;
+              declaredTime = args.time;
+              // Compared against wall clock below purely to refuse a future
+              // moment; this Date is never sent to Factorial. What is sent for
+              // a declared moment is the bare HH:MM, via createShift/updateShift
+              // below, which Factorial applies in the company zone, not the
+              // server's. Only the undeclared (live) path below still sends an
+              // absolute instant, where the server's offset is correct because
+              // the instant is unambiguous regardless of zone.
+              now = declaredMoment(declaredDate, declaredTime);
               // A declared moment in the future is never a record of work done.
               if (now.getTime() > wallClock.getTime()) {
                 return textResponse(
@@ -529,6 +543,7 @@ export function registerAttendanceTool(server: McpServer) {
               }
             }
 
+            let openShift: Awaited<ReturnType<typeof listOpenShifts>>[number] | undefined;
             if (args.action === 'clock_out' && declared) {
               const open = await listOpenShifts(employeeId);
               if (open.length === 0) {
@@ -538,15 +553,17 @@ export function registerAttendanceTool(server: McpServer) {
                     'use action create with date, clock_in and clock_out.'
                 );
               }
-              const shift = open[0];
+              openShift = open[0];
               const startedAt = declaredMoment(
-                shift.date,
-                shift.clock_in.includes('T') ? shift.clock_in.slice(11, 16) : shift.clock_in
+                openShift.date,
+                openShift.clock_in.includes('T')
+                  ? openShift.clock_in.slice(11, 16)
+                  : openShift.clock_in
               );
               if (now.getTime() < startedAt.getTime()) {
                 return textResponse(
                   `Error: ${args.date} ${args.time} is before the open shift started ` +
-                    `(${shift.date} ${shift.clock_in}). Nothing was written.`
+                    `(${openShift.date} ${openShift.clock_in}). Nothing was written.`
                 );
               }
             }
@@ -572,10 +589,42 @@ export function registerAttendanceTool(server: McpServer) {
               token: args.confirmation_token,
             });
             if (!gate.proceed) return textResponse(gate.message);
-            const shift =
-              args.action === 'clock_in' ? await clockIn(input, now) : await clockOut(input, now);
+
+            // A declared moment is a company-local wall-clock time (bare
+            // HH:MM), never an absolute instant: it goes through the same
+            // create/update shift endpoints the create/update actions use,
+            // which Factorial applies in the company zone. The clock_in/
+            // clock_out endpoints below take an absolute instant (`now` with a
+            // server offset) and are only correct when there is no declared
+            // moment, because an instant is unambiguous regardless of the
+            // server's zone.
+            const shift = declared
+              ? args.action === 'clock_in'
+                ? await createShift({
+                    employee_id: employeeId,
+                    date: declaredDate as string,
+                    clock_in: declaredTime as string,
+                    location_type: args.location_type,
+                    workplace_id: args.workplace_id,
+                    observations: args.observations,
+                  })
+                : await updateShift(Number((openShift as NonNullable<typeof openShift>).id), {
+                    date: declaredDate as string,
+                    clock_out: declaredTime as string,
+                    location_type: args.location_type,
+                    workplace_id: args.workplace_id,
+                    observations: args.observations,
+                  })
+              : args.action === 'clock_in'
+                ? await clockIn(input, now)
+                : await clockOut(input, now);
+            // Unlike `moment` above (which wraps the live case in "now (...)"
+            // for the preview), the result names the bare declared HH:MM for a
+            // declared write, since that is the value actually sent; the live
+            // case keeps the exact instant it always reported.
+            const resultMoment = declared ? `${args.date} ${args.time}` : formatLocalIso(now);
             return textResponse(
-              `${verb} recorded for ${name} (${employeeId}) at ${formatLocalIso(now)}:\n\n` +
+              `${verb} recorded for ${name} (${employeeId}) at ${resultMoment}:\n\n` +
                 `${JSON.stringify(shift, null, 2)}\n\n${ENTRY_TIME_NOTE}`
             );
           }
