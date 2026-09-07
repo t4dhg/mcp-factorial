@@ -137,24 +137,51 @@ export async function buildLedger(
   };
 }
 
+/**
+ * How many failures in a row mean the problem is the request rather than the
+ * record. A bad key or a revoked scope fails every write; grinding through
+ * hundreds of certain rejections helps nobody.
+ */
+export const CONSECUTIVE_FAILURE_ABORT = 10;
+
 export interface BackfillResult {
   written: PlannedWrite[];
   failed: Array<PlannedWrite & { error: string }>;
+  /** Records left unattempted because the run aborted */
+  notAttempted: PlannedWrite[];
+  abortedEarly: boolean;
 }
 
 /**
- * Write the planned records sequentially. Stops at the first failure so the
- * summary can say exactly where it stopped; re-running the identical call is
- * safe because the planner re-reads shifts and skips what already exists.
+ * Write the planned records sequentially, attempting every one.
+ *
+ * An earlier version stopped at the first failure, which turned a fill that
+ * touched one bad month into one pass per surviving stretch. A single refused
+ * record says nothing about the next one, so the run continues; only a run of
+ * consecutive failures is evidence of something systemic, and that aborts.
+ *
+ * Re-running the identical call stays safe: the planner re-reads shifts and
+ * skips whatever overlaps.
  */
 export async function executeBackfill(
   employeeId: number,
   writes: PlannedWrite[],
   observations?: string
 ): Promise<BackfillResult> {
-  const result: BackfillResult = { written: [], failed: [] };
+  const result: BackfillResult = {
+    written: [],
+    failed: [],
+    notAttempted: [],
+    abortedEarly: false,
+  };
+  let consecutiveFailures = 0;
   try {
-    for (const write of writes) {
+    for (const [index, write] of writes.entries()) {
+      if (consecutiveFailures >= CONSECUTIVE_FAILURE_ABORT) {
+        result.notAttempted = writes.slice(index);
+        result.abortedEarly = true;
+        break;
+      }
       try {
         await createShift({
           employee_id: employeeId,
@@ -164,12 +191,13 @@ export async function executeBackfill(
           observations,
         });
         result.written.push(write);
+        consecutiveFailures = 0;
       } catch (error) {
         result.failed.push({
           ...write,
           error: error instanceof Error ? error.message : String(error),
         });
-        break;
+        consecutiveFailures += 1;
       }
     }
   } finally {
