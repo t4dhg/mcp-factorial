@@ -49,7 +49,11 @@ function capture() {
 
 const EMPLOYEE = { id: '2', first_name: 'P', last_name: 'P', full_name: 'Placeholder Person' };
 
-function routeFetch(shifts: unknown[] = [], failPerDay = false) {
+function routeFetch(
+  shifts: unknown[] = [],
+  failPerDay = false,
+  workedMinutesByDate: Record<string, number> = {}
+) {
   mockFetch.mockImplementation(async (input: string, init?: { method?: string }) => {
     const url = new URL(input);
     const ok = (json: unknown) => ({ ok: true, status: 200, json: async () => json });
@@ -58,7 +62,21 @@ function routeFetch(shifts: unknown[] = [], failPerDay = false) {
     if (failPerDay && /worked_times|estimated_times/.test(url.pathname)) {
       return { ok: false, status: 500, text: async () => 'boom', json: async () => ({}) };
     }
-    if (url.pathname.endsWith('/attendance/worked_times')) return ok({ data: workedFixture.data });
+    if (url.pathname.endsWith('/attendance/worked_times')) {
+      const data =
+        Object.keys(workedMinutesByDate).length === 0
+          ? workedFixture.data
+          : workedFixture.data.map(d =>
+              d.date in workedMinutesByDate
+                ? {
+                    ...d,
+                    tracked_minutes: workedMinutesByDate[d.date],
+                    minutes: workedMinutesByDate[d.date],
+                  }
+                : d
+            );
+      return ok({ data });
+    }
     if (url.pathname.endsWith('/attendance/estimated_times'))
       return ok({ data: estimatedFixture.data });
     if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: shifts });
@@ -396,11 +414,12 @@ describe('attendance prompts', () => {
     expect(out).toContain('2026-12-24, 2026-12-28');
   });
 
-  it('fill_days prompt rejects malformed days JSON before reading anything', async () => {
-    routeFetch();
+  it('fill_days prompt rejects malformed days JSON before resolving the employee', async () => {
+    mockFetch.mockReset();
     await expect(
       prompts.get('attendance_fill_days')!.handler({ days: 'not json' })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/days must be valid JSON/);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('fill_days prompt rejects a day missing its date', async () => {
@@ -408,5 +427,14 @@ describe('attendance prompts', () => {
     await expect(
       prompts.get('attendance_fill_days')!.handler({ days: '[{"segments":"09:00-13:00"}]' })
     ).rejects.toThrow(/date/);
+  });
+
+  it('today prompt instructs writing nothing and reporting the partial day when today is short', async () => {
+    routeFetch([], false, { '2026-12-28': 120 });
+    const out = text(await prompts.get('attendance_today')!.handler({ segments: '09:00-13:00' }));
+    expect(out).toContain('Today 2026-12-28 for Placeholder Person (2): status short');
+    expect(out).toMatch(
+      /5\. If the status is short \(some hours already tracked, not enough\), write nothing and report the partial day; a person decides how to complete it\./
+    );
   });
 });
