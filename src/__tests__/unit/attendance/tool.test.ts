@@ -620,4 +620,68 @@ describe('factorial_attendance tool', () => {
     await call({ ...args, confirmation_token: token });
     expect(posts().map(p => p.date)).toEqual(['2026-12-25']);
   });
+
+  it('surfaces abortedEarly and notAttempted when failures abort the run', async () => {
+    // log_days bypasses the weekend/holiday skip rules, so every one of these
+    // 15 explicit days is planned; all fail, tripping the consecutive-failure
+    // abort at 10 and leaving the last 5 unattempted.
+    const days = Array.from({ length: 15 }, (_, i) => ({
+      date: `2026-12-${String(i + 1).padStart(2, '0')}`,
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+    }));
+    routeFetch({
+      shifts: [],
+      onPost: () => {
+        throw new Error('Factorial refused this write (HTTP 403).');
+      },
+    });
+    const args = { action: 'log_days', employee_id: 2, days };
+    const preview = (await call(args)).content[0].text;
+    const token = TOKEN.exec(preview)?.[1];
+    expect(token).toBeDefined();
+
+    const text = (await call({ ...args, confirmation_token: token })).content[0].text;
+
+    expect(text).toContain('Wrote 0 of 15 shift records');
+    expect(text).toContain('10 records failed:');
+    expect(text).toContain(
+      'Stopped after 10 failures in a row, which points at the request rather than the records. ' +
+        '5 records not attempted.'
+    );
+    expect(text).toMatch(/Re-running the identical call is safe/);
+  });
+
+  it('summarizes a bulk write by month once it exceeds 62 records, singular nouns for a 1-day month', async () => {
+    // 63 records spread across four months, two of which land exactly one
+    // day, to exercise both the plural and singular branches of the summary.
+    const days = [
+      { date: '2026-10-31', segments: [{ clock_in: '09:00', clock_out: '17:00' }] },
+      ...Array.from({ length: 30 }, (_, i) => ({
+        date: `2026-11-${String(i + 1).padStart(2, '0')}`,
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      })),
+      ...Array.from({ length: 31 }, (_, i) => ({
+        date: `2026-12-${String(i + 1).padStart(2, '0')}`,
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      })),
+      { date: '2027-01-01', segments: [{ clock_in: '09:00', clock_out: '17:00' }] },
+    ];
+    expect(days).toHaveLength(63);
+    routeFetch({ shifts: [] });
+    const args = { action: 'log_days', employee_id: 2, days };
+    const preview = (await call(args)).content[0].text;
+    const token = TOKEN.exec(preview)?.[1];
+    expect(token).toBeDefined();
+
+    const text = (await call({ ...args, confirmation_token: token })).content[0].text;
+
+    expect(text).toContain('Wrote 63 of 63 shift records');
+    expect(text).toContain('2026-10  1 day, 1 record, 8h');
+    expect(text).toContain('2026-11  30 days, 30 records, 240h');
+    expect(text).toContain('2026-12  31 days, 31 records, 248h');
+    expect(text).toContain('2027-01  1 day, 1 record, 8h');
+    // Per-record lines are the other branch of describeWrites; this run must
+    // not fall back to them.
+    expect(text).not.toContain('2026-11-01 09:00-17:00');
+  });
 });

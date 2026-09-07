@@ -204,6 +204,54 @@ export function registerAttendanceTool(server: McpServer) {
           .describe(
             'gaps/audit: a day within this many minutes of the expected total counts as complete (default 15)'
           ),
+        statuses: z
+          .array(
+            z.enum([
+              'future',
+              'weekend',
+              'bank_holiday',
+              'not_workable',
+              'no_contract_data',
+              'on_leave',
+              'half_day_leave',
+              'complete',
+              'missing',
+              'short',
+              'over',
+            ])
+          )
+          .optional()
+          .describe(
+            'audit: list only days with these statuses. Default lists everything needing attention: ' +
+              'missing, short, over, half_day_leave and no_contract_data'
+          ),
+        exclude_dates: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'log_range: dates (YYYY-MM-DD) inside the range to leave alone, for days that were not worked. ' +
+              'The preview lists them so the omission is visible before confirming'
+          ),
+        variation_minutes: z
+          .number()
+          .int()
+          .min(0)
+          .max(120)
+          .optional()
+          .default(0)
+          .describe(
+            'log_range/log_days: shift each whole day by up to this many minutes, the segments moving ' +
+              'together, so the start time drifts from day to day. This is the variation jitter_minutes ' +
+              'cannot produce, since jitter varies segments within a day. Deterministic per day'
+          ),
+        fields: z
+          .enum(['full', 'compact'])
+          .optional()
+          .default('full')
+          .describe(
+            'list: "compact" returns date, clock_in, clock_out, minutes and in_source only; ' +
+              '"full" returns every field of the record'
+          ),
         confirmation_token: z
           .string()
           .optional()
@@ -240,16 +288,26 @@ export function registerAttendanceTool(server: McpServer) {
               page: args.page,
               limit: args.limit,
             });
-            const summary = result.data.map(s => ({
-              id: s.id,
-              employee_id: s.employee_id,
-              date: s.date,
-              clock_in: s.clock_in,
-              clock_out: s.clock_out,
-              minutes: s.minutes,
-              in_source: s.in_source,
-              observations: s.observations,
-            }));
+            const summary = result.data.map(s =>
+              args.fields === 'compact'
+                ? {
+                    date: s.date,
+                    clock_in: s.clock_in,
+                    clock_out: s.clock_out,
+                    minutes: s.minutes,
+                    in_source: s.in_source,
+                  }
+                : {
+                    id: s.id,
+                    employee_id: s.employee_id,
+                    date: s.date,
+                    clock_in: s.clock_in,
+                    clock_out: s.clock_out,
+                    minutes: s.minutes,
+                    in_source: s.in_source,
+                    observations: s.observations,
+                  }
+            );
             return textResponse(
               `Found ${result.meta.total} shift${result.meta.total === 1 ? '' : 's'} ${scope} (${formatPaginationInfo(result.meta)}; paging is ` +
                 `client-side, the API returned everything in range). Times are HH:MM company local.\n\n` +
@@ -447,6 +505,7 @@ export function registerAttendanceTool(server: McpServer) {
                 coverage,
                 toleranceMinutes: args.tolerance_minutes,
                 format: args.format,
+                statuses: args.statuses,
               })
             );
           }
@@ -472,6 +531,8 @@ export function registerAttendanceTool(server: McpServer) {
                 segments: args.segments,
                 skip_leave: args.skip_leave,
                 jitter_minutes: args.jitter_minutes,
+                exclude_dates: args.exclude_dates,
+                variation_minutes: args.variation_minutes,
               };
             } else {
               if (!args.days || args.days.length === 0) {
@@ -483,6 +544,7 @@ export function registerAttendanceTool(server: McpServer) {
                 days: args.days,
                 skip_leave: args.skip_leave,
                 jitter_minutes: args.jitter_minutes,
+                variation_minutes: args.variation_minutes,
               };
             }
             const window = requestWindow(request);
