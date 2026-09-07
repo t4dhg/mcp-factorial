@@ -4,7 +4,8 @@ vi.stubEnv('FACTORIAL_API_KEY', 'test-key');
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-const { gatherFacts } = await import('../../../attendance/backfill.js');
+const { gatherFacts, executeBackfill, CONSECUTIVE_FAILURE_ABORT } =
+  await import('../../../attendance/backfill.js');
 const { clearCache } = await import('../../../api.js');
 
 /** Serve one workday, with whatever review records the test wants */
@@ -65,5 +66,106 @@ describe('gatherFacts', () => {
 
     expect(facts.reviews.size).toBe(0);
     expect(facts.coverage?.review_records).toBe(0);
+  });
+});
+
+/** Fail the POST for any date in `failDates`, succeed for the rest */
+function routeWrites(failDates: string[]) {
+  mockFetch.mockImplementation(async (input: string, init?: { method?: string; body?: string }) => {
+    const path = new URL(input).pathname;
+    if (init?.method === 'POST' && path.endsWith('/attendance/shifts')) {
+      const body = JSON.parse(init.body ?? '{}') as {
+        date: string;
+        employee_id: string;
+        clock_in: string;
+        clock_out: string;
+      };
+      if (failDates.includes(body.date)) {
+        return {
+          ok: false,
+          status: 403,
+          text: async () => JSON.stringify({ errors: ['Attendance period is closed'] }),
+          json: async () => ({ errors: ['Attendance period is closed'] }),
+        };
+      }
+      // The full shape ShiftSchema requires; a bare { id } fails validation
+      // and would make a successful write look like a failure.
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: '1',
+          employee_id: body.employee_id,
+          date: body.date,
+          reference_date: null,
+          clock_in: body.clock_in,
+          clock_out: body.clock_out,
+          in_source: 'api',
+          out_source: 'api',
+          observations: null,
+          location_type: null,
+          half_day: null,
+          workable: true,
+          minutes: null,
+          workplace_id: null,
+          time_settings_break_configuration_id: null,
+        }),
+        text: async () => '',
+      };
+    }
+    throw new Error(`unexpected fetch ${path}`);
+  });
+}
+
+describe('executeBackfill', () => {
+  const write = (date: string) => ({ date, clock_in: '09:00', clock_out: '17:00' });
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    clearCache();
+  });
+
+  it('carries on after a failure and attempts every record', async () => {
+    routeWrites(['2025-02-03']);
+
+    const result = await executeBackfill(7, [
+      write('2025-02-03'),
+      write('2025-03-03'),
+      write('2025-04-01'),
+    ]);
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(result.written.map(w => w.date)).toEqual(['2025-03-03', '2025-04-01']);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].date).toBe('2025-02-03');
+    expect(result.notAttempted).toHaveLength(0);
+    expect(result.abortedEarly).toBe(false);
+  });
+
+  it('aborts once failures are consecutive enough to be systemic', async () => {
+    const writes = Array.from({ length: 25 }, (_, i) =>
+      write(`2025-02-${String(i + 1).padStart(2, '0')}`)
+    );
+    routeWrites(writes.map(w => w.date));
+
+    const result = await executeBackfill(7, writes);
+
+    expect(result.failed).toHaveLength(CONSECUTIVE_FAILURE_ABORT);
+    expect(result.notAttempted).toHaveLength(25 - CONSECUTIVE_FAILURE_ABORT);
+    expect(result.abortedEarly).toBe(true);
+  });
+
+  it('resets the consecutive counter on a success', async () => {
+    const writes = Array.from({ length: 20 }, (_, i) =>
+      write(`2025-03-${String(i + 1).padStart(2, '0')}`)
+    );
+    // Every other date fails, so failures never reach the abort threshold.
+    routeWrites(writes.filter((_, i) => i % 2 === 0).map(w => w.date));
+
+    const result = await executeBackfill(7, writes);
+
+    expect(result.abortedEarly).toBe(false);
+    expect(result.written).toHaveLength(10);
+    expect(result.failed).toHaveLength(10);
   });
 });
