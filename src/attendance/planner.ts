@@ -63,6 +63,7 @@ export interface FactsCoverage {
   last_uncovered: string | null;
   leave_records: number;
   shift_records: number;
+  review_records: number;
 }
 
 export interface PlanFacts {
@@ -85,7 +86,8 @@ export function measureCoverage(
   dates: string[],
   days: Map<string, DayFacts>,
   leaveRecords: number,
-  shiftRecords: number
+  shiftRecords: number,
+  reviewRecords: number
 ): FactsCoverage {
   const uncovered = dates.filter(date => !days.has(date));
   return {
@@ -95,6 +97,7 @@ export function measureCoverage(
     last_uncovered: uncovered.length > 0 ? uncovered[uncovered.length - 1] : null,
     leave_records: leaveRecords,
     shift_records: shiftRecords,
+    review_records: reviewRecords,
   };
 }
 
@@ -102,7 +105,8 @@ export function measureCoverage(
 export function formatCoverage(coverage: FactsCoverage): string {
   const base =
     `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} days, ` +
-    `${coverage.leave_records} leave records, ${coverage.shift_records} shift records.`;
+    `${coverage.leave_records} leave records, ${coverage.shift_records} shift records, ` +
+    `${coverage.review_records} signed-off days.`;
   if (coverage.days_with_contract_data === coverage.days_in_window) return base;
   return (
     `${base} Days without contract data (${coverage.first_uncovered} to ${coverage.last_uncovered}) ` +
