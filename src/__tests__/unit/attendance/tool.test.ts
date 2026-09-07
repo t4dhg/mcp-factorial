@@ -221,7 +221,7 @@ describe('factorial_attendance tool', () => {
     expect(posts()).toEqual([]);
   });
 
-  it('reports a partial write honestly and stops at the first failure', async () => {
+  it('reports a partial write honestly, attempting every record instead of stopping', async () => {
     let count = 0;
     mockFetch.mockImplementation(
       async (input: string, init?: { method?: string; body?: string }) => {
@@ -259,11 +259,16 @@ describe('factorial_attendance tool', () => {
     const token = TOKEN.exec(first.content[0].text)?.[1];
     const second = await call({ ...range, confirmation_token: token });
     const text = second.content[0].text;
-    expect(text).toContain('Wrote 1 of 3 shift records');
-    expect(text).toMatch(/Stopped at 2026-12-29 09:00-13:00/);
-    expect(text).toContain('1 further records were not attempted');
+    expect(text).toContain('Wrote 2 of 3 shift records');
+    expect(text).toContain('1 record failed:');
+    expect(text).toMatch(/2026-12-29 09:00-13:00: boom/);
+    expect(text).not.toMatch(/Stopped at/);
+    expect(text).not.toMatch(/not attempted/);
     expect(text).toMatch(/Re-running the identical call is safe/);
     expect(text).toMatch(/does not protect against another writer/);
+    // The whole point of attempting every record: a write after an earlier
+    // failure still lands, and shows up as written.
+    expect(text).toMatch(/2026-12-30 09:00-13:00/);
   });
 
   it('gates a single-record write for another person when no identity is configured', async () => {
