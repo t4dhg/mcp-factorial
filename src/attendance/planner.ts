@@ -188,6 +188,8 @@ export const DEFAULT_TOLERANCE_MINUTES = 15;
 export const PREVIEW_FULL_LIST_MAX = 62;
 const PREVIEW_HEAD = 20;
 const PREVIEW_TAIL = 10;
+/** Days named individually in the overlap-skip summary before it gives a count */
+const PREVIEW_SKIP_DAYS_MAX = 10;
 
 /** Parse "HH:MM" into minutes since midnight; anything else is rejected */
 export function parseHHMM(value: string): number {
@@ -634,9 +636,16 @@ export function formatPlanPreview(
   employee: { id: number; name: string },
   range: { start: string; end: string },
   request: PlanRequest,
-  observations?: string
+  observations?: string,
+  coverage?: FactsCoverage
 ): string {
   const lines: string[] = [];
+  // The coverage line goes first, as it does in an audit. A result that is
+  // truncated or spilled to a file still shows what the plan was based on.
+  if (coverage) {
+    lines.push(formatCoverage(coverage));
+    lines.push('');
+  }
   lines.push(`Plan for ${employee.name} (${employee.id})`);
   lines.push(`${range.start} .. ${range.end}`);
   lines.push('');
@@ -698,10 +707,22 @@ export function formatPlanPreview(
   }
 
   if (plan.skippedSegments.length > 0) {
-    lines.push('');
-    lines.push(`  Skipping ${plan.skippedSegments.length} segments that overlap existing shifts:`);
+    const byDate = new Map<string, number>();
     for (const segment of plan.skippedSegments) {
-      lines.push(`    ${segment.date} ${segment.clock_in}-${segment.clock_out} ${segment.detail}`);
+      byDate.set(segment.date, (byDate.get(segment.date) ?? 0) + 1);
+    }
+    lines.push('');
+    lines.push(
+      `  ${plan.skippedSegments.length} segments on ${byDate.size} days overlap existing shifts and are skipped:`
+    );
+    const dates = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const [date, count] of dates.slice(0, PREVIEW_SKIP_DAYS_MAX)) {
+      lines.push(`    ${date}  ${count} segment${count === 1 ? '' : 's'} already covered`);
+    }
+    if (dates.length > PREVIEW_SKIP_DAYS_MAX) {
+      lines.push(
+        `    ... ${dates.length - PREVIEW_SKIP_DAYS_MAX} further days not listed; run audit with format: "table" to see them all ...`
+      );
     }
   }
 
