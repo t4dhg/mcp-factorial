@@ -144,6 +144,32 @@ describe('the guide', () => {
   it('does not document date/time arguments on clock_in or clock_out', () => {
     expect(REGISTRO_HORARIO_GUIDE).not.toMatch(/clock_in.*\bdate\b/);
   });
+
+  it('treats over as an anomaly that exceeds the tolerance, never as normal rounding', () => {
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/over.*exceed expected by more than the tolerance/);
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/forgotten clock-out/);
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/entered twice/);
+    expect(REGISTRO_HORARIO_GUIDE).toMatch(/never delete or overwrite records to correct one/);
+    // The exact defect that shipped: dismissing an excess above the tolerance as benign.
+    expect(REGISTRO_HORARIO_GUIDE).not.toMatch(/is normal/);
+    expect(REGISTRO_HORARIO_GUIDE).not.toMatch(/tolerance already allows for it/);
+  });
+
+  it('the worked example day counts sum to the window length', () => {
+    const need = (pattern: RegExp): number => {
+      const match = pattern.exec(REGISTRO_HORARIO_GUIDE);
+      expect(match).not.toBeNull();
+      return Number(match![1]);
+    };
+    const complete = need(/(\d+) days? complete,/);
+    const bankHolidays = need(/(\d+) bank holidays,/);
+    const weekend = need(/(\d+) weekend days,/);
+    const onLeave = need(/(\d+) on leave\./);
+    const missing = need(/(\d+) days? missing entirely/);
+    const short = need(/(\d+) days? short, tracked but under expected/);
+    const over = need(/(\d+) days? over by more than the tolerance/);
+    expect(complete + bankHolidays + weekend + onLeave + missing + short + over).toBe(249);
+  });
 });
 
 describe('attendance prompts', () => {
