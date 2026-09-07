@@ -26,7 +26,7 @@ import { textResponse } from '../tool-utils.js';
 import { listEmployees, getEmployee, getTeam, listLeaves, listAllowances } from '../api/index.js';
 
 // Tool registration imports
-import { CATEGORIES } from './shared.js';
+import { CATEGORIES, formatCategory } from './shared.js';
 import { registerEmployeesTool } from './employees.js';
 import { registerTeamsTool } from './teams.js';
 import { registerLocationsTool } from './locations.js';
@@ -67,15 +67,7 @@ server.registerTool(
   },
   ({ category }) => {
     if (category) {
-      const cat = CATEGORIES[category as keyof typeof CATEGORIES];
-      if (!cat) {
-        return textResponse(
-          `Unknown category: "${category}". Available: ${Object.keys(CATEGORIES).join(', ')}`
-        );
-      }
-      return textResponse(
-        `## ${cat.name}\n\n${cat.description}\n\n**Available actions:**\n${cat.actions.map(a => `- ${a}`).join('\n')}\n\n**Usage:** factorial_${category}(action: "${cat.actions[0]}", ...)`
-      );
+      return textResponse(formatCategory(category));
     }
 
     const categoryList = Object.entries(CATEGORIES)
@@ -85,7 +77,7 @@ server.registerTool(
       .join('\n');
 
     return textResponse(
-      `# FactorialHR Tool Categories\n\nUse \`factorial_discover(category: "name")\` for action details.\n\n${categoryList}\n\n**Total: 14 tools covering 117 operations**\n\nFor the registro horario (attendance record) workflows, read the guide resource ${GUIDE_URI} or use the prompts attendance_audit, attendance_fill and attendance_today.`
+      `# FactorialHR Tool Categories\n\nUse \`factorial_discover(category: "name")\` for action details.\n\n${categoryList}\n\n**Total: 14 tools covering 117 operations**\n\nFor the registro horario (attendance record) workflows, read the guide resource ${GUIDE_URI} or use the prompts attendance_audit, attendance_fill, attendance_today, attendance_reconcile and attendance_fill_days.`
     );
   }
 );
