@@ -100,7 +100,14 @@ export function parseDaysArg(text: string): Array<{ date: string; segments: Segm
       'days is required, for example [{"date":"2026-03-02","segments":"09:00-14:00"}]'
     );
   }
-  const parsed: unknown = JSON.parse(trimmed);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error(
+      'days must be valid JSON, for example [{"date":"2026-03-02","segments":"09:00-14:00"}]'
+    );
+  }
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error('days must be a non-empty JSON array of {date, segments}');
   }
@@ -642,9 +649,9 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
       },
     },
     async ({ days, employee_id, observations, jitter_minutes }) => {
+      const entries = parseDaysArg(days);
       const employeeId = resolveTargetEmployeeId(parseOptionalInt(employee_id, 'employee_id'));
       const name = await resolveEmployeeName(employeeId);
-      const entries = parseDaysArg(days);
       const jitter = parseOptionalInt(jitter_minutes, 'jitter_minutes') ?? 8;
       const note =
         observations && observations.trim() !== ''
