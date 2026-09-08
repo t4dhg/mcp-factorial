@@ -1,1 +1,2 @@
+node scripts/preflight-scan.mjs
 npx lint-staged
