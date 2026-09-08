@@ -10,6 +10,21 @@
 
 import { createHash } from 'node:crypto';
 
+/**
+ * Printed once on every attendance write result and preview.
+ *
+ * A backfilled record shows the real working day and hours on the attendance
+ * sheet, while Factorial's own activity log shows it was entered later through
+ * the API. Both are true at once, and neither can be altered through the API.
+ * Saying so plainly stops a user believing either that the entry is hidden or
+ * that the working time is wrong.
+ */
+export const ENTRY_TIME_NOTE =
+  'Declared working time is the date, clock in and clock out above, and that is what the ' +
+  'attendance sheet and the hour totals show. Separately, Factorial stamps created_at, ' +
+  'updated_at and in_source/out_source with the moment and channel of entry; those are set by ' +
+  'Factorial, are visible in its activity log, and cannot be set or changed through the API.';
+
 /** A working segment on one day, in company local wall-clock time */
 export interface Segment {
   clock_in: string;
@@ -63,6 +78,15 @@ export interface FactsCoverage {
   last_uncovered: string | null;
   leave_records: number;
   shift_records: number;
+  review_records: number;
+  /**
+   * Set when the signed-off-dates read (listReviews) failed; review_records
+   * is then 0 and facts.reviews is empty, not because nothing is signed off
+   * but because it could not be read. Printed prominently: a plan built on
+   * this may queue writes to dates that are actually signed off and will be
+   * refused by Factorial.
+   */
+  reviews_error: string | null;
 }
 
 export interface PlanFacts {
@@ -74,6 +98,8 @@ export interface PlanFacts {
   shifts: ExistingShift[];
   /** Approved leave cover per date, see expandLeaves */
   leaves: Map<string, LeaveCover>;
+  /** Dates whose timesheet has been signed off; closed for writing */
+  reviews: Set<string>;
   /** What the reads covered; absent when the facts were not read from the API */
   coverage?: FactsCoverage;
 }
@@ -83,7 +109,9 @@ export function measureCoverage(
   dates: string[],
   days: Map<string, DayFacts>,
   leaveRecords: number,
-  shiftRecords: number
+  shiftRecords: number,
+  reviewRecords: number,
+  reviewsError: string | null = null
 ): FactsCoverage {
   const uncovered = dates.filter(date => !days.has(date));
   return {
@@ -93,19 +121,32 @@ export function measureCoverage(
     last_uncovered: uncovered.length > 0 ? uncovered[uncovered.length - 1] : null,
     leave_records: leaveRecords,
     shift_records: shiftRecords,
+    review_records: reviewRecords,
+    reviews_error: reviewsError,
   };
 }
 
 /** One line for the header of an audit, gaps or preview */
 export function formatCoverage(coverage: FactsCoverage): string {
+  const day = coverage.days_in_window === 1 ? 'day' : 'days';
+  const leaveRecord = coverage.leave_records === 1 ? 'leave record' : 'leave records';
+  const shiftRecord = coverage.shift_records === 1 ? 'shift record' : 'shift records';
+  const signedOffDay = coverage.review_records === 1 ? 'signed-off day' : 'signed-off days';
   const base =
-    `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} days, ` +
-    `${coverage.leave_records} leave records, ${coverage.shift_records} shift records.`;
-  if (coverage.days_with_contract_data === coverage.days_in_window) return base;
+    `Data read: contract data for ${coverage.days_with_contract_data} of ${coverage.days_in_window} ${day}, ` +
+    `${coverage.leave_records} ${leaveRecord}, ${coverage.shift_records} ${shiftRecord}, ` +
+    `${coverage.review_records} ${signedOffDay}.`;
+  const reviewsWarning = coverage.reviews_error
+    ? ` Signed-off dates could not be read (${coverage.reviews_error}); none are known here, so a ` +
+      'plan below may queue writes to dates that are actually signed off and will be refused by ' +
+      'Factorial.'
+    : '';
+  if (coverage.days_with_contract_data === coverage.days_in_window)
+    return `${base}${reviewsWarning}`;
   return (
     `${base} Days without contract data (${coverage.first_uncovered} to ${coverage.last_uncovered}) ` +
     'are reported as no_contract_data and are never written; they usually precede the start of ' +
-    'employment. If that is not the case here, the read is incomplete and the result must not be trusted.'
+    `employment. If that is not the case here, the read is incomplete and the result must not be trusted.${reviewsWarning}`
   );
 }
 
@@ -117,6 +158,10 @@ export interface RangeRequest {
   skip_leave: boolean;
   /** Vary each written time by up to this many minutes, deterministically per record */
   jitter_minutes?: number;
+  /** Shift each whole day by up to this many minutes, deterministically per day */
+  variation_minutes?: number;
+  /** Dates inside the range to leave alone, for days not worked */
+  exclude_dates?: string[];
 }
 
 export interface DaysRequest {
@@ -126,6 +171,8 @@ export interface DaysRequest {
   skip_leave: boolean;
   /** Vary each written time by up to this many minutes, deterministically per record */
   jitter_minutes?: number;
+  /** Shift each whole day by up to this many minutes, deterministically per day */
+  variation_minutes?: number;
 }
 
 export type PlanRequest = RangeRequest | DaysRequest;
@@ -137,7 +184,9 @@ export type SkipReason =
   | 'not_workable'
   | 'no_contract_data'
   | 'on_leave'
-  | 'half_day_leave';
+  | 'half_day_leave'
+  | 'signed_off'
+  | 'excluded';
 
 export interface SkippedDay {
   date: string;
@@ -164,6 +213,14 @@ export interface Gap {
   tracked_minutes: number;
   missing_minutes: number;
   half_day_leave: 'beggining_of_day' | 'end_of_day' | null;
+  /**
+   * The timesheet for this date has been signed off and is closed for
+   * writing. log_range and log_days both skip it (daySkipReason's signed_off
+   * rule); only create_edit_request can reach it. Still reported as a gap,
+   * since the hours are genuinely missing, but the caller must not be told
+   * to fill it the same way as an open date.
+   */
+  signed_off: boolean;
 }
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -181,6 +238,8 @@ export const DEFAULT_TOLERANCE_MINUTES = 15;
 export const PREVIEW_FULL_LIST_MAX = 62;
 const PREVIEW_HEAD = 20;
 const PREVIEW_TAIL = 10;
+/** Days named individually in the overlap-skip summary before it gives a count */
+const PREVIEW_SKIP_DAYS_MAX = 10;
 
 /** Parse "HH:MM" into minutes since midnight; anything else is rejected */
 export function parseHHMM(value: string): number {
@@ -197,9 +256,40 @@ export function intervalsOverlap(a: [number, number], b: [number, number]): bool
 }
 
 function assertDate(value: string): void {
-  if (!DATE.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+  const match = DATE.exec(value);
+  const parsed = match ? Date.parse(`${value}T00:00:00Z`) : NaN;
+  if (!match || Number.isNaN(parsed)) {
     throw new Error(`Date "${value}" must be YYYY-MM-DD`);
   }
+  // Date.parse silently rolls an impossible date (2026-02-30) over into the
+  // next valid one (2026-03-02). A rolled-over date must be rejected, not
+  // written to a different day than the caller typed: reparse the accepted
+  // instant and compare it against the three numbers actually given.
+  const rolled = new Date(parsed);
+  const [year, month, day] = value.split('-').map(Number);
+  if (
+    rolled.getUTCFullYear() !== year ||
+    rolled.getUTCMonth() !== month - 1 ||
+    rolled.getUTCDate() !== day
+  ) {
+    throw new Error(`Date "${value}" does not exist`);
+  }
+}
+
+/**
+ * Turn a company-local day and wall-clock time into a Date in the zone the
+ * server runs in, which is the zone `formatLocalIso` stamps an offset from.
+ *
+ * This exists so a person who forgot to clock can say when they actually
+ * started or stopped. The declared moment is what Factorial records as the
+ * working time; the moment of the API call is recorded separately by Factorial
+ * as created_at and cannot be set through the API.
+ */
+export function declaredMoment(date: string, time: string): Date {
+  assertDate(date);
+  const minutes = parseHHMM(time);
+  const [year, month, day] = date.split('-').map(Number);
+  return new Date(year, month - 1, day, Math.floor(minutes / 60), minutes % 60, 0, 0);
 }
 
 /** Every date from start to end inclusive */
@@ -283,6 +373,19 @@ function daySkipReason(date: string, request: PlanRequest, facts: PlanFacts): Sk
       date,
       reason: 'future_date',
       detail: `today is ${facts.today} in the zone of the machine running the server`,
+    };
+  }
+  if (request.mode === 'range' && request.exclude_dates?.includes(date)) {
+    return { date, reason: 'excluded', detail: 'listed in exclude_dates' };
+  }
+  // Applies in both modes. A signed-off date refuses a write whatever the
+  // calendar says about it, so log_days must not bypass this the way it
+  // deliberately bypasses the weekend and holiday rules.
+  if (facts.reviews.has(date)) {
+    return {
+      date,
+      reason: 'signed_off',
+      detail: 'the timesheet for this date has been signed off and is closed for writing',
     };
   }
   const day = facts.days.get(date);
@@ -405,6 +508,38 @@ export function jitterSegments(
 }
 
 /**
+ * Shift a whole day by one offset, so the start time drifts from day to day.
+ *
+ * This is the variation `jitter_minutes` cannot produce. Jitter moves each
+ * segment of a day independently around the pattern, which varies the shape of
+ * a day but leaves every day starting near the same time. Reconstructed
+ * records that all begin at 09:00 give themselves away; this moves the whole
+ * day together, so the pattern within it survives intact.
+ *
+ * Deterministic from the employee and the date, so the preview, the token and
+ * any retry all agree. Compose it before jitter, never after.
+ */
+export function varySegments(
+  employeeId: number,
+  date: string,
+  segments: Segment[],
+  magnitude: number
+): Segment[] {
+  if (magnitude <= 0) return segments;
+  const ordered = [...segments].sort((a, b) => parseHHMM(a.clock_in) - parseHHMM(b.clock_in));
+  const offset = deterministicOffset(`variation|${employeeId}|${date}`, magnitude);
+  const earliest = parseHHMM(ordered[0].clock_in);
+  const latest = parseHHMM(ordered[ordered.length - 1].clock_out);
+  // Clamp the whole day rather than any single segment, so the offset stays
+  // uniform and no segment changes length.
+  const applied = Math.max(-earliest, Math.min(offset, END_OF_DAY - 1 - latest));
+  return ordered.map(segment => ({
+    clock_in: formatHHMM(parseHHMM(segment.clock_in) + applied),
+    clock_out: formatHHMM(parseHHMM(segment.clock_out) + applied),
+  }));
+}
+
+/**
  * Build the plan. Skip reasons are evaluated in the documented order and the
  * first match wins. Explicit days skip the weekday, holiday and workability
  * rules on purpose: migration must be able to write a Saturday someone worked.
@@ -442,12 +577,14 @@ export function buildBackfillPlan(request: PlanRequest, facts: PlanFacts): Backf
       continue;
     }
     const existing = existingIntervals(facts.shifts, date);
-    const planned = jitterSegments(
+    // Variation moves the whole day; jitter then varies segments inside it.
+    const varied = varySegments(
       request.employee_id,
       date,
       segments,
-      request.jitter_minutes ?? 0
+      request.variation_minutes ?? 0
     );
+    const planned = jitterSegments(request.employee_id, date, varied, request.jitter_minutes ?? 0);
     for (const segment of planned) {
       const interval: [number, number] = [
         parseHHMM(segment.clock_in),
@@ -514,6 +651,7 @@ export function computeGaps(facts: PlanFacts, toleranceMinutes = DEFAULT_TOLERAN
       tracked_minutes: day.tracked_minutes,
       missing_minutes: day.expected_minutes - day.tracked_minutes,
       half_day_leave: cover ?? null,
+      signed_off: facts.reviews.has(date),
     });
   }
   return gaps;
@@ -529,6 +667,7 @@ export type LedgerStatus =
   | 'half_day_leave'
   | 'complete'
   | 'missing'
+  | 'short'
   | 'over';
 
 export interface LedgerDay {
@@ -539,6 +678,8 @@ export interface LedgerDay {
   leave: LeaveCover | null;
   shifts: Array<{ clock_in: string; clock_out: string | null; minutes: number | null }>;
   status: LedgerStatus;
+  /** The timesheet for this date has been signed off; it is closed for writing */
+  signed_off: boolean;
   /** tracked minus expected; negative means hours are missing */
   delta_minutes: number;
 }
@@ -574,7 +715,7 @@ export function computeLedger(
     else if (leave === 'full') status = 'on_leave';
     else if (leave) status = 'half_day_leave';
     else if (expected <= 0) status = 'not_workable';
-    else if (expected - tracked > toleranceMinutes) status = 'missing';
+    else if (expected - tracked > toleranceMinutes) status = tracked === 0 ? 'missing' : 'short';
     else if (tracked - expected > toleranceMinutes) status = 'over';
     else status = 'complete';
     return {
@@ -585,6 +726,7 @@ export function computeLedger(
       leave,
       shifts,
       status,
+      signed_off: facts.reviews.has(date),
       delta_minutes: tracked - expected,
     };
   });
@@ -613,14 +755,23 @@ export function formatPlanPreview(
   employee: { id: number; name: string },
   range: { start: string; end: string },
   request: PlanRequest,
-  observations?: string
+  observations?: string,
+  coverage?: FactsCoverage
 ): string {
   const lines: string[] = [];
+  // The coverage line goes first, as it does in an audit. A result that is
+  // truncated or spilled to a file still shows what the plan was based on.
+  if (coverage) {
+    lines.push(formatCoverage(coverage));
+    lines.push('');
+  }
   lines.push(`Plan for ${employee.name} (${employee.id})`);
   lines.push(`${range.start} .. ${range.end}`);
   lines.push('');
+  const totalsDay = plan.totals.days === 1 ? 'day' : 'days';
+  const totalsRecord = plan.totals.records === 1 ? 'shift record' : 'shift records';
   lines.push(
-    `  ${plan.totals.days} days to write, ${plan.totals.records} shift records, ${hours(plan.totals.minutes)}`
+    `  ${plan.totals.days} ${totalsDay} to write, ${plan.totals.records} ${totalsRecord}, ${hours(plan.totals.minutes)}`
   );
   if (request.mode === 'range') {
     lines.push(`  ${request.segments.map(s => `${s.clock_in}-${s.clock_out}`).join(' and ')}`);
@@ -628,9 +779,16 @@ export function formatPlanPreview(
   if (observations) {
     lines.push(`  Note on every record: "${observations}"`);
   }
-  if (request.jitter_minutes && request.jitter_minutes > 0) {
+  if (request.variation_minutes && request.variation_minutes > 0) {
+    const variationMinute = request.variation_minutes === 1 ? 'minute' : 'minutes';
     lines.push(
-      `  Each time varies by up to ${request.jitter_minutes} minutes from the pattern (fixed per record, listed below).`
+      `  Each day starts up to ${request.variation_minutes} ${variationMinute} earlier or later than the pattern, the whole day moving together (fixed per day, listed below).`
+    );
+  }
+  if (request.jitter_minutes && request.jitter_minutes > 0) {
+    const jitterMinute = request.jitter_minutes === 1 ? 'minute' : 'minutes';
+    lines.push(
+      `  Each time varies by up to ${request.jitter_minutes} ${jitterMinute} from the pattern (fixed per record, listed below).`
     );
   }
   if (plan.writes.length > 0) {
@@ -647,7 +805,7 @@ export function formatPlanPreview(
       const hidden = plan.writes.length - head.length - tail.length;
       for (const w of head) lines.push(record(w));
       lines.push(
-        `    ... ${hidden} more records not listed; the confirmation token binds to all of them ...`
+        `    ... ${hidden} more record${hidden === 1 ? '' : 's'} not listed; the confirmation token binds to all of them ...`
       );
       for (const w of tail) lines.push(record(w));
     }
@@ -655,7 +813,9 @@ export function formatPlanPreview(
 
   if (plan.skippedDays.length > 0) {
     lines.push('');
-    lines.push(`  Skipping ${plan.skippedDays.length} days:`);
+    lines.push(
+      `  Skipping ${plan.skippedDays.length} day${plan.skippedDays.length === 1 ? '' : 's'}:`
+    );
     const byReason = countBy(plan.skippedDays);
     const labels: Record<SkipReason, string> = {
       future_date: 'in the future',
@@ -666,6 +826,9 @@ export function formatPlanPreview(
         'without contract data in Factorial for the date (not written; usually before the start of employment)',
       on_leave: 'approved leave',
       half_day_leave: 'half-day leave, write it with log_days if the other half was worked',
+      signed_off:
+        'signed off in Factorial and closed for writing (ask the approver to reopen, or file an edit request)',
+      excluded: 'excluded by the caller',
     };
     for (const [reason, count] of byReason) {
       const dates = plan.skippedDays.filter(d => d.reason === reason).map(d => d.date);
@@ -675,11 +838,31 @@ export function formatPlanPreview(
   }
 
   if (plan.skippedSegments.length > 0) {
-    lines.push('');
-    lines.push(`  Skipping ${plan.skippedSegments.length} segments that overlap existing shifts:`);
+    const byDate = new Map<string, number>();
     for (const segment of plan.skippedSegments) {
-      lines.push(`    ${segment.date} ${segment.clock_in}-${segment.clock_out} ${segment.detail}`);
+      byDate.set(segment.date, (byDate.get(segment.date) ?? 0) + 1);
     }
+    lines.push('');
+    const segmentCount = plan.skippedSegments.length;
+    const dayCount = byDate.size;
+    lines.push(
+      `  ${segmentCount} segment${segmentCount === 1 ? '' : 's'} on ${dayCount} day${dayCount === 1 ? '' : 's'} overlap existing shifts and are skipped:`
+    );
+    const dates = [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const [date, count] of dates.slice(0, PREVIEW_SKIP_DAYS_MAX)) {
+      lines.push(`    ${date}  ${count} segment${count === 1 ? '' : 's'} already covered`);
+    }
+    if (dates.length > PREVIEW_SKIP_DAYS_MAX) {
+      const further = dates.length - PREVIEW_SKIP_DAYS_MAX;
+      lines.push(
+        `    ... ${further} further day${further === 1 ? '' : 's'} not listed; run audit with format: "table" to see them all ...`
+      );
+    }
+  }
+
+  if (plan.writes.length > 0) {
+    lines.push('');
+    lines.push(ENTRY_TIME_NOTE);
   }
 
   return lines.join('\n');

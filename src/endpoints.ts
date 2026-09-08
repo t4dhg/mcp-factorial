@@ -34,6 +34,8 @@ export const ENDPOINTS = {
   workedTimes: '/attendance/worked_times',
   clockIn: '/attendance/shifts/clock_in',
   clockOut: '/attendance/shifts/clock_out',
+  reviews: '/attendance/reviews',
+  editTimesheetRequests: '/attendance/edit_timesheet_requests',
 
   // Document endpoints
   folders: '/documents/folders',

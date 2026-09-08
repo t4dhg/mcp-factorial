@@ -60,6 +60,16 @@ export const CATEGORIES = {
       'audit',
       'log_range',
       'log_days',
+      'list_edit_requests',
+      'create_edit_request',
+    ],
+    guide: 'factorial://guides/registro-horario',
+    prompts: [
+      'attendance_audit',
+      'attendance_fill',
+      'attendance_today',
+      'attendance_reconcile',
+      'attendance_fill_days',
     ],
   },
   documents: {
@@ -162,6 +172,34 @@ export const CATEGORIES = {
     ],
   },
 } as const;
+
+/**
+ * Render one category for factorial_discover.
+ *
+ * Lives here rather than in tools/index.ts because that module builds the whole
+ * server as an import side effect, which a unit test cannot pull in.
+ */
+export function formatCategory(category: string): string {
+  const cat = CATEGORIES[category as keyof typeof CATEGORIES];
+  if (!cat) {
+    return `Unknown category: "${category}". Available: ${Object.keys(CATEGORIES).join(', ')}`;
+  }
+  const guide =
+    'guide' in cat && cat.guide
+      ? `\n\n**Guide:** read the resource ${cat.guide} before a first bulk write.`
+      : '';
+  const prompts =
+    'prompts' in cat && cat.prompts?.length
+      ? `\n\n**Prompts:** ${cat.prompts.join(', ')}. Each one pre-reads the facts its procedure ` +
+        'starts from and states the exact calls that follow. Each is also readable as the ' +
+        `resource factorial://prompts/<name>, for clients that cannot invoke a prompt directly.`
+      : '';
+  return (
+    `## ${cat.name}\n\n${cat.description}\n\n**Available actions:**\n` +
+    `${cat.actions.map(a => `- ${a}`).join('\n')}\n\n` +
+    `**Usage:** factorial_${category}(action: "${cat.actions[0]}", ...)${guide}${prompts}`
+  );
+}
 
 /**
  * Check if confirmation is required for a high-risk operation

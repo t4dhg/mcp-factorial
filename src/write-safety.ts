@@ -190,6 +190,15 @@ const POLICIES = {
       'to the previewed plan (the preview names the person, the dates and the totals), not by confirm: true.',
   },
 
+  create_edit_request: {
+    risk: OperationRisk.MEDIUM,
+    requiresConfirmation: false,
+    requiresPreview: true,
+    impactDescription:
+      'Files a request to change a timesheet, which notifies whoever approves them. Gated by a ' +
+      'confirmation token bound to the previewed request, not by confirm: true.',
+  },
+
   // Document operations
   upload_document: {
     risk: OperationRisk.MEDIUM,

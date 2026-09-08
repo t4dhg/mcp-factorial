@@ -86,8 +86,19 @@ export function registerTimeOffTool(server: McpServer) {
               approved: l.approved,
               deleted_at: l.deleted_at,
             }));
+            const pending = result.data.filter(l => l.approved !== true && l.deleted_at === null);
+            const pendingNote =
+              pending.length > 0
+                ? `\n\n${pending.length} pending or unapproved: ${pending
+                    .map(
+                      l => `${l.start_on}${l.finish_on !== l.start_on ? ` to ${l.finish_on}` : ''}`
+                    )
+                    .join(', ')}. These do not block attendance writes and are not counted as ` +
+                  'leave by gaps, audit or the planner. A pending record on a date that already ' +
+                  'has approved leave is usually a duplicate worth cleaning up.'
+                : '';
             return textResponse(
-              `Found ${result.data.length} leaves (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}`
+              `Found ${result.data.length} leaves (${formatPaginationInfo(result.meta)}):\n\n${JSON.stringify(summary, null, 2)}${pendingNote}`
             );
           }
 

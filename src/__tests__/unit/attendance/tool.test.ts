@@ -30,6 +30,22 @@ function captureHandler(): Handler {
   return handler;
 }
 
+/** Sibling of captureHandler that keeps the registered config instead of discarding it */
+function captureConfig(): {
+  description: string;
+  inputSchema: Record<string, { description?: string }>;
+} {
+  let config: { description: string; inputSchema: Record<string, unknown> } | undefined;
+  const fake = {
+    registerTool: (_name: string, cfg: typeof config, _fn: unknown) => {
+      config = cfg;
+    },
+  } as unknown as McpServer;
+  registerAttendanceTool(fake);
+  if (!config) throw new Error('tool not registered');
+  return config as never;
+}
+
 const TOKEN = /confirmation_token: ([0-9a-f]{32})/;
 const EMPLOYEE = {
   id: '2',
@@ -43,6 +59,7 @@ function routeFetch(routes: {
   shifts?: unknown[];
   openShifts?: unknown[];
   leaves?: unknown[];
+  reviews?: unknown[];
   onPost?: (body: Record<string, unknown>) => unknown;
 }) {
   mockFetch.mockImplementation(async (input: string, init?: { method?: string; body?: string }) => {
@@ -67,6 +84,7 @@ function routeFetch(routes: {
     if (path.endsWith('/attendance/shifts')) return ok({ data: routes.shifts ?? [] });
     if (path.endsWith('/attendance/open_shifts')) return ok({ data: routes.openShifts ?? [] });
     if (path.endsWith('/timeoff/leaves')) return ok({ data: routes.leaves ?? [] });
+    if (path.endsWith('/attendance/reviews')) return ok({ data: routes.reviews ?? [] });
     throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${path}`);
   });
 }
@@ -115,7 +133,7 @@ describe('factorial_attendance tool', () => {
     vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '2');
     routeFetch({ shifts: [shiftsFixture.data[0]] });
     const mine = await call({ action: 'list', start_on: '2026-12-01', end_on: '2026-12-31' });
-    expect(mine.content[0].text).toContain('shifts for employee 2 (');
+    expect(mine.content[0].text).toContain('Found 1 shift for employee 2 (');
     const listUrl = new URL(
       mockFetch.mock.calls.find(([u]) => /attendance\/shifts/.test(u as string))![0] as string
     );
@@ -214,12 +232,17 @@ describe('factorial_attendance tool', () => {
     const second = await call({ ...range, confirmation_token: token });
     const text = second.content[0].text;
     expect(text).toMatch(/plan changed/);
-    expect(text).toContain('2026-12-29 09:00-13:00 overlaps existing 09:15-13:15');
+    // The overlap list now collapses to a per-day count instead of a
+    // per-segment line; this pins what the collapsed line actually renders.
+    // Singular counts get singular nouns: "1 segment on 1 day", not
+    // "1 segments on 1 days".
+    expect(text).toContain('1 segment on 1 day overlap existing shifts and are skipped:');
+    expect(text).toContain('2026-12-29  1 segment already covered');
     expect(text).toMatch(TOKEN);
     expect(posts()).toEqual([]);
   });
 
-  it('reports a partial write honestly and stops at the first failure', async () => {
+  it('reports a partial write honestly, attempting every record instead of stopping', async () => {
     let count = 0;
     mockFetch.mockImplementation(
       async (input: string, init?: { method?: string; body?: string }) => {
@@ -249,6 +272,7 @@ describe('factorial_attendance tool', () => {
           return ok({ data: estimatedFixture.data });
         if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: [] });
         if (url.pathname.endsWith('/timeoff/leaves')) return ok({ data: [] });
+        if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
         throw new Error(`unexpected ${url.pathname}`);
       }
     );
@@ -256,11 +280,16 @@ describe('factorial_attendance tool', () => {
     const token = TOKEN.exec(first.content[0].text)?.[1];
     const second = await call({ ...range, confirmation_token: token });
     const text = second.content[0].text;
-    expect(text).toContain('Wrote 1 of 3 shift records');
-    expect(text).toMatch(/Stopped at 2026-12-29 09:00-13:00/);
-    expect(text).toContain('1 further records were not attempted');
+    expect(text).toContain('Wrote 2 of 3 shift records');
+    expect(text).toContain('1 record failed:');
+    expect(text).toMatch(/2026-12-29 09:00-13:00: boom/);
+    expect(text).not.toMatch(/Stopped at/);
+    expect(text).not.toMatch(/not attempted/);
     expect(text).toMatch(/Re-running the identical call is safe/);
     expect(text).toMatch(/does not protect against another writer/);
+    // The whole point of attempting every record: a write after an earlier
+    // failure still lands, and shows up as written.
+    expect(text).toMatch(/2026-12-30 09:00-13:00/);
   });
 
   it('gates a single-record write for another person when no identity is configured', async () => {
@@ -409,13 +438,15 @@ describe('factorial_attendance tool', () => {
     const text = (await call(audit)).content[0].text;
     expect(text).toContain('Attendance audit for Placeholder Person (2), 2026-12-24 to 2026-12-31');
     expect(text).toContain(
-      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift records.'
+      'Data read: contract data for 8 of 8 days, 0 leave records, 1 shift record, 0 signed-off days.'
     );
-    expect(text).toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
     expect(text).toMatch(/2026-12-28\s+workday\s+missing.*09:02-13:05/);
-    // Weekends and complete days are counted in the summary line, not listed
+    // Weekends, complete days, and bank holidays are counted in the summary
+    // line, not listed
     expect(text).not.toMatch(/2026-12-26\s+saturday/);
+    expect(text).not.toMatch(/2026-12-25\s+bank_holiday\s+bank_holiday/);
     expect(text).toMatch(/2 weekend/);
+    expect(text).toMatch(/3 bank_holiday/);
     expect(text).not.toContain('Machine-readable ledger');
     expect(text).toContain('format: "table"');
   });
@@ -479,6 +510,7 @@ describe('factorial_attendance tool', () => {
         return ok({ data: [], meta: { has_next_page: false, paginateable: false } });
       if (url.pathname.endsWith('/timeoff/leaves'))
         return ok({ data: [], meta: { has_next_page: false, total: 0, limit: 100 } });
+      if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
       throw new Error(`unexpected ${url.pathname}`);
     });
     const text = (
@@ -508,6 +540,7 @@ describe('factorial_attendance tool', () => {
         return ok({ data: estimatedFixture.data.filter(d => d.date >= '2026-12-28') });
       if (url.pathname.endsWith('/attendance/shifts')) return ok({ data: [] });
       if (url.pathname.endsWith('/timeoff/leaves')) return ok({ data: [] });
+      if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
       throw new Error(`unexpected ${url.pathname}`);
     });
     const text = (await call(audit)).content[0].text;
@@ -560,6 +593,7 @@ describe('factorial_attendance tool', () => {
             : { data: [december], meta: { has_next_page: false, total: 101, limit: 100 } }
         );
       }
+      if (url.pathname.endsWith('/attendance/reviews')) return ok({ data: [] });
       throw new Error(`unexpected ${url.pathname}`);
     });
     const text = (await call(range)).content[0].text;
@@ -596,10 +630,321 @@ describe('factorial_attendance tool', () => {
     };
     const first = await call(args);
     const text = first.content[0].text;
-    expect(text).toContain('1 days to write, 1 shift records, 4h');
+    expect(text).toContain('1 day to write, 1 shift record, 4h');
     expect(text).toMatch(/1 in the future \(2027-02-01\)/);
     const token = TOKEN.exec(text)?.[1];
     await call({ ...args, confirmation_token: token });
     expect(posts().map(p => p.date)).toEqual(['2026-12-25']);
+  });
+
+  it('surfaces abortedEarly and notAttempted when failures abort the run', async () => {
+    // log_days bypasses the weekend/holiday skip rules, so every one of these
+    // 15 explicit days is planned; all fail, tripping the consecutive-failure
+    // abort at 10 and leaving the last 5 unattempted.
+    const days = Array.from({ length: 15 }, (_, i) => ({
+      date: `2026-12-${String(i + 1).padStart(2, '0')}`,
+      segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+    }));
+    routeFetch({
+      shifts: [],
+      onPost: () => {
+        throw new Error('Factorial refused this write (HTTP 403).');
+      },
+    });
+    const args = { action: 'log_days', employee_id: 2, days };
+    const preview = (await call(args)).content[0].text;
+    const token = TOKEN.exec(preview)?.[1];
+    expect(token).toBeDefined();
+
+    const text = (await call({ ...args, confirmation_token: token })).content[0].text;
+
+    expect(text).toContain('Wrote 0 of 15 shift records');
+    expect(text).toContain('10 records failed:');
+    expect(text).toContain(
+      'Stopped after 10 failures in a row, which points at the request rather than the records. ' +
+        '5 records not attempted.'
+    );
+    expect(text).toMatch(/Re-running the identical call is safe/);
+  });
+
+  it('summarizes a bulk write by month once it exceeds 62 records, singular nouns for a 1-day month', async () => {
+    // 63 records spread across four months, two of which land exactly one
+    // day, to exercise both the plural and singular branches of the summary.
+    const days = [
+      { date: '2026-10-31', segments: [{ clock_in: '09:00', clock_out: '17:00' }] },
+      ...Array.from({ length: 30 }, (_, i) => ({
+        date: `2026-11-${String(i + 1).padStart(2, '0')}`,
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      })),
+      ...Array.from({ length: 31 }, (_, i) => ({
+        date: `2026-12-${String(i + 1).padStart(2, '0')}`,
+        segments: [{ clock_in: '09:00', clock_out: '17:00' }],
+      })),
+      { date: '2027-01-01', segments: [{ clock_in: '09:00', clock_out: '17:00' }] },
+    ];
+    expect(days).toHaveLength(63);
+    routeFetch({ shifts: [] });
+    const args = { action: 'log_days', employee_id: 2, days };
+    const preview = (await call(args)).content[0].text;
+    const token = TOKEN.exec(preview)?.[1];
+    expect(token).toBeDefined();
+
+    const text = (await call({ ...args, confirmation_token: token })).content[0].text;
+
+    expect(text).toContain('Wrote 63 of 63 shift records');
+    expect(text).toContain('2026-10  1 day, 1 record, 8h');
+    expect(text).toContain('2026-11  30 days, 30 records, 240h');
+    expect(text).toContain('2026-12  31 days, 31 records, 248h');
+    expect(text).toContain('2027-01  1 day, 1 record, 8h');
+    // Per-record lines are the other branch of describeWrites; this run must
+    // not fall back to them.
+    expect(text).not.toContain('2026-11-01 09:00-17:00');
+  });
+});
+
+describe('create_edit_request and list_edit_requests', () => {
+  let call: Handler;
+
+  beforeEach(() => {
+    mockFetch.mockReset();
+    clearCache();
+    clearResolvedNames();
+    confirmationManager.clear();
+    vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2027-01-15T10:00:00Z'));
+    call = captureHandler();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function jsonResponse(json: unknown) {
+    return { ok: true, status: 200, json: async () => json, text: async () => '' };
+  }
+
+  it('previews an edit request before filing it, and files it on the second call', async () => {
+    mockFetch.mockImplementation(async (input: string, init?: { method?: string }) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/employees/employees/2')) return jsonResponse(EMPLOYEE);
+      if (init?.method === 'POST' && path.endsWith('/attendance/edit_timesheet_requests')) {
+        return jsonResponse({ id: '6', request_type: 'create_shift', employee_id: '2' });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    });
+
+    const args = {
+      action: 'create_edit_request',
+      employee_id: 2,
+      date: '2025-02-03',
+      clock_in: '09:00',
+      clock_out: '17:00',
+      reason: 'Hours worked but never clocked',
+    };
+
+    const first = (await call(args)).content[0].text;
+    expect(first).toContain('Nothing has been written');
+    expect(first).toContain('2025-02-03');
+    expect(first).toContain('Hours worked but never clocked');
+
+    const token = TOKEN.exec(first)?.[1];
+    const second = (await call({ ...args, confirmation_token: token })).content[0].text;
+    expect(second).toContain('Edit request 6 filed');
+  });
+
+  it('refuses to file an edit request with no reason', async () => {
+    const text = (await call({ action: 'create_edit_request', employee_id: 2, date: '2025-02-03' }))
+      .content[0].text;
+    expect(text).toContain('reason is required');
+  });
+
+  it('refuses to file a create_shift edit request with no date, before any token is issued', async () => {
+    const text = (
+      await call({ action: 'create_edit_request', employee_id: 2, reason: 'Forgot to clock in' })
+    ).content[0].text;
+    expect(text).toContain('date (YYYY-MM-DD) is required');
+    expect(text).not.toMatch(TOKEN);
+  });
+
+  it('refuses to file an update_shift edit request with no attendance_shift_id', async () => {
+    const text = (
+      await call({
+        action: 'create_edit_request',
+        employee_id: 2,
+        request_type: 'update_shift',
+        reason: 'Wrong clock out time',
+      })
+    ).content[0].text;
+    expect(text).toContain('attendance_shift_id is required');
+    expect(text).not.toMatch(TOKEN);
+  });
+
+  it('refuses to file a delete_shift edit request with no attendance_shift_id', async () => {
+    const text = (
+      await call({
+        action: 'create_edit_request',
+        employee_id: 2,
+        request_type: 'delete_shift',
+        reason: 'Duplicate record',
+      })
+    ).content[0].text;
+    expect(text).toContain('attendance_shift_id is required');
+    expect(text).not.toMatch(TOKEN);
+  });
+
+  it('passes attendance_shift_id through to the created request for update_shift', async () => {
+    let postedBody: Record<string, unknown> | undefined;
+    mockFetch.mockImplementation(
+      async (input: string, init?: { method?: string; body?: string }) => {
+        const path = new URL(input).pathname;
+        if (path.endsWith('/employees/employees/2')) return jsonResponse(EMPLOYEE);
+        if (init?.method === 'POST' && path.endsWith('/attendance/edit_timesheet_requests')) {
+          postedBody = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
+          return jsonResponse({ id: '7', request_type: 'update_shift', employee_id: '2' });
+        }
+        throw new Error(`unexpected fetch ${path}`);
+      }
+    );
+
+    const args = {
+      action: 'create_edit_request',
+      employee_id: 2,
+      request_type: 'update_shift',
+      attendance_shift_id: 42,
+      clock_out: '18:00',
+      reason: 'Left later than recorded',
+    };
+    const preview = (await call(args)).content[0].text;
+    expect(preview).toContain('for shift 42');
+    const token = TOKEN.exec(preview)?.[1];
+    await call({ ...args, confirmation_token: token });
+    // Identifier-shaped fields are stringified before the request body is
+    // serialized (http-client.ts stringifyIdentifiers), matching how Factorial
+    // returns ids, so the number the caller passed arrives on the wire as a string.
+    expect(postedBody?.attendance_shift_id).toBe('42');
+  });
+
+  it('lists edit timesheet requests', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/attendance/edit_timesheet_requests')) {
+        return jsonResponse({
+          data: [
+            {
+              id: '6',
+              request_type: 'create_shift',
+              employee_id: '2',
+              date: '2025-02-03',
+              clock_in: '09:00',
+              clock_out: '17:00',
+              approved: null,
+              reason: 'Hours worked but never clocked',
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
+    expect(text).toContain('1 edit timesheet request:');
+    expect(text).not.toContain('1 edit timesheet requests');
+    expect(text).toContain('2025-02-03');
+    expect(text).toContain('pending');
+  });
+
+  it('uses the plural for more than one edit timesheet request', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/attendance/edit_timesheet_requests')) {
+        return jsonResponse({
+          data: [
+            {
+              id: '6',
+              request_type: 'create_shift',
+              employee_id: '2',
+              date: '2025-02-03',
+              clock_in: '09:00',
+              clock_out: '17:00',
+              approved: null,
+              reason: 'Hours worked but never clocked',
+            },
+            {
+              id: '7',
+              request_type: 'update_shift',
+              employee_id: '2',
+              date: '2025-02-04',
+              clock_in: '09:00',
+              clock_out: '17:00',
+              approved: true,
+              reason: 'Wrong clock out',
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
+    expect(text).toContain('2 edit timesheet requests:');
+  });
+
+  it('reports no edit timesheet requests on record when there are none', async () => {
+    mockFetch.mockImplementation(async (input: string) => {
+      const path = new URL(input).pathname;
+      if (path.endsWith('/attendance/edit_timesheet_requests')) return jsonResponse({ data: [] });
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const text = (await call({ action: 'list_edit_requests', employee_id: 2 })).content[0].text;
+    expect(text).toBe('No edit timesheet requests on record.');
+  });
+});
+
+describe('tool descriptions', () => {
+  it('describes the confirmation flow and the time zone contract', () => {
+    const { description } = captureConfig();
+    expect(description).toContain('confirmation_token');
+    expect(description).toContain('15 minutes');
+    expect(description).toContain('company zone');
+    expect(description).toContain('no_contract_data');
+  });
+
+  it('says jitter preserves each segment length, and points at variation_minutes', () => {
+    const { inputSchema } = captureConfig();
+    const jitter = inputSchema.jitter_minutes.description ?? '';
+    expect(jitter).toContain('keeping its length');
+    expect(jitter).toContain('variation_minutes');
+  });
+
+  it("warns that beggining_of_day is Factorial's own spelling", () => {
+    const { inputSchema } = captureConfig();
+    expect(inputSchema.half_day.description ?? '').toContain('do not correct it');
+  });
+
+  it('carries the declared time versus entry time passage', () => {
+    const { description } = captureConfig();
+    expect(description).toContain('Declared time versus entry time');
+    expect(description).toContain(
+      'Factorial sets created_at, updated_at, in_source and out_source on the server'
+    );
+    expect(description).toContain(
+      'read-only through this API and no action here can set or change them'
+    );
+  });
+
+  it('says fields returns eight fixed fields, not every field of the record', () => {
+    const { inputSchema } = captureConfig();
+    const fields = inputSchema.fields.description ?? '';
+    expect(fields).toContain(
+      '"full" (default) returns id, employee_id, date, clock_in, clock_out, minutes, ' +
+        'in_source and observations'
+    );
+    expect(fields).toContain('Neither is every field of the raw record');
+    expect(fields).not.toContain('every field of the record');
+  });
+
+  it('uses no em-dash in any description', () => {
+    const { description, inputSchema } = captureConfig();
+    const all = [description, ...Object.values(inputSchema).map(f => f.description ?? '')];
+    for (const text of all) expect(text).not.toContain('—');
   });
 });

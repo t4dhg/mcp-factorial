@@ -107,13 +107,26 @@ describe('Error Classes', () => {
       expect(error.name).toBe('AuthorizationError');
       expect(error.statusCode).toBe(403);
       expect(error.endpoint).toBe('/api/employees');
-      expect(error.message).toContain('Access denied');
+      expect(error.message).toContain('HTTP 403');
       expect(error.isRetryable).toBe(false);
     });
 
     it('should support context', () => {
-      const error = new AuthorizationError('/api/teams', { role: 'viewer' });
+      const error = new AuthorizationError('/api/teams', undefined, { role: 'viewer' });
       expect(error.context).toEqual({ role: 'viewer' });
+    });
+
+    it('quotes the reason Factorial gave', () => {
+      const error = new AuthorizationError('/attendance/shifts', 'Attendance period is closed');
+      expect(error.message).toContain('HTTP 403');
+      expect(error.message).toContain('Attendance period is closed');
+      expect(error.message).not.toContain('may not have permission');
+    });
+
+    it('says the body was silent rather than guessing a cause', () => {
+      const error = new AuthorizationError('/attendance/shifts');
+      expect(error.message).toContain('returned no explanation');
+      expect(error.message).toContain('signed off');
     });
   });
 

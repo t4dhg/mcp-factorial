@@ -138,6 +138,74 @@ export const WorkedTimeSchema = z
 
 export type WorkedTime = z.infer<typeof WorkedTimeSchema>;
 
+/**
+ * One signed-off date on an employee's timesheet.
+ *
+ * A date with a review record is closed for writing: Factorial answers a shift
+ * POST on it with a 403. Verified live on 2026-09-07 against the two months a
+ * field report had established were closed; the reviewed dates matched them
+ * exactly and covered nothing else.
+ */
+export const AttendanceReviewSchema = z
+  .object({
+    id: z.string(),
+    employee_id: resourceId,
+    date: dateString,
+    reviewed_at: z.string().nullable().optional(),
+    author_id: resourceId.nullable().optional(),
+  })
+  .passthrough();
+
+export type AttendanceReview = z.infer<typeof AttendanceReviewSchema>;
+
+/** The three kinds of change an edit timesheet request can ask for */
+export const EDIT_REQUEST_TYPES = ['create_shift', 'delete_shift', 'update_shift'] as const;
+
+/**
+ * A request to change a timesheet, which is how a signed-off day is corrected.
+ *
+ * Shape taken from the published OpenAPI definition for API 2026-07-01.
+ * `approved` follows the same three-state convention as a leave: true, false,
+ * or null while nobody has decided.
+ */
+export const EditTimesheetRequestSchema = z
+  .object({
+    id: z.string(),
+    request_type: z.enum(EDIT_REQUEST_TYPES),
+    employee_id: resourceId,
+    approved: z.boolean().nullable().optional(),
+    date: z.string().nullable().optional(),
+    clock_in: z.string().nullable().optional(),
+    clock_out: z.string().nullable().optional(),
+    reason: z.string().nullable().optional(),
+    workable: z.boolean().nullable().optional(),
+    attendance_shift_id: resourceId.nullable().optional(),
+    reference_date: z.string().nullable().optional(),
+    time_settings_break_configuration_id: resourceId.nullable().optional(),
+    location_type: z.enum(LOCATION_TYPES).nullable().optional(),
+    observations: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+export type EditTimesheetRequest = z.infer<typeof EditTimesheetRequestSchema>;
+
+/** Create input. employee_id and request_type are the only fields the API requires */
+export const CreateEditTimesheetRequestInputSchema = z.object({
+  employee_id: z.number().int().positive(),
+  request_type: z.enum(EDIT_REQUEST_TYPES),
+  date: dateString.optional(),
+  clock_in: hhmm.optional(),
+  clock_out: hhmm.optional(),
+  reason: z.string().max(500).optional(),
+  workable: z.boolean().optional(),
+  attendance_shift_id: z.number().int().positive().optional(),
+  reference_date: dateString.optional(),
+  location_type: z.enum(LOCATION_TYPES).optional(),
+  observations: z.string().max(500).optional(),
+});
+
+export type CreateEditTimesheetRequestInput = z.infer<typeof CreateEditTimesheetRequestInputSchema>;
+
 // ============================================================================
 // Write Input Schemas
 // ============================================================================

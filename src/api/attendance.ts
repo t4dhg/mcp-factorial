@@ -29,6 +29,9 @@ import {
   OpenShiftSchema,
   EstimatedTimeSchema,
   WorkedTimeSchema,
+  AttendanceReviewSchema,
+  EditTimesheetRequestSchema,
+  CreateEditTimesheetRequestInputSchema,
   CreateShiftInputSchema,
   UpdateShiftInputSchema,
   ClockInputSchema,
@@ -36,6 +39,9 @@ import {
   type OpenShift,
   type EstimatedTime,
   type WorkedTime,
+  type AttendanceReview,
+  type EditTimesheetRequest,
+  type CreateEditTimesheetRequestInput,
   type CreateShiftInput,
   type UpdateShiftInput,
   type ClockInput,
@@ -221,6 +227,55 @@ export async function listWorkedTimes(options: DailyTimesOptions): Promise<Worke
     },
   });
   return parseArray('WorkedTime', WorkedTimeSchema, data);
+}
+
+/**
+ * Dates whose timesheet has been signed off, which are closed for writing.
+ *
+ * This is the only read that answers "can I write to this date". There is no
+ * period or lock resource in the 2026-07-01 API; a reviewed date is the lock.
+ */
+export async function listReviews(options: DailyTimesOptions): Promise<AttendanceReview[]> {
+  const data = await fetchList<unknown>(ENDPOINTS.reviews, {
+    params: {
+      employee_ids: options.employee_ids,
+      start_on: options.start_on,
+      end_on: options.end_on,
+    },
+  });
+  return parseArray('AttendanceReview', AttendanceReviewSchema, data);
+}
+
+/**
+ * Edit timesheet requests, Factorial's route for changing a signed-off day.
+ *
+ * Hours cannot be written directly onto a reviewed date; a request is filed and
+ * whoever approves timesheets decides.
+ */
+export async function listEditTimesheetRequests(
+  employeeIds?: number[]
+): Promise<EditTimesheetRequest[]> {
+  const data = await fetchList<unknown>(ENDPOINTS.editTimesheetRequests, {
+    params: { employee_ids: employeeIds },
+  });
+  return parseArray('EditTimesheetRequest', EditTimesheetRequestSchema, data);
+}
+
+/** File a request to change a timesheet. This notifies whoever approves them. */
+export async function createEditTimesheetRequest(
+  input: CreateEditTimesheetRequestInput
+): Promise<EditTimesheetRequest> {
+  const body = CreateEditTimesheetRequestInputSchema.parse(input);
+  return auditedOperation(
+    AuditAction.CREATE,
+    'edit_timesheet_request',
+    body.employee_id,
+    async () => {
+      const created = await postOne<unknown>(ENDPOINTS.editTimesheetRequests, body);
+      cache.invalidatePrefix('shifts');
+      return parseData('EditTimesheetRequest', EditTimesheetRequestSchema, created);
+    }
+  );
 }
 
 async function clockAction(

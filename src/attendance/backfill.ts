@@ -11,11 +11,13 @@ import { cache } from '../cache.js';
 import {
   createShift,
   listEstimatedTimes,
+  listReviews,
   listShiftsInRange,
   listWorkedTimes,
   localToday,
 } from '../api/attendance.js';
 import { listLeavesInRange } from '../api/time-off.js';
+import type { AttendanceReview } from '../schemas.js';
 import {
   buildBackfillPlan,
   computeGaps,
@@ -48,13 +50,33 @@ export async function gatherFacts(
   // meta.has_next_page). estimated_times and worked_times page at 100 days,
   // so a single-page read once made every window over 100 days go blind
   // after day 100 and report the rest as not workable.
+  // listReviews is the only read this function isolates: it is a newer,
+  // less-verified signal (verified against one tenant on one day) than the
+  // others, and it fails closed for writing (daySkipReason treats a date not
+  // in facts.reviews as not signed off). Letting it reject the whole
+  // Promise.all would turn one tenant's 403 or schema mismatch on this one
+  // endpoint into a hard outage of every attendance read (audit, gaps,
+  // log_range, log_days and all five prompts), not just the signed-off
+  // signal it actually carries.
   const range = { employee_ids: [employeeId], start_on: startOn, end_on: endOn };
-  const [worked, estimated, shifts, leaves] = await Promise.all([
+  const [worked, estimated, shifts, leaves, reviewsResult] = await Promise.all([
     listWorkedTimes(range),
     listEstimatedTimes(range),
     listShiftsInRange([employeeId], startOn, endOn),
     listLeavesInRange([employeeId], startOn, endOn),
+    listReviews(range).then(
+      (reviews): { reviews: AttendanceReview[]; error: string | null } => ({
+        reviews,
+        error: null,
+      }),
+      (error: unknown): { reviews: AttendanceReview[]; error: string | null } => ({
+        reviews: [],
+        error: error instanceof Error ? error.message : String(error),
+      })
+    ),
   ]);
+  const reviews = reviewsResult.reviews;
+  const reviewsError = reviewsResult.error;
 
   const days = new Map<string, DayFacts>();
   for (const day of worked) {
@@ -84,7 +106,15 @@ export async function gatherFacts(
       .filter(s => s.clock_in !== null)
       .map(s => ({ date: s.date, clock_in: s.clock_in as string, clock_out: s.clock_out })),
     leaves: expandLeaves(leaves),
-    coverage: measureCoverage(enumerateDates(startOn, endOn), days, leaves.length, shifts.length),
+    reviews: new Set(reviews.map(review => review.date)),
+    coverage: measureCoverage(
+      enumerateDates(startOn, endOn),
+      days,
+      leaves.length,
+      shifts.length,
+      reviews.length,
+      reviewsError
+    ),
   };
 }
 
@@ -128,24 +158,51 @@ export async function buildLedger(
   };
 }
 
+/**
+ * How many failures in a row mean the problem is the request rather than the
+ * record. A bad key or a revoked scope fails every write; grinding through
+ * hundreds of certain rejections helps nobody.
+ */
+export const CONSECUTIVE_FAILURE_ABORT = 10;
+
 export interface BackfillResult {
   written: PlannedWrite[];
   failed: Array<PlannedWrite & { error: string }>;
+  /** Records left unattempted because the run aborted */
+  notAttempted: PlannedWrite[];
+  abortedEarly: boolean;
 }
 
 /**
- * Write the planned records sequentially. Stops at the first failure so the
- * summary can say exactly where it stopped; re-running the identical call is
- * safe because the planner re-reads shifts and skips what already exists.
+ * Write the planned records sequentially, attempting every one.
+ *
+ * An earlier version stopped at the first failure, which turned a fill that
+ * touched one bad month into one pass per surviving stretch. A single refused
+ * record says nothing about the next one, so the run continues; only a run of
+ * consecutive failures is evidence of something systemic, and that aborts.
+ *
+ * Re-running the identical call stays safe: the planner re-reads shifts and
+ * skips whatever overlaps.
  */
 export async function executeBackfill(
   employeeId: number,
   writes: PlannedWrite[],
   observations?: string
 ): Promise<BackfillResult> {
-  const result: BackfillResult = { written: [], failed: [] };
+  const result: BackfillResult = {
+    written: [],
+    failed: [],
+    notAttempted: [],
+    abortedEarly: false,
+  };
+  let consecutiveFailures = 0;
   try {
-    for (const write of writes) {
+    for (const [index, write] of writes.entries()) {
+      if (consecutiveFailures >= CONSECUTIVE_FAILURE_ABORT) {
+        result.notAttempted = writes.slice(index);
+        result.abortedEarly = true;
+        break;
+      }
       try {
         await createShift({
           employee_id: employeeId,
@@ -155,12 +212,13 @@ export async function executeBackfill(
           observations,
         });
         result.written.push(write);
+        consecutiveFailures = 0;
       } catch (error) {
         result.failed.push({
           ...write,
           error: error instanceof Error ? error.message : String(error),
         });
-        break;
+        consecutiveFailures += 1;
       }
     }
   } finally {
