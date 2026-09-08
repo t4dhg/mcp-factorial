@@ -83,22 +83,46 @@ const ANONYMIZATION_MARKERS = [
   'test company',
 ];
 
-/** Substrings that mark a matched secret-shaped value as an obvious placeholder. */
-const PLACEHOLDER_MARKERS = [
-  'xxxx',
-  '<',
+/**
+ * Placeholder detection is deliberately anchored, not a substring test. A
+ * value is a placeholder only when it is clearly a template, never merely
+ * because it *contains* a template-ish word: "your-api-key" is a
+ * placeholder, "your9fK3mN7pQ2xR8vT1wZ5yB6cD4eF0gH2j2K5L8M1N4" is a real
+ * secret that happens to start the same way, and only the anchored check
+ * tells them apart.
+ */
+
+/** Exact (whole-value, case-insensitive) placeholder words. */
+const PLACEHOLDER_EXACT_WORDS = [
+  'changeme',
+  'placeholder',
+  'redacted',
   'example',
   'dummy',
-  'placeholder',
-  'your',
-  'changeme',
-  'redacted',
+  'sample',
+  'secret',
+  'token',
 ];
+
+/** Prefix words that only count as a placeholder when followed by a separator or end-of-value. */
+const PLACEHOLDER_PREFIX_WORDS = [
+  'your',
+  'my',
+  'example',
+  'sample',
+  'dummy',
+  'placeholder',
+  'test',
+];
+
+/** Separators that may follow a placeholder prefix word. */
+const PLACEHOLDER_PREFIX_SEPARATORS = ['-', '_', '.', ':'];
 
 const SECRET_PATTERNS = [
   { name: 'Holded-style personal access token', regex: /pat_[A-Za-z0-9_-]{12,}/g },
   { name: 'Anthropic API key', regex: /sk-ant-[A-Za-z0-9_-]{10,}/g },
   { name: 'generic sk-prefixed API key', regex: /sk-(?!ant-)[A-Za-z0-9_-]{20,}/g },
+  { name: 'Stripe API key', regex: /sk_(?:live|test)_[A-Za-z0-9]{16,}/g },
   { name: 'GitHub personal access token (classic)', regex: /ghp_[A-Za-z0-9]{20,}/g },
   { name: 'GitHub OAuth access token', regex: /gho_[A-Za-z0-9]{20,}/g },
   { name: 'GitHub fine-grained personal access token', regex: /github_pat_[A-Za-z0-9_]{20,}/g },
@@ -108,6 +132,12 @@ const SECRET_PATTERNS = [
   { name: 'Slack token', regex: /xox[bapsr]-[A-Za-z0-9-]{10,}/g },
   { name: 'Atlassian API token', regex: /ATATT[A-Za-z0-9_=-]{10,}/g },
   { name: 'PEM private key block', regex: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/g },
+  {
+    name: 'bearer credential',
+    regex: /Authorization:\s*Bearer\s+([A-Za-z0-9_-]{20,})/gi,
+    valueGroup: 1,
+  },
+  { name: 'JWT-shaped token', regex: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g },
 ];
 
 /** An opaque literal assigned to a name that reads as a secret. */
@@ -117,40 +147,63 @@ const SECRET_ASSIGNMENT_PATTERN =
 /** Assistant/editor tooling names, for matching a mention inside staged content. */
 const ASSISTANT_TOOLING_REFERENCE_PATTERN = new RegExp(
   '(' +
-    [...ASSISTANT_CONFIG_FILENAMES, ...ASSISTANT_CONFIG_DIR_PREFIXES, ...ASSISTANT_CONFIG_BASENAME_PREFIXES]
+    [
+      ...ASSISTANT_CONFIG_FILENAMES,
+      ...ASSISTANT_CONFIG_DIR_PREFIXES,
+      ...ASSISTANT_CONFIG_BASENAME_PREFIXES,
+    ]
       .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
       .join('|') +
     ')',
   'i'
 );
 
-/** A path-shaped mention of a planning artefact inside staged content. */
-const PLANNING_PATH_REFERENCE_PATTERN = new RegExp(
-  `docs/[^\\s'"()<>]*?(${PLANNING_KEYWORDS.join('|')})[^\\s'"()<>]*`,
-  'i'
-);
+/** A path-shaped token starting with docs/, for finding a mention inside staged content. */
+const DOCS_PATH_TOKEN_PATTERN = /docs\/[^\s'"()<>]+/gi;
 
 // ---------------------------------------------------------------------------
 // Pure detection logic (unit-testable, no git access)
 // ---------------------------------------------------------------------------
 
-/** True when a matched secret-shaped value is an obvious, documented placeholder. */
+/** True when a value is a single character class repeated, e.g. "xxxx", "....", "0000". */
+function isRepeatedSingleCharacter(value) {
+  return value.length > 1 && [...value].every(ch => ch === value[0]);
+}
+
+/**
+ * True when a matched secret-shaped value is an obvious, documented
+ * placeholder. Anchored: a value must clearly BE a template, not merely
+ * contain a template-ish word somewhere inside it.
+ */
 export function isPlaceholderValue(value) {
   if (!value) return true;
-  if (/^x+$/i.test(value)) return true;
+
   const lower = value.toLowerCase();
-  return PLACEHOLDER_MARKERS.some(marker => lower.includes(marker));
+
+  if (lower.includes('xxxx')) return true;
+  if (value.includes('<') || value.includes('>')) return true;
+  if (isRepeatedSingleCharacter(value)) return true;
+  if (PLACEHOLDER_EXACT_WORDS.includes(lower)) return true;
+
+  for (const prefix of PLACEHOLDER_PREFIX_WORDS) {
+    if (lower.startsWith(prefix)) {
+      const nextChar = lower.charAt(prefix.length);
+      if (nextChar === '' || PLACEHOLDER_PREFIX_SEPARATORS.includes(nextChar)) return true;
+    }
+  }
+
+  return false;
 }
 
 /** Scan one line of staged content for secret-shaped values. Returns a list of findings. */
 export function scanLineForSecrets(line) {
   const findings = [];
 
-  for (const { name, regex } of SECRET_PATTERNS) {
+  for (const { name, regex, valueGroup = 0 } of SECRET_PATTERNS) {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(line))) {
-      if (!isPlaceholderValue(match[0])) {
+      if (!isPlaceholderValue(match[valueGroup])) {
         findings.push({ reason: `possible ${name}` });
       }
       if (match[0].length === 0) regex.lastIndex++;
@@ -162,7 +215,8 @@ export function scanLineForSecrets(line) {
   while ((assignmentMatch = SECRET_ASSIGNMENT_PATTERN.exec(line))) {
     if (!isPlaceholderValue(assignmentMatch[1])) {
       findings.push({
-        reason: 'opaque literal assigned to a name matching *_TOKEN, *_SECRET, *_API_KEY or *_PASSWORD',
+        reason:
+          'opaque literal assigned to a name matching *_TOKEN, *_SECRET, *_API_KEY or *_PASSWORD',
       });
     }
   }
@@ -176,21 +230,39 @@ export function isAssistantConfigPath(filePath) {
   if (ASSISTANT_CONFIG_FILENAMES.includes(base)) return true;
   if (ASSISTANT_CONFIG_BASENAME_PREFIXES.some(prefix => base.startsWith(prefix))) return true;
   for (const prefix of ASSISTANT_CONFIG_DIR_PREFIXES) {
-    if (filePath === prefix.slice(0, -1) || filePath.startsWith(prefix) || filePath.includes('/' + prefix)) {
+    if (
+      filePath === prefix.slice(0, -1) ||
+      filePath.startsWith(prefix) ||
+      filePath.includes('/' + prefix)
+    ) {
       return true;
     }
   }
   return false;
 }
 
-/** True when `filePath` sits under docs/ and its name suggests a planning artefact. */
+/** Strip a single trailing ".ext" from a path segment, if it has one. */
+function stripExtension(segment) {
+  const dotIndex = segment.lastIndexOf('.');
+  return dotIndex > 0 ? segment.slice(0, dotIndex) : segment;
+}
+
+/**
+ * True when `filePath` sits under docs/ and one of its segments IS a
+ * planning keyword (or its simple plural), not merely contains one as a
+ * substring. This is what lets "docs/designs/x.md" be caught while
+ * "docs/design-system.md" (a real, ordinary documentation page) is not.
+ */
 export function isPlanningDocPath(filePath) {
   const segments = filePath.split('/');
   const docsIndex = segments.indexOf('docs');
   if (docsIndex === -1) return false;
-  const rest = segments.slice(docsIndex + 1).join('/').toLowerCase();
-  if (!rest) return false;
-  return PLANNING_KEYWORDS.some(keyword => rest.includes(keyword));
+  const rest = segments.slice(docsIndex + 1);
+  if (rest.length === 0) return false;
+  return rest.some(segment => {
+    const bare = stripExtension(segment).toLowerCase();
+    return PLANNING_KEYWORDS.some(keyword => bare === keyword || bare === keyword + 's');
+  });
 }
 
 /** True when `filePath` runs through a coding assistant's scratch working directory. */
@@ -212,7 +284,8 @@ export function classifyStagedPath(filePath) {
   }
   if (isPlanningDocPath(filePath)) {
     return {
-      reason: 'path under docs/ reads as a planning or process artefact; keep planning material outside the repository',
+      reason:
+        'path under docs/ reads as a planning or process artefact; keep planning material outside the repository',
     };
   }
   if (isAssistantWorkspacePath(filePath)) {
@@ -233,9 +306,15 @@ export function scanLineForReferences(line) {
     findings.push({ reason: `mentions an assistant/editor tooling path ("${toolingMatch[0]}")` });
   }
 
-  const planningMatch = line.match(PLANNING_PATH_REFERENCE_PATTERN);
-  if (planningMatch) {
-    findings.push({ reason: `mentions what looks like a planning artefact path ("${planningMatch[0]}")` });
+  DOCS_PATH_TOKEN_PATTERN.lastIndex = 0;
+  let docsTokenMatch;
+  while ((docsTokenMatch = DOCS_PATH_TOKEN_PATTERN.exec(line))) {
+    if (isPlanningDocPath(docsTokenMatch[0])) {
+      findings.push({
+        reason: `mentions what looks like a planning artefact path ("${docsTokenMatch[0]}")`,
+      });
+      break; // one mention is enough context; avoid duplicate reports for the same path in one line
+    }
   }
 
   return findings;
@@ -252,15 +331,29 @@ export function hasAnonymizationMarker(text) {
   return ANONYMIZATION_MARKERS.some(marker => lower.includes(marker));
 }
 
+/** Paths npm always excludes from a published tarball, regardless of "files". */
+const NPM_ALWAYS_EXCLUDED_PREFIXES = ['node_modules/', '.git/'];
+
 /**
  * True when `filePath` is part of what actually ships inside the npm
  * tarball: package.json's own "files" array, plus the always-included
  * package.json, README* and LICENSE*.
+ *
+ * `filesList` of `null`/`undefined` means the package has no (valid)
+ * "files" field at all. Real npm semantics for that case are the opposite
+ * of an empty array: with no "files" field, npm packs nearly everything,
+ * excluding only a fixed set of paths (node_modules/, .git/) it always
+ * excludes. An explicit empty array, by contrast, is a "files" field that
+ * lists nothing extra, so nothing beyond the always-included files ships.
  */
-export function isShippingPath(filePath, filesList = []) {
+export function isShippingPath(filePath, filesList = null) {
   if (/^package\.json$/i.test(filePath)) return true;
   if (/^README(\..+)?$/i.test(filePath)) return true;
   if (/^LICENSE(\..+)?$/i.test(filePath)) return true;
+
+  if (filesList == null) {
+    return !NPM_ALWAYS_EXCLUDED_PREFIXES.some(prefix => filePath.startsWith(prefix));
+  }
 
   for (const entry of filesList) {
     if (entry.endsWith('/')) {
@@ -327,7 +420,8 @@ export function parseUnifiedDiff(diffText) {
  * @param {object} input
  * @param {string[]} input.stagedPaths - staged file paths (name-only, ACM).
  * @param {Map<string, {line:number, text:string}[]>} input.addedLines - from parseUnifiedDiff.
- * @param {string[]} [input.filesList] - package.json "files" array.
+ * @param {string[]|null} [input.filesList] - package.json "files" array, or
+ *   null/omitted for "no files field" (see isShippingPath).
  */
 export function runScan({ stagedPaths, addedLines, filesList = [] }) {
   const findings = {
@@ -376,7 +470,8 @@ export function runScan({ stagedPaths, addedLines, filesList = [] }) {
     if (trackFixture && fixtureHasContent && !fixtureHasMarker) {
       findings.fixtureWarnings.push({
         path: filePath,
-        reason: 'no anonymisation marker found in the staged content; verify it does not carry real tenant data',
+        reason:
+          'no anonymisation marker found in the staged content; verify it does not carry real tenant data',
       });
     }
   }
@@ -387,7 +482,9 @@ export function runScan({ stagedPaths, addedLines, filesList = [] }) {
 /** True when `findings` should fail the commit. */
 export function hasBlockingFindings(findings) {
   return (
-    findings.secrets.length > 0 || findings.artifactPaths.length > 0 || findings.artifactReferences.length > 0
+    findings.secrets.length > 0 ||
+    findings.artifactPaths.length > 0 ||
+    findings.artifactReferences.length > 0
   );
 }
 
@@ -436,7 +533,12 @@ export function formatReport(findings) {
     return 'preflight-scan: clean, nothing to report.';
   }
 
-  sections.push(OVERRIDE_NOTICE);
+  // Only point at the override when something would actually block the
+  // commit: a report that is only a non-blocking fixture warning should
+  // not tell someone how to skip a check that was never going to fail.
+  if (hasBlockingFindings(findings)) {
+    sections.push(OVERRIDE_NOTICE);
+  }
   return sections.join('\n\n');
 }
 
@@ -462,13 +564,14 @@ export function getStagedDiff() {
   return git(['diff', '--cached', '-U0', '--diff-filter=ACM']);
 }
 
+/** Returns package.json's "files" array, or null when absent/invalid (see isShippingPath). */
 export function readPackageFilesList(repoRoot) {
   try {
     const pkgRaw = readFileSync(path.join(repoRoot, 'package.json'), 'utf8');
     const pkg = JSON.parse(pkgRaw);
-    return Array.isArray(pkg.files) ? pkg.files : [];
+    return Array.isArray(pkg.files) ? pkg.files : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
