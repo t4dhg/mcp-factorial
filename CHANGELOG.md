@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [11.0.1] - 2026-09-08
+
+No runtime code changed in this release. No tool or prompt was added, removed or altered, so upgrading from 11.0.0 changes nothing about how the server behaves.
+
+### Changed
+
+- Republished so that the `latest` dist-tag carries a provenance attestation whose source commit is present in the repository. The attestations on the earlier published versions point at commits that the history rewrite below replaced, so they no longer resolve. Verification of those versions will fail on that basis; 11.0.1 verifies cleanly.
+- The published git history was rewritten to correct commit authorship metadata and editorial text in earlier commit messages and changelog entries. Existing clones will not fast-forward. Re-clone, or run `git fetch --force --prune --prune-tags --tags origin && git reset --hard origin/main`. Every tag from `v2.0.0` onward now points at a different commit.
+- The tracked ignore file no longer lists machine-local editor and assistant configuration. Those belong in a per-clone exclude, which does not travel with the repository.
+
+### Added
+
+- A pre-commit scan that refuses to stage credential-shaped values and internal planning artefacts. It is deterministic, runs ahead of the formatter so a rejected commit is never reformatted first, and carries its own unit tests. It has to name the filenames and token prefixes it detects; those literals are confined to one labelled table.
+
+### Fixed
+
+- **The server reported the wrong version to clients.** It announced itself as `8.0.0` over MCP while the published package was on 11.0.0, so anything reading the server's own version, in a client's server list or a bug report, saw a number three major releases stale. It now reports the package version, and a test asserts that `package.json`, the reported constant and `server.json` agree, which is what would have caught this.
+- `format:check` no longer matches Markdown outside the project, so a clean checkout and a working machine give the same result. It now names `README.md`, `CONTRIBUTING.md` and `SECURITY.md` explicitly.
+- Six findings in the pre-commit scan, including a bypass in which a credential-shaped value escaped detection by beginning with characters that the placeholder allowance treated as a template stand-in. The allowance is now anchored and entropy-checked.
+
 ### Removed
 
 - `smithery.yaml`. Smithery lists only remote HTTP servers. Verified against their registry API: every listed server reports `remote: true`, this package returned 404, and the stdio-only reference servers are absent while a server with a hosted endpoint is present. This server runs locally over stdio, so the configuration was inert and its presence implied a listing that never existed.
