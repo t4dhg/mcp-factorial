@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- `smithery.yaml`. Smithery lists only remote HTTP servers. Verified against their registry API: every listed server reports `remote: true`, this package returned 404, and the stdio-only reference servers are absent while a server with a hosted endpoint is present. This server runs locally over stdio, so the configuration was inert and its presence implied a listing that never existed.
+
 ## [11.0.0] - 2026-09-08
 
 ### Changed
