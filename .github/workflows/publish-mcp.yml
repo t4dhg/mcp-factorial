@@ -1,0 +1,54 @@
+name: Publish to MCP Registry
+
+# Deliberately manual, not tag-triggered.
+#
+# npm releases here are staged by CI and promoted by a human with 2FA
+# (`npm stage approve`), so a version does not exist on npm at tag time. The
+# MCP registry proves npm ownership by reading the `mcpName` field from the
+# published package, so publishing on the tag would race the human and fail.
+# Run this once the npm release is live; the guard below refuses otherwise.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version already published to npm, e.g. 11.0.1'
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # mints the OIDC token the registry authenticates
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify the version is live on npm
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          FOUND=$(npm view "@t4dhg/mcp-factorial@${VERSION}" version 2>/dev/null || true)
+          if [ "$FOUND" != "$VERSION" ]; then
+            echo "@t4dhg/mcp-factorial@${VERSION} is not installable from npm yet."
+            echo "Promote the staged release first: npm stage approve <stage-id>"
+            exit 1
+          fi
+          echo "@t4dhg/mcp-factorial@${VERSION} is live."
+
+      - name: Check server.json matches the version
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          jq -e --arg v "$VERSION" '.version == $v and .packages[0].version == $v' server.json > /dev/null \
+            || { echo "server.json does not declare $VERSION"; exit 1; }
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to the MCP registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish
+        run: ./mcp-publisher publish
