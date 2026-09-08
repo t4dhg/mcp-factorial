@@ -13,7 +13,7 @@ No runtime code changed in this release. No tool or prompt was added, removed or
 
 ### Changed
 
-- Republished so that the `latest` dist-tag carries a provenance attestation whose source commit is present in the repository. The attestations on the earlier published versions point at commits that the history rewrite below replaced, so they no longer resolve. Verification of those versions will fail on that basis; 11.0.1 verifies cleanly.
+- Republished so that the `latest` dist-tag carries a provenance attestation whose source commit is present in the repository. The attestations on the earlier published versions name commits that the history rewrite below replaced: no branch or tag reaches them and they are absent from a fresh clone, so those versions cannot be verified against the repository as published. GitHub may keep serving those commits by their hashes until it garbage-collects, so a verifier that fetches by hash alone can still succeed for now. The 11.0.1 attestation names the `v11.0.1` tag and verifies against any clone.
 - The published git history was rewritten to correct commit authorship metadata and editorial text in earlier commit messages and changelog entries. Existing clones will not fast-forward. Re-clone, or run `git fetch --force --prune --prune-tags --tags origin && git reset --hard origin/main`. Every tag from `v2.0.0` onward now points at a different commit.
 - The tracked ignore file no longer lists machine-local editor and assistant configuration. Those belong in a per-clone exclude, which does not travel with the repository.
 
