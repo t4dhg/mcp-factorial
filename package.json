@@ -32,8 +32,8 @@
     "scan": "node scripts/preflight-scan.mjs",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"*.json\" \"*.md\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"*.json\" \"*.md\"",
+    "format": "prettier --write \"src/**/*.ts\" \"*.json\" \"README.md\" \"CONTRIBUTING.md\" \"SECURITY.md\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.json\" \"README.md\" \"CONTRIBUTING.md\" \"SECURITY.md\"",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run test && npm run build",
     "prepare": "husky"

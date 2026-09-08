@@ -28,7 +28,6 @@ Thumbs.db
 *.swo
 *~
 
-
 # Test coverage
 coverage/
 .nyc_output/
