@@ -19,6 +19,11 @@ import { SchemaValidationError } from '../errors.js';
  */
 export const resourceId = z.string();
 
+/** Bound client collections before Zod walks their elements and accumulates issues. */
+export function inputArray<T extends z.ZodType>(itemSchema: T) {
+  return z.array(itemSchema).max(1000);
+}
+
 /**
  * Date string pattern (YYYY-MM-DD)
  */

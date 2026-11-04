@@ -9,9 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml/badge.svg)](https://github.com/t4dhg/mcp-factorial/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/t4dhg/mcp-factorial/branch/main/graph/badge.svg)](https://codecov.io/gh/t4dhg/mcp-factorial)
-[![bundle](https://codecov.io/gh/t4dhg/mcp-factorial/graph/bundle/mcp-factorial/badge.svg)](https://codecov.io/gh/t4dhg/mcp-factorial)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-brightgreen.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-brightgreen.svg)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 
@@ -463,13 +462,18 @@ All write operations (create, update, delete, approve, reject) are recorded with
 
 ## Development
 
+Use Node.js 22 or 24 for development; `.nvmrc` selects Node 24. The installed server requires Node.js 20+.
+
 ```bash
 # Clone the repository
 git clone https://github.com/t4dhg/mcp-factorial.git
 cd mcp-factorial
 
 # Install dependencies
-npm install
+npm ci
+
+# Enable local pre-commit checks
+npm run setup:hooks
 
 # Build
 npm run build

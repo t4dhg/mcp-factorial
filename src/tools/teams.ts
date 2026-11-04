@@ -4,6 +4,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod';
+import { inputArray } from '../schemas/shared.js';
 import { checkConfirmation } from './shared.js';
 import { textResponse, formatToolError } from '../tool-utils.js';
 import { formatPaginationInfo } from '../pagination.js';
@@ -22,8 +23,8 @@ export function registerTeamsTool(server: McpServer) {
         limit: z.number().optional().default(100).describe('Items per page'),
         name: z.string().optional().describe('Team name'),
         description: z.string().optional().describe('Team description'),
-        lead_ids: z.array(z.number()).optional().describe('Team lead employee IDs'),
-        employee_ids: z.array(z.number()).optional().describe('Member employee IDs'),
+        lead_ids: inputArray(z.number()).optional().describe('Team lead employee IDs'),
+        employee_ids: inputArray(z.number()).optional().describe('Member employee IDs'),
         confirm: z.boolean().optional().describe('Confirm delete'),
       },
     },

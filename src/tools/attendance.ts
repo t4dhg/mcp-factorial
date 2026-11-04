@@ -12,6 +12,7 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import * as z from 'zod';
+import { inputArray } from '../schemas/shared.js';
 import { checkConfirmation } from './shared.js';
 import { textResponse, formatToolError } from '../tool-utils.js';
 import { formatPaginationInfo } from '../pagination.js';
@@ -156,15 +157,14 @@ export function registerAttendanceTool(server: McpServer) {
           .number()
           .optional()
           .describe('Employee ID. Defaults to FACTORIAL_EMPLOYEE_ID when set'),
-        employee_ids: z
-          .array(z.number())
+        employee_ids: inputArray(z.number())
           .optional()
           .describe(
             'Employee IDs (list). Defaults to FACTORIAL_EMPLOYEE_ID; pass [] for the whole company'
           ),
         start_on: z.string().optional().describe('Start date YYYY-MM-DD (list, gaps, log_range)'),
         end_on: z.string().optional().describe('End date YYYY-MM-DD (list, gaps, log_range)'),
-        ids: z.array(z.number()).optional().describe('Shift IDs (list)'),
+        ids: inputArray(z.number()).optional().describe('Shift IDs (list)'),
         updated_at: z.string().optional().describe('Shifts updated at this date (list)'),
         workable: z.boolean().optional().describe('Filter or set the workable flag'),
         half_day: z
@@ -211,14 +211,12 @@ export function registerAttendanceTool(server: McpServer) {
           .optional()
           .describe('office | business_trip | work_from_home'),
         workplace_id: z.number().optional().describe('Workplace (location) ID'),
-        segments: z
-          .array(SegmentInputSchema)
+        segments: inputArray(SegmentInputSchema)
           .optional()
           .describe(
             'Daily pattern for log_range, e.g. [{clock_in:"09:00",clock_out:"14:00"},{clock_in:"15:00",clock_out:"18:00"}]'
           ),
-        days: z
-          .array(DayInputSchema)
+        days: inputArray(DayInputSchema)
           .optional()
           .describe('Explicit days for log_days: [{date:"2026-03-02",segments:[...]}, ...]'),
         skip_leave: z
@@ -264,29 +262,27 @@ export function registerAttendanceTool(server: McpServer) {
               '(default 15). Real clocks are never exact, so a day a few minutes over is normal ' +
               'and needs no correction.'
           ),
-        statuses: z
-          .array(
-            z.enum([
-              'future',
-              'weekend',
-              'bank_holiday',
-              'not_workable',
-              'no_contract_data',
-              'on_leave',
-              'half_day_leave',
-              'complete',
-              'missing',
-              'short',
-              'over',
-            ])
-          )
+        statuses: inputArray(
+          z.enum([
+            'future',
+            'weekend',
+            'bank_holiday',
+            'not_workable',
+            'no_contract_data',
+            'on_leave',
+            'half_day_leave',
+            'complete',
+            'missing',
+            'short',
+            'over',
+          ])
+        )
           .optional()
           .describe(
             'audit: list only days with these statuses. Default lists everything needing attention: ' +
               'missing, short, over, half_day_leave and no_contract_data'
           ),
-        exclude_dates: z
-          .array(z.string())
+        exclude_dates: inputArray(z.string())
           .optional()
           .describe(
             'log_range: dates (YYYY-MM-DD) inside the range to leave alone, for days that were not worked. ' +
@@ -603,14 +599,14 @@ export function registerAttendanceTool(server: McpServer) {
                 ? await createShift({
                     employee_id: employeeId,
                     date: declaredDate as string,
-                    clock_in: declaredTime as string,
+                    clock_in: declaredTime,
                     location_type: args.location_type,
                     workplace_id: args.workplace_id,
                     observations: args.observations,
                   })
                 : await updateShift(Number((openShift as NonNullable<typeof openShift>).id), {
-                    date: declaredDate as string,
-                    clock_out: declaredTime as string,
+                    date: declaredDate,
+                    clock_out: declaredTime,
                     location_type: args.location_type,
                     workplace_id: args.workplace_id,
                     observations: args.observations,

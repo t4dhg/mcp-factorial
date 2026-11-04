@@ -1,6 +1,6 @@
 {
   "name": "@t4dhg/mcp-factorial",
-  "version": "11.0.1",
+  "version": "12.0.0",
   "mcpName": "io.github.t4dhg/mcp-factorial",
   "description": "The definitive MCP server for FactorialHR - Full CRUD operations for employees, teams, time off, projects, training, recruiting (ATS), and payroll. Context-optimized with 14 hierarchical tools (117 operations) and safety guardrails.",
   "type": "module",
@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
     "clean": "rm -rf dist coverage .vitest",
@@ -35,8 +35,11 @@
     "format": "prettier --write \"src/**/*.ts\" \"*.json\" \"README.md\" \"CONTRIBUTING.md\" \"SECURITY.md\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"*.json\" \"README.md\" \"CONTRIBUTING.md\" \"SECURITY.md\"",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run test && npm run build",
-    "prepare": "husky"
+    "audit": "npm audit --audit-level=low",
+    "check:package": "node scripts/check-package.mjs",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "prepublishOnly": "npm run audit && npm run test && npm run build && npm run check:package && npm run test:smoke",
+    "setup:hooks": "husky"
   },
   "lint-staged": {
     "src/**/*.ts": [
@@ -87,25 +90,36 @@
   },
   "homepage": "https://github.com/t4dhg/mcp-factorial#readme",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "dotenv": "^16.4.0",
-    "zod": "^3.24.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@codecov/vite-plugin": "^1.9.1",
-    "@eslint/js": "^9.17.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^2.1.8",
-    "@vitest/ui": "^2.1.8",
-    "eslint": "^9.17.0",
+    "@vitest/coverage-v8": "^4.1.12",
+    "@vitest/ui": "^4.1.12",
+    "eslint": "^10.14.0",
     "husky": "^9.1.7",
-    "lint-staged": "^15.2.11",
+    "lint-staged": "^15.5.2",
     "prettier": "^3.4.2",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.18.2",
-    "vitest": "^2.1.8"
+    "vite": "^6.4.5",
+    "vitest": "^4.1.12"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
+  },
+  "overrides": {
+    "eslint": {
+      "minimatch": "^11.0.4"
+    },
+    "@eslint/config-array": {
+      "minimatch": "^11.0.4"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.4"
+    }
   }
 }

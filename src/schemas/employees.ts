@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { dateString, resourceId } from './shared.js';
+import { dateString, resourceId, inputArray } from './shared.js';
 
 /**
  * Employee schema
@@ -228,7 +228,7 @@ export const CreateEmployeeInputSchema = z.object({
   nationality: z.string().max(50).optional(),
   manager_id: z.number().positive().optional(),
   role: z.string().max(100).optional(),
-  team_ids: z.array(z.number().positive()).optional(),
+  team_ids: inputArray(z.number().positive()).optional(),
   location_id: z.number().positive().optional(),
 });
 
@@ -257,8 +257,8 @@ export type TerminateEmployeeInput = z.infer<typeof TerminateEmployeeInputSchema
 export const CreateTeamInputSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  lead_ids: z.array(z.number().positive()).optional(),
-  employee_ids: z.array(z.number().positive()).optional(),
+  lead_ids: inputArray(z.number().positive()).optional(),
+  employee_ids: inputArray(z.number().positive()).optional(),
 });
 
 export type CreateTeamInput = z.infer<typeof CreateTeamInputSchema>;

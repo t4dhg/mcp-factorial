@@ -43,7 +43,7 @@ import { registerPayrollTool } from './payroll.js';
 import { registerAttendancePrompts, GUIDE_URI } from '../prompts/attendance.js';
 
 // Keep in step with package.json and server.json; a unit test asserts all three agree.
-export const SERVER_VERSION = '11.0.1';
+export const SERVER_VERSION = '12.0.0';
 
 // Create server instance
 const server = new McpServer({

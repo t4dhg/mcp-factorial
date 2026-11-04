@@ -30,11 +30,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
  */
 /** A query parameter value; arrays are sent as repeated `key[]=value` pairs */
 export type QueryParamValue =
-  | string
-  | number
-  | boolean
-  | undefined
-  | Array<string | number | boolean>;
+  string | number | boolean | undefined | Array<string | number | boolean>;
 
 export interface RequestOptions {
   /** Query parameters */
@@ -376,7 +372,7 @@ export function unwrapRecord<T>(response: unknown): T {
     !Array.isArray(response) &&
     'data' in response
   ) {
-    const inner = (response as { data: unknown }).data;
+    const inner = response.data;
     if (inner !== null && typeof inner === 'object' && !Array.isArray(inner)) {
       return inner as T;
     }

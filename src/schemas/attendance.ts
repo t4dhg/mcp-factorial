@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { dateString, resourceId } from './shared.js';
+import { dateString, resourceId, inputArray } from './shared.js';
 
 /** "HH:MM", 24-hour, company local wall-clock time */
 export const hhmm = z
@@ -259,7 +259,7 @@ export type SegmentInput = z.infer<typeof SegmentInputSchema>;
 /** One explicit day for log_days */
 export const DayInputSchema = z.object({
   date: dateString,
-  segments: z.array(SegmentInputSchema).min(1),
+  segments: inputArray(SegmentInputSchema).min(1),
 });
 
 export type DayInput = z.infer<typeof DayInputSchema>;

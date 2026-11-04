@@ -67,7 +67,8 @@ export async function resolveEmployeeName(employeeId: number): Promise<string> {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
       `Employee ${employeeId} could not be resolved (${reason}). ` +
-        'Check the employee_id argument or the FACTORIAL_EMPLOYEE_ID setting.'
+        'Check the employee_id argument or the FACTORIAL_EMPLOYEE_ID setting.',
+      { cause: error }
     );
   }
   if (!name) name = `employee ${employeeId}`;

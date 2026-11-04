@@ -31,11 +31,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit all dependencies
+        run: npm run audit
+
       - name: Run tests
         run: npm run test
 
       - name: Build
         run: npm run build
+
+      - name: Verify published package
+        run: npm run check:package -- "$RUNNER_TEMP/factorial-package"
+
+      - name: Install release candidate as a consumer
+        run: npm install --prefix "$RUNNER_TEMP/factorial-consumer" "$RUNNER_TEMP/factorial-package/"*.tgz --engine-strict --omit=dev --ignore-scripts --no-audit --no-fund
+
+      - name: Audit release candidate dependencies
+        run: npm audit --prefix "$RUNNER_TEMP/factorial-consumer" --omit=dev --audit-level=low
+
+      - name: Smoke-test release candidate
+        run: node scripts/smoke-test.mjs "$RUNNER_TEMP/factorial-consumer/node_modules/@t4dhg/mcp-factorial/dist/index.js"
 
       # No NODE_AUTH_TOKEN. This authenticates with the OIDC token minted by the
       # id-token permission above, matched against the trusted publisher

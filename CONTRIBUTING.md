@@ -23,7 +23,7 @@ We welcome contributions! This project embraces AI-assisted development—we exp
 
 ### Prerequisites
 
-- Node.js 18+ (we recommend using nvm: `nvm use`)
+- Node.js 22 or 24 for development (`nvm use` selects Node 24). The installed server requires Node.js 20+; the patched test tooling requires a newer development runtime.
 - npm or pnpm
 - A FactorialHR account with API access
 
@@ -32,10 +32,13 @@ We welcome contributions! This project embraces AI-assisted development—we exp
 ```bash
 git clone https://github.com/t4dhg/mcp-factorial.git
 cd mcp-factorial
-npm install
+npm ci
+npm run setup:hooks
 cp .env.example .env
 # Add your FACTORIAL_API_KEY to .env
 ```
+
+`setup:hooks` installs Husky's local Git hooks. Run it once in each clone, and again after reinstalling dependencies. It is explicit so the npm distribution has no install lifecycle scripts. The pre-commit scan and lint-staged checks remain in `.husky/pre-commit`.
 
 ### Development Workflow
 
@@ -46,6 +49,8 @@ npm run test         # Run tests
 npm run test:watch   # Test watch mode
 npm run lint         # Check code quality
 npm run format       # Format code
+npm run audit        # Audit runtime and development dependencies
+npm run check:package # Inspect the actual npm tarball (run build first)
 ```
 
 ## Making Changes
@@ -102,6 +107,10 @@ describe('listEmployees', () => {
 4. Ensure linting passes: `npm run lint`
 5. Update CHANGELOG.md under "Unreleased"
 6. Submit PR with clear description
+
+Before submitting dependency changes, also run `npm run typecheck`, `npm run format:check`, `npm run test:coverage`, `npm run build`, `npm run audit`, and `npm run check:package`. The package check rejects install lifecycle scripts and missing entry points in the actual tarball. CI and release staging run both the dependency audit and the package check.
+
+The scoped minimatch overrides move ESLint's config matching and typescript-eslint's project matching from vulnerable 10.x releases to patched 11.x releases (GHSA-g3hv-75wg-m249). These consumers use the named `Minimatch` API, retained in 11.x. Keep lint/typecheck validation when changing the overrides, and remove them once upstream dependency ranges accept a patched version. Do not apply this override to older minimatch consumers that expect its former default-function export.
 
 ## Project Structure
 

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [12.0.0] - 2026-11-04
+
+### Security
+
+- Upgrade the MCP SDK and Zod to patched versions, raise their dependency floors, and refresh the complete lockfile, including development tooling. Move the test suite to Vitest 4 and a patched Vite 6 release.
+- Limit each client-supplied array to 1,000 entries, including nested daily segments. Oversized collections are rejected before element validation, preventing unbounded validation-error accumulation. Empty employee filters retain their existing meaning.
+- Audit all dependencies in CI and before release staging. Inspect the actual npm tarball for install lifecycle scripts, missing entry points, and accidentally packaged test material.
+- Clean the build directory before compiling so stale files, including old test fixtures, cannot survive into the npm distribution.
+
+### Changed
+
+- Replace the automatic `prepare` hook with `npm run setup:hooks` for local Husky setup. Existing pre-commit checks are retained, and the published manifest no longer declares an install lifecycle script.
+- **BREAKING:** The server now requires Node 20+ because the patched MCP SDK's Node adapter requires it. Use Node 24 for local development and quality checks, and Node 22/24 for the full test matrix.
+- Upgrade ESLint and use scoped minimatch overrides for its configuration matching and typescript-eslint's project matching until their upstream ranges accept patched minimatch versions.
+- Smoke-test and audit a strict-engine installation of the packed npm distribution on Node 20/22/24 independently of the development-tool runtime.
+
+### Removed
+
+- The optional Codecov bundle-analysis plugin, whose latest version still requires vulnerable Zod 3. Codecov coverage and test-result uploads remain enabled; the CLI distribution is built with TypeScript, not a Vite bundle.
+
 ## [11.0.1] - 2026-09-08
 
 No runtime code changed in this release. No tool or prompt was added, removed or altered, so upgrading from 11.0.0 changes nothing about how the server behaves.

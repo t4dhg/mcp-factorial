@@ -16,11 +16,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit all dependencies
+        run: npm run audit
 
       - name: Lint
         run: npm run lint
@@ -34,14 +37,23 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify published package
+        run: npm run check:package -- "${{ runner.temp }}/factorial-package"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/factorial-package/*.tgz
+          if-no-files-found: error
+
   test:
     name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 24 is included because releases publish on Node 24 (trusted
-        # publishing needs npm >= 11.5.1), so the release runtime must be tested.
-        node-version: [18, 20, 22, 24]
+        # Patched test tooling needs Node >=20; test supported LTS versions,
+        # including the Node 24 release environment.
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
@@ -56,11 +68,9 @@ jobs:
 
       - name: Run tests with coverage
         run: npm run test:coverage
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov
-        if: matrix.node-version == 20
+        if: matrix.node-version == 24
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -68,10 +78,33 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload test results to Codecov
-        if: matrix.node-version == 20
+        if: matrix.node-version == 24
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./test-results/junit.xml
           report_type: test_results
           fail_ci_if_error: false
+
+  runtime:
+    name: Packed runtime (Node ${{ matrix.node-version }})
+    needs: quality
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/factorial-package
+      - name: Install packed runtime dependencies
+        run: npm install --prefix "$RUNNER_TEMP/factorial-consumer" "$RUNNER_TEMP/factorial-package/"*.tgz --engine-strict --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Audit the fresh consumer
+        run: npm audit --prefix "$RUNNER_TEMP/factorial-consumer" --omit=dev --audit-level=low
+      - name: Smoke-test the installed package
+        run: node scripts/smoke-test.mjs "$RUNNER_TEMP/factorial-consumer/node_modules/@t4dhg/mcp-factorial/dist/index.js"

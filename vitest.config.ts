@@ -1,20 +1,13 @@
 import { defineConfig } from 'vitest/config';
-import { codecovVitePlugin } from '@codecov/vite-plugin';
 
 export default defineConfig({
-  plugins: [
-    codecovVitePlugin({
-      enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
-      bundleName: 'mcp-factorial',
-      uploadToken: process.env.CODECOV_TOKEN,
-    }),
-  ],
   test: {
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
+      include: ['src/**/*.ts'],
       reporter: ['text', 'json', 'html', 'lcov'],
       exclude: [
         'dist/',
