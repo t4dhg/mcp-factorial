@@ -91,6 +91,17 @@ factorial_discover({ category: 'employees' });
 | **Job Catalog** | list_roles, get_role, list_levels (read-only)                                                                                             |
 | **Contracts**   | list, get_with_employee, by_job_role, by_job_level (read-only)                                                                            |
 
+### Time Off Approvals
+
+A leave request is decided by its own approver. In Factorial that is the time-off approver on the employee's record (`timeoff_manager_id`), and a company API key is permitted to approve or reject any request, so "pending" and "pending for me" are different sets that look the same from the API. The server keeps them apart:
+
+- `list_leaves` and `get_leave` add `timeoff_manager_id`, `timeoff_manager_name` and `routed_to_me` to every leave. `routed_to_me` is `true` or `false` when it can be told, and `null` when `FACTORIAL_EMPLOYEE_ID` is unset.
+- `list_leaves` with `pending_for_me: true` returns exactly the requests awaiting your decision: pending leaves of the employees whose approver is you, across every page.
+- `approve` and `reject` read the leave and its employee afresh and refuse, naming the actual approver, when the leave is routed to someone else, when the employee has no approver on record, or when `FACTORIAL_EMPLOYEE_ID` is unset (in which case no override is accepted either). Nothing is written.
+- To decide a request on another approver's behalf, pass `override_approver: true` and an `override_reason` saying who asked and why. The first call writes nothing and returns a preview and a `confirmation_token`; repeating the call with the token executes it, and the override and its reason are recorded on the audit entry. The override is for having been asked to act for that approver, not for a request that merely happens to be pending.
+
+You are the employee in `FACTORIAL_EMPLOYEE_ID`. It has to be configured because the API cannot supply it: `api_public/credentials` reports no employee for a company API key. The approver is read from the employee record; this server does not model multi-step approval flows configured in Factorial.
+
 ### Attendance and Registro Horario
 
 Factorial asks employees to record their working hours day by day. `factorial_attendance` lets Claude do that, for one day or for a whole month, and for any employee the API key can see.
@@ -231,7 +242,7 @@ Once configured, ask Claude things like:
 
 - _"Who's on the Engineering team?"_
 - _"Create a new employee John Smith"_
-- _"Approve the pending time off request for employee 42"_
+- _"Which time off requests are waiting for my approval?"_
 - _"Create a new project called Q1 Marketing Campaign"_
 - _"Enroll Sarah in the Leadership Training program"_
 - _"Show me all open job postings"_
@@ -337,7 +348,7 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 ### For Managers
 
 - Create and manage team structures
-- Approve or reject time off requests
+- See the time off requests routed to you, and approve or reject them
 - Assign employees to projects
 - Track project time records
 - Monitor training enrollments
@@ -359,17 +370,17 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ## Configuration Options
 
-| Environment Variable            | Description                                                          | Default      |
-| ------------------------------- | -------------------------------------------------------------------- | ------------ |
-| `FACTORIAL_API_KEY`             | Your FactorialHR API key                                             | Required     |
-| `FACTORIAL_API_VERSION`         | API version                                                          | `2026-07-01` |
-| `FACTORIAL_EMPLOYEE_ID`         | Your employee id: default target and ungated identity for attendance | -            |
-| `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                                                 | `30000`      |
-| `FACTORIAL_MAX_RETRIES`         | Max retry attempts                                                   | `3`          |
-| `DEBUG`                         | Enable debug logging                                                 | `false`      |
-| `FACTORIAL_OAUTH_CLIENT_ID`     | OAuth2 client ID (for downloads)                                     | -            |
-| `FACTORIAL_OAUTH_CLIENT_SECRET` | OAuth2 client secret (for downloads)                                 | -            |
-| `FACTORIAL_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (for downloads)                                 | -            |
+| Environment Variable            | Description                                                                                           | Default      |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------ |
+| `FACTORIAL_API_KEY`             | Your FactorialHR API key                                                                              | Required     |
+| `FACTORIAL_API_VERSION`         | API version                                                                                           | `2026-07-01` |
+| `FACTORIAL_EMPLOYEE_ID`         | Your employee id: who you are for leave approvals; default target and ungated identity for attendance | -            |
+| `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                                                                                  | `30000`      |
+| `FACTORIAL_MAX_RETRIES`         | Max retry attempts                                                                                    | `3`          |
+| `DEBUG`                         | Enable debug logging                                                                                  | `false`      |
+| `FACTORIAL_OAUTH_CLIENT_ID`     | OAuth2 client ID (for downloads)                                                                      | -            |
+| `FACTORIAL_OAUTH_CLIENT_SECRET` | OAuth2 client secret (for downloads)                                                                  | -            |
+| `FACTORIAL_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (for downloads)                                                                  | -            |
 
 ## Safety & Security
 
@@ -411,6 +422,11 @@ Always gated, whatever the target, because volume is its own hazard:
 - `factorial_attendance({ action: 'log_range' })` - Writes one or more shift records per workable day in a range
 - `factorial_attendance({ action: 'log_days' })` - Writes an explicit list of days
 - `factorial_attendance({ action: 'create_edit_request' })` - Files a request to change a timesheet, which notifies a person, so it is gated even for the configured identity
+
+Gated whenever a leave is decided on another approver's behalf, which is the only way to decide a leave that is not routed to you (see [Time Off Approvals](#time-off-approvals)):
+
+- `factorial_time_off({ action: 'approve' })` - With `override_approver: true` and an `override_reason`, approves a leave routed to someone else
+- `factorial_time_off({ action: 'reject' })` - With `override_approver: true` and an `override_reason`, rejects a leave routed to someone else; the token stands in for `confirm: true`
 
 Re-running a bulk call after a partial failure is safe against its own earlier writes: the planner re-reads existing shifts and skips whatever overlaps. It does not protect against another writer between the read and the writes.
 
@@ -458,6 +474,7 @@ All write operations (create, update, delete, approve, reject) are recorded with
 - Entity type and ID
 - Changes made
 - Success or failure, and duration
+- For a leave decided on another approver's behalf: the approver, the caller and the reason given
 
 **Scope of this log.** The trail is held in memory in the running server process, capped at the most recent 1000 entries, and is not exposed through any tool or resource. It is lost when the process exits. Set `DEBUG=true` to have each entry written to the server's stderr, which is the only way to retain it today. It is a debugging aid, not a compliance record: if you need a durable, queryable audit trail, use FactorialHR's own activity log as the system of record.
 

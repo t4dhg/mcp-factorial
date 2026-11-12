@@ -13,6 +13,7 @@ export { clearCache, invalidateCache } from './shared.js';
 export {
   listEmployees,
   getEmployee,
+  listAllEmployees,
   searchEmployees,
   createEmployee,
   updateEmployee,
@@ -45,6 +46,7 @@ export {
 export {
   listLeaves,
   listLeavesInRange,
+  listPendingLeaves,
   getLeave,
   listLeaveTypes,
   getLeaveType,
@@ -54,6 +56,7 @@ export {
   cancelLeave,
   approveLeave,
   rejectLeave,
+  type ApproverOverride,
 } from './time-off.js';
 
 // Attendance
