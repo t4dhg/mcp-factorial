@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.0.0] - 2026-11-12
+
+### Changed
+
+- **BREAKING: `approve` and `reject` now check the leave's approver.** A leave request is decided by the time-off approver on the employee's record (`timeoff_manager_id`). Before calling Factorial, both actions read the leave and its employee and refuse, naming the actual approver, when the leave is routed to someone else or the employee has no approver on record. A company API key is permitted to decide any request, so until now nothing distinguished a request that was pending from one that was pending for the caller. What to do: set `FACTORIAL_EMPLOYEE_ID` to your own employee id. Requests routed to you behave as before.
+- **BREAKING: `approve` and `reject` refuse every leave when `FACTORIAL_EMPLOYEE_ID` is unset.** The caller cannot be read from the API (`api_public/credentials` reports no employee for a company API key), so without the variable the server cannot tell whose decision a request is, and it no longer guesses. This holds with an override too: an override records who took the decision, so an unidentified caller cannot make one.
+- `FACTORIAL_EMPLOYEE_ID` now also means "who you are for leave approvals", in addition to being the default target and ungated identity for attendance.
+- The `factorial_time_off` description and the `approve_leave` and `reject_leave` policies state the rule, so a client reading the schema sees it before acting: only decide requests whose approver is you; pending does not mean pending for you.
+
+### Added
+
+- `list_leaves` and `get_leave` carry `timeoff_manager_id`, `timeoff_manager_name` and `routed_to_me` on every leave, and `list_leaves` rows also carry `employee_name`. The list reads the employee directory once, not once per row, and says which pending requests are routed to the caller and which are not.
+- `list_leaves` accepts `pending_for_me: true`, which returns exactly the pending leaves of the employees whose approver is the caller, across every page.
+- `override_approver` and `override_reason` on `approve` and `reject`, for deciding a request on another approver's behalf. The reason is required. The first call writes nothing and returns a preview naming the employee, the approver and the reason, plus a confirmation token bound to all of them; the second call executes, and the approver, the caller and the reason are recorded on the audit entry. This uses the existing confirmation-token gate rather than a new mechanism.
+- A structural test that fails if an action reaching the approve or reject API call does not check the approver first.
+
 ## [12.0.0] - 2026-11-04
 
 ### Security

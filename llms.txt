@@ -33,6 +33,8 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 ### Time Off (10 tools)
 - list_leaves, get_leave, list_leave_types, get_leave_type, list_allowances
 - create_leave, update_leave, cancel_leave, approve_leave, reject_leave
+- A leave is decided by its own approver (the employee's timeoff_manager_id). list_leaves and get_leave carry timeoff_manager_id, timeoff_manager_name and routed_to_me on every leave; list_leaves with pending_for_me: true returns exactly the requests awaiting the caller's decision. Pending does not mean pending for the caller.
+- approve and reject refuse a leave routed to someone else, naming the approver, and refuse every leave when FACTORIAL_EMPLOYEE_ID (who the caller is) is unset. Acting on another approver's behalf needs override_approver: true plus override_reason, returns a preview and a confirmation token first, and is recorded in the audit log.
 
 ### Attendance (14 actions, registro horario)
 - list, get, create, update, delete (shift records; list needs start_on/end_on, paging is client-side)

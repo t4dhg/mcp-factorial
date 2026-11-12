@@ -190,6 +190,74 @@ function documentedTokenGatedActions(): Array<{ file: string; action: string }> 
   }));
 }
 
+/**
+ * A leave is decided by its own approver. Every case arm in tools/time-off.ts
+ * that reaches one of these API calls must consult checkLeaveApprover first.
+ * Add a new decision call here in the same change that introduces it, or this
+ * guard passes vacuously for it.
+ */
+const LEAVE_DECISION_CALLS = ['approveLeave', 'rejectLeave'];
+
+function leaveDecisionArms(): Array<{ action: string; checked: boolean; tokenGated: boolean }> {
+  const source = readFileSync(path.join(toolsDir, 'time-off.ts'), 'utf8');
+  return caseArms(source)
+    .filter(({ body }) => LEAVE_DECISION_CALLS.some(fn => new RegExp(`\\b${fn}\\s*\\(`).test(body)))
+    .map(({ action, body }) => {
+      const check = body.indexOf('checkLeaveApprover(');
+      const write = Math.min(
+        ...LEAVE_DECISION_CALLS.map(fn => body.search(new RegExp(`\\b${fn}\\s*\\(`))).filter(
+          index => index >= 0
+        )
+      );
+      return {
+        action,
+        // The check has to come before the write, not merely appear in the arm.
+        checked: check >= 0 && check < write,
+        tokenGated: body.includes('requireTargetConfirmation('),
+      };
+    });
+}
+
+describe('Approver check across leave decisions', () => {
+  it('finds exactly the approve and reject arms', () => {
+    expect(
+      leaveDecisionArms()
+        .map(a => a.action)
+        .sort()
+    ).toEqual(['approve', 'reject']);
+  });
+
+  it('checks the approver before every approve or reject reaches the API', () => {
+    const unchecked = leaveDecisionArms()
+      .filter(a => !a.checked)
+      .map(a => `time-off.ts: case '${a.action}'`);
+    expect(unchecked, `leave decisions with no approver check:\n${unchecked.join('\n')}`).toEqual(
+      []
+    );
+  });
+
+  it('routes the override of every leave decision through the token gate', () => {
+    const ungated = leaveDecisionArms()
+      .filter(a => !a.tokenGated)
+      .map(a => `time-off.ts: case '${a.action}'`);
+    expect(ungated).toEqual([]);
+  });
+
+  it('exposes approveLeave and rejectLeave as the only leave decision calls in the API layer', () => {
+    const source = readFileSync(path.join(apiDir, 'time-off.ts'), 'utf8');
+    const decisionFunctions = [...source.matchAll(/export async function (\w+)\(/g)]
+      .map(match => match[1])
+      .filter(name => {
+        const start = source.indexOf(`export async function ${name}(`);
+        const next = source.indexOf('\nexport ', start + 1);
+        const body = source.slice(start, next === -1 ? source.length : next);
+        return /'(approve|reject)\w*'/.test(body) && body.includes('postAction');
+      })
+      .sort();
+    expect(decisionFunctions).toEqual([...LEAVE_DECISION_CALLS].sort());
+  });
+});
+
 describe('Target-identity gate across attendance writes', () => {
   it('finds the attendance write arms', () => {
     const arms = attendanceWriteArms().map(a => a.action);

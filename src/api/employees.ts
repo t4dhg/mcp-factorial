@@ -64,8 +64,12 @@ export async function listEmployees(
  * to return nothing, because the client unwrapped a `data` envelope the API does
  * not send for single records; the fallback was masking that bug.)
  */
-export async function getEmployee(id: number): Promise<Employee> {
+export async function getEmployee(id: number, options?: { fresh?: boolean }): Promise<Employee> {
   validateId(id, 'employee');
+
+  // A write guard that depends on this record must not decide from a copy up
+  // to five minutes old.
+  if (options?.fresh) cache.invalidate(`employee:${id}`);
 
   // Try the direct endpoint first
   try {
@@ -89,6 +93,8 @@ export async function getEmployee(id: number): Promise<Employee> {
 
   // Fallback: Fetch all employees and filter (same approach as searchEmployees)
   // This works around Factorial API limitations with the individual employee endpoint
+  // A fresh read must not land on the cached list either.
+  if (options?.fresh) cache.invalidate('employees:all');
   const allEmployees = await cached(
     'employees:all',
     () => fetchList<Employee>(ENDPOINTS.employees),
@@ -102,6 +108,18 @@ export async function getEmployee(id: number): Promise<Employee> {
   }
 
   return employee;
+}
+
+/**
+ * Every employee, from the same cached read the client-side filters use.
+ * One request answers "who is this person's approver" for a whole list.
+ */
+export async function listAllEmployees(): Promise<Employee[]> {
+  return cached(
+    'employees:all',
+    () => fetchList<Employee>(ENDPOINTS.employees),
+    CACHE_TTL.employees
+  );
 }
 
 /**

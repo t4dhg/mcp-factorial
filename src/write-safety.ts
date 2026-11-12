@@ -43,6 +43,15 @@ export interface OperationPolicy {
 }
 
 /**
+ * The rule approve and reject share. A pending leave belongs to the approver
+ * named on the employee's record, whatever the credential would let through.
+ */
+const APPROVER_RULE =
+  "Only the request's own time-off approver should decide it: a leave routed to someone else " +
+  'is refused unless override_approver and override_reason are given, which is gated by a ' +
+  'confirmation token';
+
+/**
  * Default policies for write operations
  */
 const POLICIES = {
@@ -141,13 +150,13 @@ const POLICIES = {
     risk: OperationRisk.MEDIUM,
     requiresConfirmation: false,
     requiresPreview: true,
-    impactDescription: 'Approves the leave request, deducting from allowance',
+    impactDescription: `Approves the leave request, deducting from allowance. ${APPROVER_RULE}`,
   },
   reject_leave: {
     risk: OperationRisk.MEDIUM,
     requiresConfirmation: true,
     requiresPreview: true,
-    impactDescription: 'Rejects the leave request',
+    impactDescription: `Rejects the leave request. ${APPROVER_RULE}`,
   },
 
   // Shift operations

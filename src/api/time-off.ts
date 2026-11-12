@@ -76,6 +76,25 @@ export async function listLeavesInRange(
 }
 
 /**
+ * Every leave of some employees that still awaits a decision, across all
+ * pages. `include_pending=true` on its own returns only pending leaves
+ * (verified live on 2026-07-01); the result is filtered again here so that a
+ * server ignoring the parameter cannot turn this into "every leave".
+ */
+export async function listPendingLeaves(
+  employeeIds: string[],
+  from?: string,
+  to?: string
+): Promise<Leave[]> {
+  const leaves = await fetchList<unknown>(ENDPOINTS.leaves, {
+    params: { employee_ids: employeeIds, include_pending: true, from, to },
+  });
+  return parseArray('Leave', LeaveSchema, leaves).filter(
+    leave => leave.approved === null && leave.deleted_at === null
+  );
+}
+
+/**
  * Get a specific leave by ID
  */
 export async function getLeave(id: number): Promise<Leave> {
@@ -159,31 +178,80 @@ export async function cancelLeave(id: number): Promise<void> {
 }
 
 /**
- * Approve a leave request
+ * A decision taken on a leave that is not routed to the caller, on its
+ * approver's behalf. Recorded on the audit entry of the decision itself.
  */
-export async function approveLeave(id: number, input?: LeaveDecisionInput): Promise<Leave> {
+export interface ApproverOverride {
+  /** The leave's own approver; null when the employee record names none */
+  approverId: string | null;
+  /** The caller. Never unknown: an unidentified caller cannot override */
+  callerId: string;
+  /** Why the caller is deciding someone else's request */
+  reason: string;
+}
+
+function overrideChanges(
+  override?: ApproverOverride
+): Record<string, { from?: unknown; to: unknown }> | undefined {
+  if (!override) return undefined;
+  return {
+    approver_override: { from: override.approverId, to: override.callerId },
+    override_reason: { to: override.reason },
+  };
+}
+
+/**
+ * Approve a leave request
+ *
+ * Whether the caller is the leave's approver is decided by the tool handler
+ * (checkLeaveApprover) before this is reached; `override` only records that
+ * the check was deliberately overridden.
+ */
+export async function approveLeave(
+  id: number,
+  input?: LeaveDecisionInput,
+  override?: ApproverOverride
+): Promise<Leave> {
   validateId(id, 'leave');
 
-  return auditedOperation(AuditAction.APPROVE, 'leave', id, async () => {
-    const leave = await postAction<Leave>(
-      endpointWithAction(ENDPOINTS.leaves, id, 'approve'),
-      input || {}
-    );
-    return leave;
-  });
+  return auditedOperation(
+    AuditAction.APPROVE,
+    'leave',
+    id,
+    async () => {
+      const leave = await postAction<Leave>(
+        endpointWithAction(ENDPOINTS.leaves, id, 'approve'),
+        input || {}
+      );
+      return leave;
+    },
+    overrideChanges(override)
+  );
 }
 
 /**
  * Reject a leave request
+ *
+ * See approveLeave for what `override` means.
  */
-export async function rejectLeave(id: number, input?: LeaveDecisionInput): Promise<Leave> {
+export async function rejectLeave(
+  id: number,
+  input?: LeaveDecisionInput,
+  override?: ApproverOverride
+): Promise<Leave> {
   validateId(id, 'leave');
 
-  return auditedOperation(AuditAction.REJECT, 'leave', id, async () => {
-    const leave = await postAction<Leave>(
-      endpointWithAction(ENDPOINTS.leaves, id, 'reject'),
-      input || {}
-    );
-    return leave;
-  });
+  return auditedOperation(
+    AuditAction.REJECT,
+    'leave',
+    id,
+    async () => {
+      const leave = await postAction<Leave>(
+        endpointWithAction(ENDPOINTS.leaves, id, 'reject'),
+        input || {}
+      );
+      return leave;
+    },
+    overrideChanges(override)
+  );
 }

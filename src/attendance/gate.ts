@@ -1,5 +1,6 @@
 /**
- * Target-identity confirmation gate for attendance writes.
+ * Target-identity confirmation gate, for attendance writes and for deciding a
+ * leave on another approver's behalf.
  *
  * The policy gate in tools/shared.ts (checkConfirmation) is static per
  * operation and cannot express "depends on who the target is" or "depends on
@@ -11,7 +12,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { confirmationManager } from '../confirmation.js';
+import { confirmationManager, type OperationPreview } from '../confirmation.js';
 import { ConfirmationExpiredError } from '../errors.js';
 import { isConfiguredIdentity } from './identity.js';
 
@@ -28,6 +29,9 @@ export interface GateRequest {
   token?: string;
   /** Gate regardless of target (bulk writes) */
   always?: boolean;
+  /** What the stored preview describes; a shift being created unless stated */
+  entityType?: string;
+  previewOperation?: OperationPreview['operation'];
 }
 
 export type GateResult = { proceed: true } | { proceed: false; message: string };
@@ -42,8 +46,8 @@ function issue(request: GateRequest, prefix = ''): GateResult {
     request.operation,
     { fingerprint: request.fingerprint, employeeId: request.employeeId },
     {
-      operation: 'create',
-      entityType: 'shift',
+      operation: request.previewOperation ?? 'create',
+      entityType: request.entityType ?? 'shift',
       entityId: request.employeeId,
       entityName: request.preview.split('\n')[0],
       warnings: [],

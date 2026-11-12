@@ -33,6 +33,17 @@ export function formatToolError(error: unknown): ToolResult {
 }
 
 /**
+ * A refusal: the request was understood and deliberately not carried out.
+ * Marked as an error so a client cannot read it as the action having happened.
+ */
+export function refusalResponse(text: string): ToolResult {
+  return {
+    content: [{ type: 'text', text }],
+    isError: true,
+  };
+}
+
+/**
  * Create a successful text response
  */
 export function textResponse(text: string): ToolResult {
