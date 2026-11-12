@@ -65,9 +65,10 @@ function routingNote(rows: Array<ReturnType<typeof leaveRow>>, callerKnown: bool
   if (pending.length === 0) return '';
   if (!callerKnown) {
     return (
-      '\n\nrouted_to_me is null on every row: FACTORIAL_EMPLOYEE_ID is not set, so the server ' +
-      'does not know who you are. Set it to your own employee id to see which requests await ' +
-      'your decision. Until then, do not approve or reject on the strength of this list.'
+      '\n\nrouted_to_me is null on every row: nobody has logged in and FACTORIAL_EMPLOYEE_ID is ' +
+      'not set, so the server does not know who you are. Log in, or set it to your own ' +
+      'employee id, to see which requests await your decision. Until then, do not approve or ' +
+      'reject on the strength of this list.'
     );
   }
   const mine = pending.filter(row => row.routed_to_me === true);
@@ -97,11 +98,14 @@ export function registerTimeOffTool(server: McpServer) {
         'Manage leave requests: list, get, create, update, cancel, approve, reject, view types and ' +
         'allowances. Approve or reject only requests whose time-off approver is you: pending does ' +
         'not mean pending for you, and a credential that would let a decision through does not ' +
-        "make another approver's request yours. You are the employee in FACTORIAL_EMPLOYEE_ID. " +
+        "make another approver's request yours. You are the employee who logged in, or under a " +
+        'company API key the employee in FACTORIAL_EMPLOYEE_ID. ' +
         "list_leaves and get_leave show each leave's approver (timeoff_manager_id, " +
         'timeoff_manager_name) and routed_to_me; list_leaves with pending_for_me: true returns ' +
         'exactly the requests awaiting your decision. approve and reject refuse a leave routed to ' +
-        'someone else, or any leave when FACTORIAL_EMPLOYEE_ID is unset.',
+        'someone else, or any leave when the server does not know who you are. A decision is ' +
+        'recorded in Factorial under whoever made it, so approve and reject are refused under a ' +
+        'company API key unless the operator has set FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS=true.',
       inputSchema: {
         action: z
           .enum([
@@ -142,7 +146,8 @@ export function registerTimeOffTool(server: McpServer) {
           .optional()
           .describe(
             'For list_leaves: only leaves still awaiting a decision whose time-off approver is ' +
-              'you (FACTORIAL_EMPLOYEE_ID). Reads every page, so page and limit are ignored; ' +
+              'you (the logged-in user, or FACTORIAL_EMPLOYEE_ID). Reads every page, so page ' +
+              'and limit are ignored; ' +
               'start_on, finish_on and employee_id still narrow it'
           ),
         override_approver: z
@@ -179,9 +184,9 @@ export function registerTimeOffTool(server: McpServer) {
             if (args.pending_for_me) {
               if (callerId === undefined) {
                 return refusalResponse(
-                  'Error: pending_for_me needs to know who you are, and FACTORIAL_EMPLOYEE_ID is ' +
-                    "not set. Set it to your own employee id in the server's environment. " +
-                    'Nothing was read.'
+                  'Error: pending_for_me needs to know who you are: nobody has logged in and ' +
+                    'FACTORIAL_EMPLOYEE_ID is not set. Log in, or set it to your own employee ' +
+                    "id in the server's environment. Nothing was read."
                 );
               }
               const me = `${await resolveEmployeeName(Number(callerId))} (employee ${callerId})`;

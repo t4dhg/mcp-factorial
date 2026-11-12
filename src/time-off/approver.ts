@@ -7,9 +7,14 @@
  * without this module "every pending request" and "every request awaiting my
  * decision" look identical to a client.
  *
- * The caller is the employee in FACTORIAL_EMPLOYEE_ID. It cannot be read from
- * the API: /api_public/credentials reports no employee for a company API key.
- * When it is unset the caller is unknown, and nothing here guesses.
+ * The caller is the employee who logged in, or under a company API key the
+ * employee in FACTORIAL_EMPLOYEE_ID: /api_public/credentials reports no
+ * employee for a company key. With neither the caller is unknown, and nothing
+ * here guesses.
+ *
+ * A decision is also somebody's, in Factorial's own record. Under a company
+ * API key it would be recorded under the key's account rather than the person
+ * who took it, so it is refused unless the operator has allowed that.
  *
  * This is not a third confirmation gate. It is a precondition that refuses,
  * and its one exception (deciding on another approver's behalf) goes through
@@ -20,6 +25,12 @@ import { getEmployee, listAllEmployees } from '../api/employees.js';
 import { getLeave, type ApproverOverride } from '../api/time-off.js';
 import { getConfiguredEmployeeId, resolveEmployeeName } from '../attendance/identity.js';
 import { payloadFingerprint } from '../attendance/gate.js';
+import {
+  companyKeyApprovalsAllowed,
+  LOGIN_COMMAND,
+  LoginRequiredError,
+  writeActor,
+} from '../auth/mode.js';
 import type { Employee, Leave } from '../schemas.js';
 
 /** The approver fields added to a leave in list_leaves and get_leave */
@@ -149,6 +160,34 @@ export async function checkLeaveApprover(
   leaveId: number,
   options: ApproverCheckOptions = {}
 ): Promise<ApproverCheck> {
+  // Who Factorial would record the decision under comes first: it needs no
+  // read, and no override or confirmation changes the answer.
+  let actor;
+  try {
+    actor = writeActor();
+  } catch (error) {
+    if (error instanceof LoginRequiredError) {
+      return { allowed: false, message: `Refused: ${error.message}` };
+    }
+    throw error;
+  }
+  if (actor.kind === 'company' && !companyKeyApprovalsAllowed()) {
+    const decision = action === 'approve' ? 'approval' : 'rejection';
+    return {
+      allowed: false,
+      message:
+        'Refused: this server is using a company API key, so Factorial would record this ' +
+        `${decision} under the company API key's account, not under you. A decision on ` +
+        "someone's leave should carry the name of the person who took it. Nothing was " +
+        `written.\n\nLog in as yourself with \`${LOGIN_COMMAND}\` in a terminal and repeat ` +
+        'the call: the decision is then recorded under your own user. To decide under the ' +
+        "company key anyway, the server's operator can set " +
+        'FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS=true in its environment; that is a setting, ' +
+        'not a parameter of this tool, and every such decision still says who it was ' +
+        'recorded under.',
+    };
+  }
+
   const reason = options.reason?.trim() ?? '';
   // Validate before reading anything, and long before a token could be minted.
   if (options.override && reason === '') {
@@ -181,14 +220,15 @@ export async function checkLeaveApprover(
     return {
       allowed: false,
       message:
-        'Refused: FACTORIAL_EMPLOYEE_ID is not set, so the server does not know who you are ' +
-        `and cannot tell whether ${subject} is yours to decide. ` +
+        'Refused: nobody has logged in and FACTORIAL_EMPLOYEE_ID is not set, so the server ' +
+        `does not know who you are and cannot tell whether ${subject} is yours to decide. ` +
         (approverLabel
           ? `It is routed to ${approverLabel}. `
           : 'Its employee has no time-off approver on record. ') +
-        'Nothing was written.\n\nSet FACTORIAL_EMPLOYEE_ID to your own employee id in the ' +
-        "server's environment and try again. No leave can be approved or rejected, with or " +
-        'without an override, until it is set.',
+        `Nothing was written.\n\nLog in as yourself with \`${LOGIN_COMMAND}\` in a ` +
+        'terminal, or set FACTORIAL_EMPLOYEE_ID to your own employee id in the ' +
+        "server's environment, and try again. No leave can be approved or rejected, with or " +
+        'without an override, until the server knows who you are.',
     };
   }
   // resolveEmployeeName fails loudly on an id that does not resolve, so a
@@ -234,6 +274,8 @@ export async function checkLeaveApprover(
       // previewed against, so a token cannot confirm a different decision.
       fingerprint: payloadFingerprint({
         action,
+        // A preview made under one credential cannot confirm a write under another.
+        recordedUnder: actor.kind === 'user' ? `employee ${actor.login.employee_id}` : 'company',
         leaveId: leave.id,
         employeeId: leave.employee_id,
         approverId,

@@ -3,6 +3,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { writeStoredLogin } from '../../auth/token-store.js';
 import {
   isOAuth2Configured,
   getOAuth2Config,
@@ -270,6 +274,81 @@ describe('OAuth2 Module', () => {
 
       // Fetch should be called twice
       expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+  describe('refresh token rotation', () => {
+    it('refreshes with the rotated token, not the one from the environment', async () => {
+      vi.stubEnv('FACTORIAL_OAUTH_CLIENT_ID', 'client-1');
+      vi.stubEnv('FACTORIAL_OAUTH_CLIENT_SECRET', 'placeholder-secret');
+      vi.stubEnv('FACTORIAL_OAUTH_REFRESH_TOKEN', 'refresh-from-env');
+      const sent: string[] = [];
+      let issued = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init: RequestInit) => {
+          sent.push(new URLSearchParams(init.body as string).get('refresh_token') ?? '');
+          issued += 1;
+          return {
+            ok: true,
+            json: async () => ({
+              access_token: `access-${issued}`,
+              refresh_token: `refresh-rotated-${issued}`,
+              // Already inside the refresh margin, so the next call refreshes again.
+              expires_in: 1,
+              token_type: 'Bearer',
+              scope: 'read',
+              created_at: 0,
+            }),
+          } as Response;
+        })
+      );
+
+      expect(await getOAuth2AccessToken()).toBe('access-1');
+      expect(await getOAuth2AccessToken()).toBe('access-2');
+      // Factorial retires a refresh token once it has been used.
+      expect(sent).toEqual(['refresh-from-env', 'refresh-rotated-1']);
+    });
+  });
+
+  describe('with a user login', () => {
+    let dir: string;
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), 'mcp-factorial-oauth-'));
+      vi.stubEnv('FACTORIAL_TOKEN_FILE', join(dir, 'login.json'));
+      vi.stubEnv('FACTORIAL_OAUTH_CLIENT_ID', '');
+      vi.stubEnv('FACTORIAL_OAUTH_CLIENT_SECRET', '');
+      vi.stubEnv('FACTORIAL_OAUTH_REFRESH_TOKEN', '');
+      writeStoredLogin({
+        version: 1,
+        client_id: 'client-1',
+        access_token: 'user-access-token',
+        refresh_token: 'user-refresh-token',
+        expires_at: Date.now() + 30 * 60 * 1000,
+        scope: 'read documents',
+        employee_id: '2',
+        employee_name: null,
+        email: null,
+        obtained_at: '2026-01-01T00:00:00.000Z',
+      });
+    });
+
+    afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+    it('counts as configured without the three variables', () => {
+      expect(isOAuth2Configured()).toBe(true);
+    });
+
+    it('downloads with the login’s token', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      expect(await getOAuth2AccessToken()).toBe('user-access-token');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('is not configured in api_key mode without the three variables', () => {
+      vi.stubEnv('FACTORIAL_AUTH_MODE', 'api_key');
+      expect(isOAuth2Configured()).toBe(false);
     });
   });
 });

@@ -4,7 +4,10 @@
  * Implements exponential backoff retry for transient failures.
  */
 
-import { getConfig, debug, getApiKey } from './config.js';
+import { getRequestSettings, debug, getApiKey } from './config.js';
+import { getUserLogin, LOGIN_COMMAND, LoginRequiredError, writeActor } from './auth/mode.js';
+import { getUserAccessToken } from './auth/user-token.js';
+import { noteCompanyKeyWrite } from './auth/attribution.js';
 import {
   AuthenticationError,
   AuthorizationError,
@@ -81,7 +84,7 @@ function getBackoffDelay(attempt: number, baseDelay = 1000): number {
  * Build URL with query parameters
  */
 function buildUrl(endpoint: string, params?: Record<string, QueryParamValue>): string {
-  const config = getConfig();
+  const config = getRequestSettings();
   const url = new URL(`${config.baseUrl}${endpoint}`);
 
   if (params) {
@@ -130,12 +133,50 @@ export function extractApiMessage(body: unknown): string | undefined {
 }
 
 /**
+ * The credential one request carries.
+ *
+ * A company API key acts as the company; a user token acts as the employee who
+ * logged in, and Factorial records what it writes under that employee.
+ */
+type Credential =
+  | { kind: 'company'; headers: Record<string, string> }
+  | { kind: 'user'; token: string; headers: Record<string, string> };
+
+async function userCredential(rejected?: string): Promise<Credential> {
+  const token = await getUserAccessToken({ rejected });
+  return { kind: 'user', token, headers: { Authorization: `Bearer ${token}` } };
+}
+
+/**
+ * Choose the credential for a request.
+ *
+ * A write goes out as the logged-in user whenever there is a login, and a
+ * login that cannot be refreshed is an error: a write never falls back to the
+ * API key, because that would record it under the company without anyone
+ * having chosen that. A read uses the API key when there is one, since the key
+ * sees the whole company and a user token sees only what that user may.
+ *
+ * @param rejected - a user token the API has just refused with a 401
+ */
+async function credentialFor(method: HttpMethod, rejected?: string): Promise<Credential> {
+  if (rejected !== undefined) return userCredential(rejected);
+  if (method !== 'GET') {
+    // Throws in oauth mode when nobody has logged in.
+    if (writeActor().kind === 'user') return userCredential();
+    return { kind: 'company', headers: { 'x-api-key': getApiKey() } };
+  }
+  if (!process.env.FACTORIAL_API_KEY && getUserLogin()) return userCredential();
+  return { kind: 'company', headers: { 'x-api-key': getApiKey() } };
+}
+
+/**
  * Handle HTTP response and throw appropriate errors
  */
 async function handleResponse<T>(
   response: Response,
   endpoint: string,
-  method: HttpMethod = 'GET'
+  method: HttpMethod = 'GET',
+  credential: Credential['kind'] = 'company'
 ): Promise<T> {
   if (response.ok) {
     // Handle 204 No Content (common for DELETE operations)
@@ -164,7 +205,12 @@ async function handleResponse<T>(
     case 401:
       throw new AuthenticationError(endpoint);
     case 403:
-      throw new AuthorizationError(endpoint, extractApiMessage(errorData), { raw: errorData });
+      throw new AuthorizationError(
+        endpoint,
+        extractApiMessage(errorData),
+        { raw: errorData },
+        credential
+      );
     case 404:
       throw new NotFoundError(endpoint);
     case 409:
@@ -227,7 +273,7 @@ export async function factorialRequest<T>(
   endpoint: string,
   options: WriteRequestOptions = {}
 ): Promise<T> {
-  const config = getConfig();
+  const config = getRequestSettings();
   const method = options.method ?? 'GET';
   const url = buildUrl(endpoint, options.params);
   const timeout = options.timeout ?? config.timeout;
@@ -240,15 +286,20 @@ export async function factorialRequest<T>(
   debug(`${method} ${url}`);
 
   let lastError: Error | undefined;
+  // A user token Factorial has refused. Set once: the request is retried a
+  // single time with a fresh token, as Factorial's own guidance says.
+  let rejectedToken: string | undefined;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Resolved outside the timed section: a token refresh is its own request.
+    const credential = await credentialFor(method, rejectedToken);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
       // Build headers
       const headers: Record<string, string> = {
-        'x-api-key': getApiKey(),
+        ...credential.headers,
         Accept: 'application/json',
       };
 
@@ -270,9 +321,25 @@ export async function factorialRequest<T>(
       });
 
       clearTimeout(timeoutId);
-      return await handleResponse<T>(response, endpoint, method);
+      const result = await handleResponse<T>(response, endpoint, method, credential.kind);
+      if (method !== 'GET' && credential.kind === 'company') noteCompanyKeyWrite();
+      return result;
     } catch (error) {
       clearTimeout(timeoutId);
+
+      // A 401 means the request was not carried out, so repeating it is safe
+      // for a write too. It does not count against the retry budget.
+      if (error instanceof AuthenticationError && credential.kind === 'user') {
+        if (rejectedToken === undefined) {
+          rejectedToken = credential.token;
+          attempt -= 1;
+          continue;
+        }
+        throw new LoginRequiredError(
+          'Factorial rejected your login (HTTP 401), and a freshly refreshed token as well. ' +
+            `Run \`${LOGIN_COMMAND}\` in a terminal to log in again, then try again.`
+        );
+      }
 
       // Convert abort to timeout error
       if (error instanceof Error && error.name === 'AbortError') {

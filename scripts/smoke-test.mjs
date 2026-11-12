@@ -1,20 +1,23 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 const directory = mkdtempSync(join(tmpdir(), 'mcp-factorial-smoke-'));
-const server = spawn(process.execPath, [resolve(process.argv[2] ?? 'dist/index.js')], {
+const entry = resolve(process.argv[2] ?? 'dist/index.js');
+// Never load the developer's .env, read a real login or contact a real Factorial tenant.
+const env = {
+  PATH: process.env.PATH,
+  FACTORIAL_API_KEY: 'test-placeholder',
+  FACTORIAL_BASE_URL: 'http://127.0.0.1:1',
+  FACTORIAL_MAX_RETRIES: '0',
+  FACTORIAL_TOKEN_FILE: join(directory, 'login.json'),
+};
+const server = spawn(process.execPath, [entry], {
   cwd: directory,
-  // Never load the developer's .env or contact a real Factorial tenant.
-  env: {
-    PATH: process.env.PATH,
-    FACTORIAL_API_KEY: 'test-placeholder',
-    FACTORIAL_BASE_URL: 'http://127.0.0.1:1',
-    FACTORIAL_MAX_RETRIES: '0',
-  },
+  env,
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 const exited = new Promise(resolveExit => server.once('exit', resolveExit));
@@ -60,6 +63,10 @@ try {
   assert.equal(listed.result?.tools.length, 14);
   const teams = listed.result.tools.find(tool => tool.name === 'factorial_teams');
   assert.equal(teams.inputSchema.properties.employee_ids.maxItems, 1000);
+  // A tool that can write says who the write is recorded under; one that cannot does not.
+  assert.match(teams.description, /With only a company API key it is the key's account/);
+  const discover = listed.result.tools.find(tool => tool.name === 'factorial_discover');
+  assert.doesNotMatch(discover.description, /Attribution:/);
   const rejected = await request('tools/call', {
     name: 'factorial_teams',
     arguments: {
@@ -83,8 +90,18 @@ try {
   const exitCode = await exited;
   clearTimeout(shutdownTimeout);
   assert.equal(exitCode, 0, `Server shutdown failed: ${stderr}`);
+  // The same executable answers `whoami` in a terminal, and must exit by itself.
+  const whoami = spawnSync(process.execPath, [entry, 'whoami'], {
+    cwd: directory,
+    env,
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.equal(whoami.status, 0, `whoami did not exit cleanly: ${whoami.stderr}`);
+  assert.match(whoami.stdout, /Not logged in/);
+  assert.match(whoami.stdout, /under the company API key's account/);
   console.log(
-    `MCP smoke test passed on ${process.version}: initialize, 14 tools, bounded validation, discovery, shutdown`
+    `MCP smoke test passed on ${process.version}: initialize, 14 tools, bounded validation, discovery, shutdown, whoami`
   );
 } finally {
   server.kill();

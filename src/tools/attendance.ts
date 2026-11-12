@@ -5,8 +5,9 @@
  * Safety model, two gates on one mechanism:
  * - checkConfirmation('delete_shift') is the static policy gate on delete.
  * - requireTargetConfirmation (src/attendance/gate.ts) is the target-identity
- *   gate: any write aimed at someone other than FACTORIAL_EMPLOYEE_ID, or any
- *   write at all when it is unset, needs a confirmation token from a preview
+ *   gate: any write aimed at someone other than the caller (the logged-in user,
+ *   or FACTORIAL_EMPLOYEE_ID under a company API key), or any write at all
+ *   when the caller is unknown, needs a confirmation token from a preview
  *   that names the person. log_range and log_days always need one.
  */
 
@@ -156,11 +157,12 @@ export function registerAttendanceTool(server: McpServer) {
         employee_id: z
           .number()
           .optional()
-          .describe('Employee ID. Defaults to FACTORIAL_EMPLOYEE_ID when set'),
+          .describe('Employee ID. Defaults to you: the logged-in user, or FACTORIAL_EMPLOYEE_ID'),
         employee_ids: inputArray(z.number())
           .optional()
           .describe(
-            'Employee IDs (list). Defaults to FACTORIAL_EMPLOYEE_ID; pass [] for the whole company'
+            'Employee IDs (list). Defaults to you (the logged-in user, or FACTORIAL_EMPLOYEE_ID); ' +
+              'pass [] for the whole company'
           ),
         start_on: z.string().optional().describe('Start date YYYY-MM-DD (list, gaps, log_range)'),
         end_on: z.string().optional().describe('End date YYYY-MM-DD (list, gaps, log_range)'),
@@ -370,7 +372,7 @@ export function registerAttendanceTool(server: McpServer) {
                 ? `for employee${employeeIds.length > 1 ? 's' : ''} ${employeeIds.join(', ')}`
                 : configured
                   ? 'company-wide (employee_ids: [] was passed)'
-                  : 'company-wide (no employee filter and FACTORIAL_EMPLOYEE_ID is not set)';
+                  : 'company-wide (no employee filter, nobody logged in and FACTORIAL_EMPLOYEE_ID is not set)';
             const result = await listShifts({
               employee_ids: employeeIds && employeeIds.length > 0 ? employeeIds : undefined,
               start_on: args.start_on,
@@ -636,7 +638,9 @@ export function registerAttendanceTool(server: McpServer) {
                 configured === employeeId ? name : await resolveEmployeeName(configured);
               lines.push(`Configured identity: ${configuredName} (${configured})`);
             } else {
-              lines.push('Configured identity: none (FACTORIAL_EMPLOYEE_ID is not set)');
+              lines.push(
+                'Configured identity: none (nobody has logged in and FACTORIAL_EMPLOYEE_ID is not set)'
+              );
             }
             if (open.length === 0) {
               lines.push(`${name} (${employeeId}) is not clocked in.`);
