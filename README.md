@@ -280,7 +280,7 @@ An administrator does this once per company, in Factorial under **Settings → A
 
 - **Client type**: Public (authorization code with PKCE, no client secret). A confidential application also works; set `FACTORIAL_OAUTH_CLIENT_SECRET` as well.
 - **Redirect URI**: `http://127.0.0.1:53682/callback`
-- **Scopes**: `read` and `write`, plus one per area you use, for example `time_off`, `time_tracking`, `employees`, `documents`. Scopes never grant more than the person logging in is already allowed to do.
+- **Scopes**: one per area you use, for example Employees, Documents, Time off, Time tracking, and Approvals for deciding leave requests. Scopes never grant more than the person logging in is already allowed to do.
 
 Set the application's client id where the server reads its configuration:
 
