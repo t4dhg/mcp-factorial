@@ -1,20 +1,22 @@
 /**
- * OAuth2 Token Management for FactorialHR
+ * OAuth2 access tokens for the one endpoint that will not take an API key:
+ * document downloads.
  *
- * Handles OAuth2 authentication for endpoints that require it (e.g., document downloads).
- * The MCP server uses refresh tokens to obtain access tokens automatically.
+ * Two sources, in this order:
+ * 1. A user login (see auth/login.ts). Its tokens are refreshed and stored by
+ *    auth/user-token.ts, and survive a restart.
+ * 2. The older route: FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET
+ *    and FACTORIAL_OAUTH_REFRESH_TOKEN in the environment. Factorial retires a
+ *    refresh token once it has been used, and this process cannot write a new
+ *    one back to the environment, so the variable goes stale after the first
+ *    refresh and a restarted server needs a new one. Prefer the login.
  *
- * Setup flow for users:
- * 1. Create an OAuth2 application in Factorial (Settings → Integrations → OAuth2)
- * 2. Complete the authorization flow once to get a refresh token
- * 3. Provide FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET, and FACTORIAL_OAUTH_REFRESH_TOKEN
- *
- * Token lifecycle:
- * - Access tokens expire after 1 hour (we refresh at 50 minutes to be safe)
- * - Refresh tokens expire after 1 week (user must re-authorize if expired)
+ * Access tokens last one hour.
  */
 
 import { debug } from './config.js';
+import { getUserLogin } from './auth/mode.js';
+import { getUserAccessToken } from './auth/user-token.js';
 
 // OAuth2 endpoints
 const OAUTH_TOKEN_URL = 'https://api.factorialhr.com/oauth/token';
@@ -83,6 +85,7 @@ const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
  * Check if OAuth2 credentials are configured
  */
 export function isOAuth2Configured(): boolean {
+  if (getUserLogin()) return true;
   return !!(
     process.env.FACTORIAL_OAUTH_CLIENT_ID &&
     process.env.FACTORIAL_OAUTH_CLIENT_SECRET &&
@@ -121,7 +124,9 @@ async function refreshAccessToken(config: OAuth2Config): Promise<CachedToken> {
   const params = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
-    refresh_token: config.refreshToken,
+    // The token from the last refresh, when there was one: the one in the
+    // environment was retired the first time it was used.
+    refresh_token: cachedToken?.refreshToken || config.refreshToken,
     grant_type: 'refresh_token',
   });
 
@@ -141,8 +146,10 @@ async function refreshAccessToken(config: OAuth2Config): Promise<CachedToken> {
       const errorData = JSON.parse(errorText) as { error?: string; error_description?: string };
       if (errorData.error === 'invalid_grant') {
         errorMessage =
-          'OAuth2 refresh token has expired. Refresh tokens are valid for 1 week.\n' +
-          'Please re-authorize the OAuth2 application to get a new refresh token.\n' +
+          'OAuth2 refresh token has expired or was already used. Refresh tokens are valid ' +
+          'for 1 week.\n' +
+          'Please re-authorize the OAuth2 application to get a new refresh token, or log in ' +
+          'with `npx -y @t4dhg/mcp-factorial login`, which keeps its tokens fresh.\n' +
           'See https://apidoc.factorialhr.com/docs/request-an-authorization-code';
       } else if (errorData.error_description) {
         errorMessage = `OAuth2 error: ${errorData.error_description}`;
@@ -187,6 +194,8 @@ async function refreshAccessToken(config: OAuth2Config): Promise<CachedToken> {
  * @throws Error if OAuth2 is not configured or token refresh fails
  */
 export async function getOAuth2AccessToken(): Promise<string> {
+  if (getUserLogin()) return getUserAccessToken();
+
   const config = getOAuth2Config();
 
   // Check if we have a valid cached token

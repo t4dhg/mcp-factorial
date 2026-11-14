@@ -95,12 +95,13 @@ factorial_discover({ category: 'employees' });
 
 A leave request is decided by its own approver. In Factorial that is the time-off approver on the employee's record (`timeoff_manager_id`), and a company API key is permitted to approve or reject any request, so "pending" and "pending for me" are different sets that look the same from the API. The server keeps them apart:
 
-- `list_leaves` and `get_leave` add `timeoff_manager_id`, `timeoff_manager_name` and `routed_to_me` to every leave. `routed_to_me` is `true` or `false` when it can be told, and `null` when `FACTORIAL_EMPLOYEE_ID` is unset.
+- `list_leaves` and `get_leave` add `timeoff_manager_id`, `timeoff_manager_name` and `routed_to_me` to every leave. `routed_to_me` is `true` or `false` when it can be told, and `null` when the server does not know who you are.
 - `list_leaves` with `pending_for_me: true` returns exactly the requests awaiting your decision: pending leaves of the employees whose approver is you, across every page.
-- `approve` and `reject` read the leave and its employee afresh and refuse, naming the actual approver, when the leave is routed to someone else, when the employee has no approver on record, or when `FACTORIAL_EMPLOYEE_ID` is unset (in which case no override is accepted either). Nothing is written.
+- `approve` and `reject` read the leave and its employee afresh and refuse, naming the actual approver, when the leave is routed to someone else, when the employee has no approver on record, or when the server does not know who you are (in which case no override is accepted either). Nothing is written.
+- A decision is recorded in Factorial under whoever made it. Under a company API key that would be the key's account rather than you, so `approve` and `reject` are refused before anything is read, with or without an override, until you [log in](#acting-as-yourself-user-login). An operator who accepts that attribution can set `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS=true`; the confirmation step and the result of each decision then say who it was recorded under.
 - To decide a request on another approver's behalf, pass `override_approver: true` and an `override_reason` saying who asked and why. The first call writes nothing and returns a preview and a `confirmation_token`; repeating the call with the token executes it, and the override and its reason are recorded on the audit entry. The override is for having been asked to act for that approver, not for a request that merely happens to be pending.
 
-You are the employee in `FACTORIAL_EMPLOYEE_ID`. It has to be configured because the API cannot supply it: `api_public/credentials` reports no employee for a company API key. The approver is read from the employee record; this server does not model multi-step approval flows configured in Factorial.
+You are the employee who [logged in](#acting-as-yourself-user-login). Under a company API key alone you are the employee in `FACTORIAL_EMPLOYEE_ID`, which has to be configured because the API cannot supply it: `api_public/credentials` reports no employee for a company API key. The approver is read from the employee record; this server does not model multi-step approval flows configured in Factorial.
 
 ### Attendance and Registro Horario
 
@@ -262,9 +263,66 @@ You'll need a FactorialHR API key to use this MCP server. Here's how to get one:
 
 > **Important**: API keys have full access to your FactorialHR data and never expire. Store them securely, never commit them to version control, and rotate them periodically.
 
+## Acting as Yourself: User Login
+
+Factorial records every write under the credential that made it. A company API key acts as the company, not as a person: Factorial's documentation says its requests are "authenticated on behalf of the company", so an approval, a shift or an edit made with it is recorded under the key's account, whoever asked for it. A user login acts as one employee: its requests are "performed on behalf of a specific employee" and are limited by that employee's permission group.
+
+This server can hold both. When you have logged in, **every write goes out as you**, and reads keep using the API key when one is configured, because the key sees the whole company and a user token sees only what you may. Without a login the server still works with the API key alone, and then:
+
+- every confirmation step and every result of a write says that Factorial records it under the company API key's account, not under you;
+- `approve` and `reject` on leave requests are refused, unless the operator sets `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS=true`.
+
+A write never falls back from the login to the API key. If the login has expired and cannot be refreshed, the write fails with a message telling you to log in again.
+
+### Step 1: Create an OAuth application
+
+An administrator does this once per company, in Factorial under **Settings → Advanced configuration → OAuth applications**:
+
+- **Client type**: Public (authorization code with PKCE, no client secret). A confidential application also works; set `FACTORIAL_OAUTH_CLIENT_SECRET` as well.
+- **Redirect URI**: `http://127.0.0.1:53682/callback`
+- **Scopes**: one per area you use, for example Employees, Documents, Time off, Time tracking, and Approvals for deciding leave requests. Scopes never grant more than the person logging in is already allowed to do.
+
+Set the application's client id where the server reads its configuration:
+
+```env
+FACTORIAL_OAUTH_CLIENT_ID=your-client-id
+```
+
+### Step 2: Log in
+
+Each person runs this once, in a terminal:
+
+```bash
+npx -y @t4dhg/mcp-factorial login
+```
+
+It opens Factorial in your browser. Sign in as yourself and approve the access; the command receives the redirect on the loopback address, checks which employee the token belongs to, and stores the login. It refuses a company token, since writes made with one would not carry your name.
+
+The login is stored in `~/.config/mcp-factorial/login.json` (or `$XDG_CONFIG_HOME/mcp-factorial/login.json`, or `%APPDATA%\mcp-factorial\login.json` on Windows), outside any repository and readable by you only. Access tokens last one hour and are refreshed automatically; each refresh replaces the refresh token, and the new one is written back to the file. Several running servers can share one login.
+
+If your application cannot register a loopback address, register any `https` address you control, set `FACTORIAL_OAUTH_REDIRECT_URI` to it, and the command asks you to paste the address your browser was sent to.
+
+Two more commands:
+
+```bash
+npx -y @t4dhg/mcp-factorial whoami   # who writes are recorded under; shows no credential
+npx -y @t4dhg/mcp-factorial logout   # revoke the login and remove it from this machine
+```
+
+### What changes once you are logged in
+
+- You are the employee who logged in. `FACTORIAL_EMPLOYEE_ID` is not needed and is ignored.
+- Writes carry `Authorization: Bearer` with your token and never the API key.
+- Factorial applies your own permissions. A write you are not allowed to make is refused by Factorial with a 403, and the error says to check your permission group and the application's scopes.
+- Document downloads use the login too, so the three `FACTORIAL_OAUTH_*` download variables below are not needed.
+
+`FACTORIAL_AUTH_MODE` chooses between the two credentials: `auto` (the default) writes with the login when there is one and with the API key otherwise; `oauth` never writes with the API key, so nothing can be written until someone logs in; `api_key` ignores a stored login.
+
 ## OAuth2 Setup (Required for Document Downloads)
 
 Document download actions (`download_payslips`, `download`) **require OAuth2 authentication**. This is a Factorial API limitation - the download endpoint does not accept API key authentication.
+
+The simplest way to satisfy it is the [user login](#acting-as-yourself-user-login) above: once you are logged in, downloads work with nothing else to configure. The steps below are the older route, which supplies a refresh token through the environment. Factorial retires a refresh token once it has been used and the server cannot write the new one back to your configuration, so this route needs a fresh token after the server restarts.
 
 > **Note**: You need admin access in Factorial to create OAuth applications.
 
@@ -339,9 +397,9 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ### Important Notes
 
-- **Refresh tokens expire after 1 week** - you'll need to repeat steps 2-3 if it expires
-- The MCP server automatically refreshes access tokens using the refresh token
-- If document downloads suddenly stop working, your refresh token has likely expired
+- The MCP server refreshes access tokens using the refresh token, and keeps using the newest one for as long as it runs
+- A refresh token works once: after a restart the one in your configuration has already been used, so repeat steps 2-3, or use the [user login](#acting-as-yourself-user-login), which stores each new token
+- If document downloads suddenly stop working, your refresh token has likely expired or been used
 
 ## Use Cases
 
@@ -370,19 +428,35 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ## Configuration Options
 
-| Environment Variable            | Description                                                                                           | Default      |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------ |
-| `FACTORIAL_API_KEY`             | Your FactorialHR API key                                                                              | Required     |
-| `FACTORIAL_API_VERSION`         | API version                                                                                           | `2026-07-01` |
-| `FACTORIAL_EMPLOYEE_ID`         | Your employee id: who you are for leave approvals; default target and ungated identity for attendance | -            |
-| `FACTORIAL_TIMEOUT_MS`          | Request timeout (ms)                                                                                  | `30000`      |
-| `FACTORIAL_MAX_RETRIES`         | Max retry attempts                                                                                    | `3`          |
-| `DEBUG`                         | Enable debug logging                                                                                  | `false`      |
-| `FACTORIAL_OAUTH_CLIENT_ID`     | OAuth2 client ID (for downloads)                                                                      | -            |
-| `FACTORIAL_OAUTH_CLIENT_SECRET` | OAuth2 client secret (for downloads)                                                                  | -            |
-| `FACTORIAL_OAUTH_REFRESH_TOKEN` | OAuth2 refresh token (for downloads)                                                                  | -            |
+| Environment Variable                    | Description                                                                                                                            | Default                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `FACTORIAL_API_KEY`                     | Your FactorialHR API key. Optional once you have logged in; reads then see only what you may                                           | Required                             |
+| `FACTORIAL_API_VERSION`                 | API version                                                                                                                            | `2026-07-01`                         |
+| `FACTORIAL_EMPLOYEE_ID`                 | Your employee id: who you are for leave approvals; default target and ungated identity for attendance. Ignored once you have logged in | -                                    |
+| `FACTORIAL_AUTH_MODE`                   | `auto`, `oauth` or `api_key`: which credential writes use (see [user login](#acting-as-yourself-user-login))                           | `auto`                               |
+| `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS` | `true` lets `approve` and `reject` run under a company API key, recorded under the key's account                                       | `false`                              |
+| `FACTORIAL_OAUTH_REDIRECT_URI`          | Redirect URI registered on the OAuth application, for `login`                                                                          | `http://127.0.0.1:53682/callback`    |
+| `FACTORIAL_OAUTH_SCOPES`                | Space-separated scopes to request at `login`; unset leaves the choice to the application                                               | -                                    |
+| `FACTORIAL_TOKEN_FILE`                  | Where the login is stored                                                                                                              | `~/.config/mcp-factorial/login.json` |
+| `FACTORIAL_TIMEOUT_MS`                  | Request timeout (ms)                                                                                                                   | `30000`                              |
+| `FACTORIAL_MAX_RETRIES`                 | Max retry attempts                                                                                                                     | `3`                                  |
+| `DEBUG`                                 | Enable debug logging                                                                                                                   | `false`                              |
+| `FACTORIAL_OAUTH_CLIENT_ID`             | OAuth application client id, for `login` and for downloads                                                                             | -                                    |
+| `FACTORIAL_OAUTH_CLIENT_SECRET`         | OAuth application client secret; only for a confidential application                                                                   | -                                    |
+| `FACTORIAL_OAUTH_REFRESH_TOKEN`         | OAuth2 refresh token (older route for downloads; not needed once you have logged in)                                                   | -                                    |
 
 ## Safety & Security
+
+### Who a Write Is Recorded Under
+
+Every write is recorded in Factorial under the credential that made it: you, once you have [logged in](#acting-as-yourself-user-login), or the company API key's account otherwise. Under a company API key the server says so wherever it matters:
+
+- the description of every tool that can write states the rule, so a client reads it before it acts;
+- every confirmation prompt and every confirmation-token preview says that Factorial will record the action under the company API key's account, not under you;
+- the result of every write that went out with the key says that it was recorded that way, including a bulk write that failed part of the way through;
+- `approve` and `reject` on leave requests are refused outright unless `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS=true`.
+
+A token previewed under one credential does not confirm a write under another.
 
 ### Operations That Require Confirmation
 
@@ -409,7 +483,7 @@ The following operations require explicit confirmation (`confirm: true`). Called
 
 Attendance writes are gated by **who they target and how many records they touch**, which a per-operation policy cannot express. A first call writes nothing and returns a preview that names the person, the dates and the totals, plus a `confirmation_token` valid for fifteen minutes and bound to exactly that plan. Repeating the call with the token executes it; if the plan changed in between (someone wrote a shift), the token is refused and a new preview is issued. `confirm: true` cannot bypass this gate, because there is no token to pass on a first call.
 
-Gated whenever the target is not the configured `FACTORIAL_EMPLOYEE_ID`, and always when that variable is unset:
+Gated whenever the target is not you (the employee who logged in, or the configured `FACTORIAL_EMPLOYEE_ID`), and always when the server does not know who you are:
 
 - `factorial_attendance({ action: 'create' })` - Creates a shift for another person
 - `factorial_attendance({ action: 'update' })` - Updates another person's shift (the shift is fetched first to learn whose it is)
@@ -533,11 +607,13 @@ src/
 │   ├── time-off.ts    # listLeaves, createLeave, approveLeave, etc.
 │   ├── projects.ts    # listProjects, createProject, etc.
 │   └── ...
+├── auth/              # User login: token store, refresh, login command, write attribution
 ├── tools/             # MCP tool registrations by domain
 │   ├── employees.ts   # factorial_employees tool registration
 │   ├── time-off.ts    # factorial_time_off tool registration
 │   ├── index.ts       # Server setup, discovery tool, resources, prompts
 │   └── ...
+├── cli.ts             # login, logout and whoami commands
 ├── index.ts           # Entry point (re-exports from tools/)
 ├── api.ts             # Re-exports from api/
 └── schemas.ts         # Re-exports from schemas/
@@ -552,6 +628,14 @@ src/
 5. Run `npm test` to verify
 
 ## Troubleshooting
+
+### "Your Factorial login has expired or was revoked"
+
+The stored login could not be refreshed. Run `npx -y @t4dhg/mcp-factorial login` again. Until you do, nothing is written: the server does not fall back to the API key for a write. `npx -y @t4dhg/mcp-factorial whoami` shows the current state.
+
+### "Refused: this server is using a company API key"
+
+`approve` and `reject` are refused under a company API key, because Factorial would record the decision under the key's account instead of under you. Log in, or see [Time Off Approvals](#time-off-approvals) for the setting that allows it.
 
 ### API Key Not Working
 
@@ -583,7 +667,7 @@ If you see an error like:
 
 You need to set up OAuth2 credentials. See [OAuth2 Setup](#oauth2-setup-required-for-document-downloads) above.
 
-**Note**: OAuth2 refresh tokens expire after 1 week. If downloads suddenly stop working, re-authorize and get a new refresh token.
+**Note**: With the older environment-variable route, a refresh token works once. If downloads stop working after a restart, re-authorize and get a new refresh token, or switch to the [user login](#acting-as-yourself-user-login).
 
 ### "Document with ID X not found" Error
 

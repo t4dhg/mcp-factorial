@@ -157,7 +157,7 @@ describe('factorial_attendance tool', () => {
     routeFetch({ shifts: [shiftsFixture.data[0]] });
     const result = await call({ action: 'list', start_on: '2026-12-01', end_on: '2026-12-31' });
     expect(result.content[0].text).toContain(
-      'company-wide (no employee filter and FACTORIAL_EMPLOYEE_ID is not set)'
+      'company-wide (no employee filter, nobody logged in and FACTORIAL_EMPLOYEE_ID is not set)'
     );
   });
 

@@ -3,6 +3,7 @@
  */
 
 import { getOperationPolicy, getWarningMessage, type OperationName } from '../write-safety.js';
+import { attributionPreviewNote } from '../auth/attribution.js';
 
 /**
  * Category definitions for tool discovery
@@ -211,9 +212,13 @@ export function checkConfirmation(
   const policy = getOperationPolicy(operationName);
   if (policy.requiresConfirmation && !confirm) {
     const warning = getWarningMessage(operationName);
+    // Under a company API key, say whose name the write will carry before asking.
+    const attribution = attributionPreviewNote();
     return {
       needsConfirmation: true,
-      message: `${warning}\n\nTo proceed, call this tool again with \`confirm: true\`.`,
+      message:
+        `${warning}\n\n${attribution ? `${attribution}\n\n` : ''}` +
+        'To proceed, call this tool again with `confirm: true`.',
     };
   }
   return { needsConfirmation: false };

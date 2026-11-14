@@ -157,14 +157,12 @@ export async function getDocumentDownloadUrls(
       'Document download requires OAuth2 authentication.\n\n' +
         'The Factorial API does not support document downloads with API key authentication.\n' +
         'This is a Factorial API limitation, not an MCP server limitation.\n\n' +
-        'To enable document downloads:\n' +
-        '  1. Go to https://api.factorialhr.com/oauth/applications\n' +
-        '  2. Create an OAuth2 application\n' +
-        '  3. Complete the authorization flow to get a refresh token\n' +
-        '  4. Set environment variables:\n' +
-        '     - FACTORIAL_OAUTH_CLIENT_ID\n' +
-        '     - FACTORIAL_OAUTH_CLIENT_SECRET\n' +
-        '     - FACTORIAL_OAUTH_REFRESH_TOKEN\n\n' +
+        'To enable document downloads, log in as yourself:\n' +
+        '  1. Create an OAuth application in Factorial (Settings, Advanced configuration,\n' +
+        '     OAuth applications) and set FACTORIAL_OAUTH_CLIENT_ID to its client id\n' +
+        '  2. Run `npx -y @t4dhg/mcp-factorial login` in a terminal\n\n' +
+        'The older route still works: FACTORIAL_OAUTH_CLIENT_ID, FACTORIAL_OAUTH_CLIENT_SECRET\n' +
+        'and FACTORIAL_OAUTH_REFRESH_TOKEN in the environment.\n\n' +
         'See the README for detailed OAuth2 setup instructions.\n\n' +
         `Document IDs requested: ${documentIds.join(', ')}`
     );

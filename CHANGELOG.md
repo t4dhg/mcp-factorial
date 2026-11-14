@@ -11,17 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **BREAKING: `approve` and `reject` now check the leave's approver.** A leave request is decided by the time-off approver on the employee's record (`timeoff_manager_id`). Before calling Factorial, both actions read the leave and its employee and refuse, naming the actual approver, when the leave is routed to someone else or the employee has no approver on record. A company API key is permitted to decide any request, so until now nothing distinguished a request that was pending from one that was pending for the caller. What to do: set `FACTORIAL_EMPLOYEE_ID` to your own employee id. Requests routed to you behave as before.
-- **BREAKING: `approve` and `reject` refuse every leave when `FACTORIAL_EMPLOYEE_ID` is unset.** The caller cannot be read from the API (`api_public/credentials` reports no employee for a company API key), so without the variable the server cannot tell whose decision a request is, and it no longer guesses. This holds with an override too: an override records who took the decision, so an unidentified caller cannot make one.
-- `FACTORIAL_EMPLOYEE_ID` now also means "who you are for leave approvals", in addition to being the default target and ungated identity for attendance.
+- **BREAKING: `approve` and `reject` are refused under a company API key.** Factorial records a write under the credential that made it, and a company API key acts as the company, so a decision made with one is recorded under the key's account rather than under the person who took it. Both actions now refuse before reading anything, with or without an override. What to do: log in as yourself (see Added), after which decisions are made with your own token. To keep deciding under the company key, set `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS=true`; each decision's confirmation step and result then say who it was recorded under.
+- **Writes use the user login whenever there is one, and never fall back to the API key.** With a stored login every `POST`, `PUT`, `PATCH` and `DELETE` carries the user's token; reads keep using the API key when one is configured. If the login cannot be refreshed the write fails with a message saying to log in again.
+- Under a company API key, every confirmation prompt, every confirmation-token preview and the result of every write say that Factorial records the action under the company API key's account, not under the user. The description of every tool that can write states the rule.
+- With a login, the caller is the employee who logged in and `FACTORIAL_EMPLOYEE_ID` is ignored, for leave approvals and for attendance alike.
+- `FACTORIAL_API_KEY` is no longer required when a login is stored. Reads then see what the logged-in user may see.
+- A 403 on a request made with a user token points at the user's permission group and the application's scopes instead of at an API key.
+
+- **BREAKING: `approve` and `reject` now check the leave's approver.** A leave request is decided by the time-off approver on the employee's record (`timeoff_manager_id`). Before calling Factorial, both actions read the leave and its employee and refuse, naming the actual approver, when the leave is routed to someone else or the employee has no approver on record. A company API key is permitted to decide any request, so until now nothing distinguished a request that was pending from one that was pending for the caller. What to do: log in, or under a company API key set `FACTORIAL_EMPLOYEE_ID` to your own employee id.
+- **BREAKING: `approve` and `reject` refuse every leave when the caller is unknown.** Under a company API key the caller cannot be read from the API (`api_public/credentials` reports no employee for one), so without a login or `FACTORIAL_EMPLOYEE_ID` the server cannot tell whose decision a request is, and it no longer guesses. This holds with an override too: an override records who took the decision, so an unidentified caller cannot make one.
+- Under a company API key, `FACTORIAL_EMPLOYEE_ID` now also means "who you are for leave approvals", in addition to being the default target and ungated identity for attendance.
 - The `factorial_time_off` description and the `approve_leave` and `reject_leave` policies state the rule, so a client reading the schema sees it before acting: only decide requests whose approver is you; pending does not mean pending for you.
 
 ### Added
+
+- **User login.** `npx -y @t4dhg/mcp-factorial login` runs the OAuth 2.0 authorization code flow with PKCE in the browser, checks which employee the token belongs to, refuses a company token, and stores the login in the user's config directory (`~/.config/mcp-factorial/login.json`), readable by its owner only. Access tokens are refreshed automatically, each rotated refresh token is written back, and several server processes can share one login. `whoami` shows who writes are recorded under without showing a credential; `logout` revokes and removes the login. Needs `FACTORIAL_OAUTH_CLIENT_ID`.
+- `FACTORIAL_AUTH_MODE` (`auto`, `oauth`, `api_key`), `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS`, `FACTORIAL_OAUTH_REDIRECT_URI`, `FACTORIAL_OAUTH_SCOPES`, `FACTORIAL_TOKEN_FILE`, and overrides for the three Factorial ID endpoints.
+- Document downloads use the login when there is one, so the three download variables are no longer needed.
+- A structural test that fails if a tool is registered before the attribution wrapper, if a request to Factorial is sent from an unexpected file, or if a tool that can write is excused from carrying the attribution rule.
 
 - `list_leaves` and `get_leave` carry `timeoff_manager_id`, `timeoff_manager_name` and `routed_to_me` on every leave, and `list_leaves` rows also carry `employee_name`. The list reads the employee directory once, not once per row, and says which pending requests are routed to the caller and which are not.
 - `list_leaves` accepts `pending_for_me: true`, which returns exactly the pending leaves of the employees whose approver is the caller, across every page.
 - `override_approver` and `override_reason` on `approve` and `reject`, for deciding a request on another approver's behalf. The reason is required. The first call writes nothing and returns a preview naming the employee, the approver and the reason, plus a confirmation token bound to all of them; the second call executes, and the approver, the caller and the reason are recorded on the audit entry. This uses the existing confirmation-token gate rather than a new mechanism.
 - A structural test that fails if an action reaching the approve or reject API call does not check the approver first.
+
+### Fixed
+
+- Document downloads configured through `FACTORIAL_OAUTH_REFRESH_TOKEN` refreshed with the token from the environment every time, although Factorial retires a refresh token once it has been used. The second refresh in a running server therefore failed. The server now refreshes with the newest token it holds.
 
 ## [12.0.0] - 2026-11-04
 

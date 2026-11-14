@@ -87,7 +87,8 @@ export function getApiKey(): string {
   if (!apiKey) {
     throw new Error(
       'FACTORIAL_API_KEY is not set. ' +
-        'Please add it to your .env file or pass it via the MCP configuration. ' +
+        'Please add it to your .env file or pass it via the MCP configuration, or log in as ' +
+        'yourself with `npx -y @t4dhg/mcp-factorial login`. ' +
         'See https://github.com/t4dhg/mcp-factorial for setup instructions.'
     );
   }
@@ -118,10 +119,25 @@ export function getConfig(): FactorialConfig {
   return {
     apiKey: getApiKey(),
     apiVersion: getApiVersion(),
+    ...getRequestSettings(),
+    debug: process.env.DEBUG === 'true',
+  };
+}
+
+/** What a request needs besides a credential */
+export type RequestSettings = Pick<FactorialConfig, 'baseUrl' | 'timeout' | 'maxRetries'>;
+
+/**
+ * The request settings, without the API key.
+ *
+ * getConfig() throws when FACTORIAL_API_KEY is unset, which is wrong for a
+ * server that is logged in as a user and has no key at all.
+ */
+export function getRequestSettings(): RequestSettings {
+  return {
     baseUrl: getBaseUrl(),
     timeout: parseInt(process.env.FACTORIAL_TIMEOUT_MS || String(DEFAULT_TIMEOUT), 10),
     maxRetries: parseInt(process.env.FACTORIAL_MAX_RETRIES || String(DEFAULT_MAX_RETRIES), 10),
-    debug: process.env.DEBUG === 'true',
   };
 }
 

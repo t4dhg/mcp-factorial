@@ -369,14 +369,17 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
       description:
         "Audit an employee's registro horario for a date window and report what is missing, in " +
         'excess or inconsistent. Read-only. Defaults to the current month up to today and to ' +
-        'FACTORIAL_EMPLOYEE_ID.',
+        'you (the logged-in user, or FACTORIAL_EMPLOYEE_ID).',
       argsSchema: {
         start_on: z
           .string()
           .optional()
           .describe('Start date YYYY-MM-DD (default: 1st of this month)'),
         end_on: z.string().optional().describe('End date YYYY-MM-DD (default: today)'),
-        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+        employee_id: z
+          .string()
+          .optional()
+          .describe('Employee ID (default: the logged-in user, or FACTORIAL_EMPLOYEE_ID)'),
       },
     },
     async ({ start_on, end_on, employee_id }) => {
@@ -423,7 +426,7 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
       description:
         "Find the workdays with missing hours in a window and enter them with the employee's daily " +
         'pattern, through a preview the person confirms. Defaults to the current month up to today ' +
-        'and to FACTORIAL_EMPLOYEE_ID.',
+        'and to you (the logged-in user, or FACTORIAL_EMPLOYEE_ID).',
       argsSchema: {
         segments: z
           .string()
@@ -433,7 +436,10 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
           .optional()
           .describe('Start date YYYY-MM-DD (default: 1st of this month)'),
         end_on: z.string().optional().describe('End date YYYY-MM-DD (default: today)'),
-        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+        employee_id: z
+          .string()
+          .optional()
+          .describe('Employee ID (default: the logged-in user, or FACTORIAL_EMPLOYEE_ID)'),
         observations: z
           .string()
           .optional()
@@ -535,7 +541,10 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
         segments: z
           .string()
           .describe('Daily pattern in company local time, e.g. "09:00-14:00, 15:00-18:00"'),
-        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+        employee_id: z
+          .string()
+          .optional()
+          .describe('Employee ID (default: the logged-in user, or FACTORIAL_EMPLOYEE_ID)'),
         observations: z.string().optional().describe('Note stored on the records'),
         jitter_minutes: z
           .string()
@@ -607,7 +616,10 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
           .optional()
           .describe('Start date YYYY-MM-DD (default: 1st of this month)'),
         end_on: z.string().optional().describe('End date YYYY-MM-DD (default: today)'),
-        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+        employee_id: z
+          .string()
+          .optional()
+          .describe('Employee ID (default: the logged-in user, or FACTORIAL_EMPLOYEE_ID)'),
       },
     },
     async ({ known_absences, start_on, end_on, employee_id }) => {
@@ -652,14 +664,17 @@ export function registerAttendancePrompts(server: McpServer, deps: AttendancePro
       description:
         'Enter registro horario for a list of explicit dates, each with its own daily pattern (a ' +
         'Saturday worked, a half day), as one log_days call through a preview the person confirms. ' +
-        'Defaults to FACTORIAL_EMPLOYEE_ID.',
+        'Defaults to you (the logged-in user, or FACTORIAL_EMPLOYEE_ID).',
       argsSchema: {
         days: z
           .string()
           .describe(
             'JSON array of explicit days: [{"date":"2026-03-02","segments":"09:00-14:00, 15:00-18:00"}, ...]'
           ),
-        employee_id: z.string().optional().describe('Employee ID (default: FACTORIAL_EMPLOYEE_ID)'),
+        employee_id: z
+          .string()
+          .optional()
+          .describe('Employee ID (default: the logged-in user, or FACTORIAL_EMPLOYEE_ID)'),
         observations: z
           .string()
           .optional()

@@ -15,6 +15,8 @@ import { createHash } from 'node:crypto';
 import { confirmationManager, type OperationPreview } from '../confirmation.js';
 import { ConfirmationExpiredError } from '../errors.js';
 import { isConfiguredIdentity } from './identity.js';
+import { attributionPreviewNote } from '../auth/attribution.js';
+import { LoginRequiredError, writeActor } from '../auth/mode.js';
 
 export interface GateRequest {
   /** Operation name, e.g. 'backfill_shifts' or 'clock_in' */
@@ -41,10 +43,29 @@ export function payloadFingerprint(payload: unknown): string {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
+/**
+ * Who Factorial would record the write under right now. Part of what a token
+ * confirms: a plan previewed as the logged-in user must not be executed with
+ * the company API key because the login went away in between.
+ */
+function recordedUnder(): string {
+  try {
+    const actor = writeActor();
+    return actor.kind === 'user' ? `employee ${actor.login.employee_id}` : 'company';
+  } catch (error) {
+    if (error instanceof LoginRequiredError) return 'nobody';
+    throw error;
+  }
+}
+
+/** The plan's fingerprint together with the credential it would be written with */
+const boundFingerprint = (request: GateRequest): string =>
+  payloadFingerprint({ plan: request.fingerprint, recordedUnder: recordedUnder() });
+
 function issue(request: GateRequest, prefix = ''): GateResult {
   const token = confirmationManager.createConfirmation(
     request.operation,
-    { fingerprint: request.fingerprint, employeeId: request.employeeId },
+    { fingerprint: boundFingerprint(request), employeeId: request.employeeId },
     {
       operation: request.previewOperation ?? 'create',
       entityType: request.entityType ?? 'shift',
@@ -53,10 +74,14 @@ function issue(request: GateRequest, prefix = ''): GateResult {
       warnings: [],
     }
   );
+  // Under a company API key the preview is the last moment to say whose name
+  // the write will carry in Factorial.
+  const attribution = attributionPreviewNote();
   return {
     proceed: false,
     message:
-      `${prefix}${request.preview}\n\nNothing has been written. ` +
+      `${prefix}${request.preview}\n\n${attribution ? `${attribution}\n\n` : ''}` +
+      'Nothing has been written. ' +
       `To proceed, call this action again with the same arguments and confirmation_token: ${token}\n` +
       'The token is valid for 15 minutes and for exactly this plan.',
   };
@@ -65,7 +90,8 @@ function issue(request: GateRequest, prefix = ''): GateResult {
 /**
  * Decide whether a write may proceed. Writes aimed at the configured identity
  * pass without a token unless `always` is set; every other write, and every
- * write when FACTORIAL_EMPLOYEE_ID is unset, needs one.
+ * write when the caller is unknown (no login and no FACTORIAL_EMPLOYEE_ID),
+ * needs one.
  */
 export function requireTargetConfirmation(request: GateRequest): GateResult {
   const gated = request.always === true || !isConfiguredIdentity(request.employeeId);
@@ -88,12 +114,13 @@ export function requireTargetConfirmation(request: GateRequest): GateResult {
 
   if (
     pending.operation !== request.operation ||
-    pending.payload.fingerprint !== request.fingerprint
+    pending.payload.fingerprint !== boundFingerprint(request)
   ) {
     return issue(
       request,
-      'The plan changed between the preview and this call (someone wrote in the meantime, or the ' +
-        'arguments differ). The old token has been discarded. Here is the current plan.\n\n'
+      'The plan changed between the preview and this call (someone wrote in the meantime, the ' +
+        'arguments differ, or the credential the write would use changed). The old token has ' +
+        'been discarded. Here is the current plan.\n\n'
     );
   }
 

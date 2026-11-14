@@ -1,19 +1,32 @@
 /**
- * Who "I" am for attendance actions.
+ * Who "I" am for attendance actions and leave decisions.
  *
- * A company-scoped API key carries no employee: /api_public/credentials
- * returns employee_id null. The optional FACTORIAL_EMPLOYEE_ID variable
- * supplies the default target for every attendance action, and every write
- * aimed at anyone else is treated as aimed at another person by the safety
- * gate in tools/attendance.ts.
+ * With a user login it is the employee who logged in: the login records the
+ * employee /api_public/credentials reported for the token, and
+ * FACTORIAL_EMPLOYEE_ID is ignored. A company-scoped API key carries no
+ * employee (the same endpoint returns employee_id null), so there the optional
+ * FACTORIAL_EMPLOYEE_ID variable supplies it. Either way it is the default
+ * target for every attendance action, and every write aimed at anyone else is
+ * treated as aimed at another person by the safety gate in tools/attendance.ts.
  */
 
 import { getEmployee } from '../api/employees.js';
+import { getUserLogin } from '../auth/mode.js';
 
 let resolvedNames = new Map<number, string>();
 
-/** Read and validate FACTORIAL_EMPLOYEE_ID; undefined when unset */
+/**
+ * The caller's employee id: the logged-in user's, or else a validated
+ * FACTORIAL_EMPLOYEE_ID; undefined when neither is there
+ */
 export function getConfiguredEmployeeId(): number | undefined {
+  const login = getUserLogin();
+  if (login) {
+    if (!/^[1-9]\d*$/.test(login.employee_id)) {
+      throw new Error('The stored login names no valid employee. Run the login command again.');
+    }
+    return Number(login.employee_id);
+  }
   const raw = process.env.FACTORIAL_EMPLOYEE_ID;
   if (raw === undefined || raw.trim() === '') return undefined;
   if (!/^[1-9]\d*$/.test(raw.trim())) {

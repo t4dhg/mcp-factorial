@@ -41,6 +41,8 @@ import { registerWorkAreasTool } from './work-areas.js';
 import { registerAtsTool } from './ats.js';
 import { registerPayrollTool } from './payroll.js';
 import { registerAttendancePrompts, GUIDE_URI } from '../prompts/attendance.js';
+import { installAttribution } from '../auth/attribution.js';
+import { isCliCommand, runCli } from '../cli.js';
 
 // Keep in step with package.json and server.json; a unit test asserts all three agree.
 export const SERVER_VERSION = '13.0.0';
@@ -50,6 +52,11 @@ const server = new McpServer({
   name: 'factorial-hr',
   version: SERVER_VERSION,
 });
+
+// Every tool registered below states who a write is recorded under in its
+// description, and says so in the result of a write made with a company API
+// key. This has to come before the first registerTool.
+installAttribution(server);
 
 // ============================================================================
 // Discovery Tool
@@ -263,6 +270,15 @@ registerAttendancePrompts(server);
 // ============================================================================
 
 async function main() {
+  // `mcp-factorial login` and its siblings are run by a person in a terminal;
+  // anything else, including no argument at all, serves MCP on stdio.
+  if (isCliCommand(process.argv[2])) {
+    const code = await runCli(process.argv.slice(2));
+    // The cache's cleanup timer would hold the process open: flush, then leave.
+    process.stdout.write('', () => process.exit(code));
+    return;
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

@@ -129,6 +129,9 @@ function rows(text: string): Array<Record<string, unknown>> {
 
 beforeEach(() => {
   vi.stubEnv('FACTORIAL_EMPLOYEE_ID', '2');
+  // These tests are about routing. They run under a company API key with
+  // decisions allowed; the attribution rule has its own file.
+  vi.stubEnv('FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS', 'true');
   employees = [
     person('2', 'Placeholder Caller', '9'),
     person('3', 'Routed Report', '2'),
