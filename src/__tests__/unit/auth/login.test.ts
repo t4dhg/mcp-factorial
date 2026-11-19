@@ -116,12 +116,24 @@ describe('login', () => {
       expect(() => loginSettings()).toThrow(/FACTORIAL_OAUTH_CLIENT_ID is not set/);
     });
 
-    it('defaults to a loopback redirect and no scope parameter', () => {
+    it('defaults to the hosted redirect page and no scope parameter', () => {
       expect(loginSettings()).toEqual({
         clientId: 'client-1',
-        redirectUri: 'http://127.0.0.1:53682/callback',
+        redirectUri: 'https://t4dhg.github.io/mcp-factorial/callback/',
         scopes: undefined,
       });
+    });
+
+    it('names the default redirect, not a loopback address, when the client id is missing', () => {
+      delete process.env.FACTORIAL_OAUTH_CLIENT_ID;
+      let message = '';
+      try {
+        loginSettings();
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('https://t4dhg.github.io/mcp-factorial/callback/');
+      expect(message).not.toContain('127.0.0.1');
     });
 
     it('takes the redirect and the scopes from the environment', () => {
@@ -319,8 +331,10 @@ describe('login', () => {
       ).toThrow(/state did not match/);
     });
 
-    it('accepts a bare code', () => {
-      expect(parseRedirect('  code-1  ', 'state-1')).toBe('code-1');
+    it('refuses a bare code, which carries no state to check', () => {
+      expect(() => parseRedirect('  code-1  ', 'state-1')).toThrow(
+        /Paste the whole address, not only the code/
+      );
     });
 
     it('rejects an empty answer', () => {
@@ -369,6 +383,31 @@ describe('login', () => {
       });
       expect(login.employee_id).toBe('2');
       expect(formOf(TOKEN_URL).get('redirect_uri')).toBe('https://example.test/cb');
+    });
+
+    it('asks for the redirect to be pasted by default, without listening anywhere', async () => {
+      routeFetch();
+      let state = '';
+      let authorized = '';
+      const prompts: string[] = [];
+      const login = await runLogin({
+        print: () => undefined,
+        openBrowser: url => {
+          const authorize = new URL(url);
+          state = authorize.searchParams.get('state') ?? '';
+          authorized = authorize.searchParams.get('redirect_uri') ?? '';
+        },
+        readLine: async prompt => {
+          prompts.push(prompt);
+          return `https://t4dhg.github.io/mcp-factorial/callback/?code=code-1&state=${state}`;
+        },
+      });
+      expect(authorized).toBe('https://t4dhg.github.io/mcp-factorial/callback/');
+      expect(prompts).toEqual(['Paste the address shown on the page you were sent to: ']);
+      expect(login.employee_id).toBe('2');
+      expect(formOf(TOKEN_URL).get('redirect_uri')).toBe(
+        'https://t4dhg.github.io/mcp-factorial/callback/'
+      );
     });
   });
 

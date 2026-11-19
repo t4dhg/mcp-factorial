@@ -2,11 +2,11 @@
  * Logging in as a user: the OAuth 2.0 authorization code flow with PKCE.
  *
  * The person opens Factorial's authorization page in their browser, signs in
- * and approves; Factorial redirects the browser to a loopback address this
- * process is listening on, with a one-time code; the code is exchanged for an
- * access token and a refresh token that act as that person. Nothing here asks
- * for a company token, and a login that turns out to be one is thrown away:
- * the point of logging in is that writes carry a person's name.
+ * and approves; Factorial redirects the browser to the registered redirect
+ * address with a one-time code; the code is exchanged for an access token and a
+ * refresh token that act as that person. Nothing here asks for a company
+ * token, and a login that turns out to be one is thrown away: the point of
+ * logging in is that writes carry a person's name.
  *
  * This runs as a command in a terminal, not inside the MCP server: a stdio
  * server has no way to show a URL or wait for a browser mid-conversation.
@@ -34,7 +34,13 @@ export interface LoginSettings {
   scopes: string | undefined;
 }
 
-const DEFAULT_REDIRECT_URI = 'http://127.0.0.1:53682/callback';
+/**
+ * A static page that shows the address it was opened with, for pasting back
+ * here. Factorial's production environment registers https redirect addresses
+ * only, so a loopback listener cannot be the default; it remains available by
+ * setting FACTORIAL_OAUTH_REDIRECT_URI where loopback addresses are accepted.
+ */
+const DEFAULT_REDIRECT_URI = 'https://t4dhg.github.io/mcp-factorial/callback/';
 
 /** What the login needs, from the environment */
 export function loginSettings(): LoginSettings {
@@ -263,7 +269,10 @@ export function waitForCallback(
   return { ready, code };
 }
 
-/** The code from what a person pasted: the whole redirect URL, or the code itself */
+/**
+ * The code from the redirect address a person pasted. A bare code is refused:
+ * it carries no state, so nothing would show it came from this login.
+ */
 export function parseRedirect(input: string, state: string): string {
   const trimmed = input.trim();
   if (trimmed === '') throw new FactorialError('No authorization code was given.');
@@ -271,7 +280,10 @@ export function parseRedirect(input: string, state: string): string {
   try {
     url = new URL(trimmed);
   } catch {
-    return trimmed;
+    throw new FactorialError(
+      'Paste the whole address, not only the code: the address carries the state that shows ' +
+        'the redirect belongs to this login.'
+    );
   }
   if (!sameState(url.searchParams.get('state'), state)) {
     throw new FactorialError(
@@ -335,7 +347,7 @@ export async function runLogin(io: LoginIo): Promise<StoredLogin> {
     io.print(`\n  ${authorizeUrl}\n`);
     io.openBrowser(authorizeUrl);
     code = parseRedirect(
-      await io.readLine('Paste the address your browser was sent to afterwards: '),
+      await io.readLine('Paste the address shown on the page you were sent to: '),
       state
     );
   }

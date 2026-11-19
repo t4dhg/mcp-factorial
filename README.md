@@ -279,7 +279,7 @@ A write never falls back from the login to the API key. If the login has expired
 An administrator does this once per company, in Factorial under **Settings → Advanced configuration → OAuth applications**:
 
 - **Client type**: Public (authorization code with PKCE, no client secret). A confidential application also works; set `FACTORIAL_OAUTH_CLIENT_SECRET` as well.
-- **Redirect URI**: `http://127.0.0.1:53682/callback`
+- **Redirect URI**: `https://t4dhg.github.io/mcp-factorial/callback/`. Factorial's production environment accepts `https` redirect addresses only. This one is a static page that shows the address it was opened with, so that you can paste it into the terminal; it makes no request and stores nothing. The address does reach the host that serves the page, as any web address does, so what protects the login is PKCE and not the page: the code in the address cannot be redeemed without a verifier that never leaves the command. You can host [the same page](https://github.com/t4dhg/mcp-factorial/tree/gh-pages/callback) on an address of your own and set `FACTORIAL_OAUTH_REDIRECT_URI` to it.
 - **Scopes**: one per area you use, for example Employees, Documents, Time off, Time tracking, and Approvals for deciding leave requests. Scopes never grant more than the person logging in is already allowed to do.
 
 Set the application's client id where the server reads its configuration:
@@ -296,11 +296,11 @@ Each person runs this once, in a terminal:
 npx -y @t4dhg/mcp-factorial login
 ```
 
-It opens Factorial in your browser. Sign in as yourself and approve the access; the command receives the redirect on the loopback address, checks which employee the token belongs to, and stores the login. It refuses a company token, since writes made with one would not carry your name.
+It opens Factorial in your browser. Sign in as yourself and approve the access; Factorial sends you to the redirect page, which shows an address to copy. Paste it into the terminal, and the command checks which employee the token belongs to and stores the login. The address holds a one-time code that is of no use without the verifier the command kept to itself. It refuses a company token, since writes made with one would not carry your name.
 
 The login is stored in `~/.config/mcp-factorial/login.json` (or `$XDG_CONFIG_HOME/mcp-factorial/login.json`, or `%APPDATA%\mcp-factorial\login.json` on Windows), outside any repository and readable by you only. Access tokens last one hour and are refreshed automatically; each refresh replaces the refresh token, and the new one is written back to the file. Several running servers can share one login.
 
-If your application cannot register a loopback address, register any `https` address you control, set `FACTORIAL_OAUTH_REDIRECT_URI` to it, and the command asks you to paste the address your browser was sent to.
+Where Factorial accepts loopback addresses, as its demo environments do, you can skip the pasting: register `http://127.0.0.1:53682/callback` on the application, set `FACTORIAL_OAUTH_REDIRECT_URI` to it, and the command listens there and receives the redirect itself.
 
 Two more commands:
 
@@ -428,22 +428,22 @@ FACTORIAL_OAUTH_REFRESH_TOKEN=your-refresh-token
 
 ## Configuration Options
 
-| Environment Variable                    | Description                                                                                                                            | Default                              |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `FACTORIAL_API_KEY`                     | Your FactorialHR API key. Optional once you have logged in; reads then see only what you may                                           | Required                             |
-| `FACTORIAL_API_VERSION`                 | API version                                                                                                                            | `2026-07-01`                         |
-| `FACTORIAL_EMPLOYEE_ID`                 | Your employee id: who you are for leave approvals; default target and ungated identity for attendance. Ignored once you have logged in | -                                    |
-| `FACTORIAL_AUTH_MODE`                   | `auto`, `oauth` or `api_key`: which credential writes use (see [user login](#acting-as-yourself-user-login))                           | `auto`                               |
-| `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS` | `true` lets `approve` and `reject` run under a company API key, recorded under the key's account                                       | `false`                              |
-| `FACTORIAL_OAUTH_REDIRECT_URI`          | Redirect URI registered on the OAuth application, for `login`                                                                          | `http://127.0.0.1:53682/callback`    |
-| `FACTORIAL_OAUTH_SCOPES`                | Space-separated scopes to request at `login`; unset leaves the choice to the application                                               | -                                    |
-| `FACTORIAL_TOKEN_FILE`                  | Where the login is stored                                                                                                              | `~/.config/mcp-factorial/login.json` |
-| `FACTORIAL_TIMEOUT_MS`                  | Request timeout (ms)                                                                                                                   | `30000`                              |
-| `FACTORIAL_MAX_RETRIES`                 | Max retry attempts                                                                                                                     | `3`                                  |
-| `DEBUG`                                 | Enable debug logging                                                                                                                   | `false`                              |
-| `FACTORIAL_OAUTH_CLIENT_ID`             | OAuth application client id, for `login` and for downloads                                                                             | -                                    |
-| `FACTORIAL_OAUTH_CLIENT_SECRET`         | OAuth application client secret; only for a confidential application                                                                   | -                                    |
-| `FACTORIAL_OAUTH_REFRESH_TOKEN`         | OAuth2 refresh token (older route for downloads; not needed once you have logged in)                                                   | -                                    |
+| Environment Variable                    | Description                                                                                                                            | Default                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `FACTORIAL_API_KEY`                     | Your FactorialHR API key. Optional once you have logged in; reads then see only what you may                                           | Required                                          |
+| `FACTORIAL_API_VERSION`                 | API version                                                                                                                            | `2026-07-01`                                      |
+| `FACTORIAL_EMPLOYEE_ID`                 | Your employee id: who you are for leave approvals; default target and ungated identity for attendance. Ignored once you have logged in | -                                                 |
+| `FACTORIAL_AUTH_MODE`                   | `auto`, `oauth` or `api_key`: which credential writes use (see [user login](#acting-as-yourself-user-login))                           | `auto`                                            |
+| `FACTORIAL_ALLOW_COMPANY_KEY_APPROVALS` | `true` lets `approve` and `reject` run under a company API key, recorded under the key's account                                       | `false`                                           |
+| `FACTORIAL_OAUTH_REDIRECT_URI`          | Redirect URI registered on the OAuth application, for `login`                                                                          | `https://t4dhg.github.io/mcp-factorial/callback/` |
+| `FACTORIAL_OAUTH_SCOPES`                | Space-separated scopes to request at `login`; unset leaves the choice to the application                                               | -                                                 |
+| `FACTORIAL_TOKEN_FILE`                  | Where the login is stored                                                                                                              | `~/.config/mcp-factorial/login.json`              |
+| `FACTORIAL_TIMEOUT_MS`                  | Request timeout (ms)                                                                                                                   | `30000`                                           |
+| `FACTORIAL_MAX_RETRIES`                 | Max retry attempts                                                                                                                     | `3`                                               |
+| `DEBUG`                                 | Enable debug logging                                                                                                                   | `false`                                           |
+| `FACTORIAL_OAUTH_CLIENT_ID`             | OAuth application client id, for `login` and for downloads                                                                             | -                                                 |
+| `FACTORIAL_OAUTH_CLIENT_SECRET`         | OAuth application client secret; only for a confidential application                                                                   | -                                                 |
+| `FACTORIAL_OAUTH_REFRESH_TOKEN`         | OAuth2 refresh token (older route for downloads; not needed once you have logged in)                                                   | -                                                 |
 
 ## Safety & Security
 
