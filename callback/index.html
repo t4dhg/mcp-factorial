@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Factorial login</title>
+    <link rel="stylesheet" href="callback.css" />
+  </head>
+  <body>
+    <main>
+      <h1 id="title">Factorial login</h1>
+      <p id="message">
+        This page receives the redirect at the end of the <code>login</code> command of the FactorialHR MCP server. It only shows the address you were sent to, so that you can paste it into the terminal. Nothing is sent anywhere.
+      </p>
+      <p class="note">This page belongs to an independent open-source project. It is not operated by Factorial.</p>
+      <div id="result" hidden>
+        <label for="address">Address to paste into the terminal</label>
+        <textarea id="address" rows="4" readonly spellcheck="false"></textarea>
+        <button id="copy" type="button">Copy address</button>
+        <p id="copied" role="status" aria-live="polite"></p>
+        <p class="note" id="note">The address holds a one-time code that only the login you started can use.</p>
+      </div>
+      <noscript><p>JavaScript is off, so copy the address from your browser's address bar and paste it into the terminal.</p></noscript>
+    </main>
+    <script src="callback.js"></script>
+  </body>
+</html>
