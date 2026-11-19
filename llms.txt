@@ -102,7 +102,7 @@ MCP FactorialHR provides comprehensive access to FactorialHR data through the Mo
 ## Who a write is recorded under
 
 - Factorial records a write under the credential that made it. A company API key acts as the company; a user login (OAuth authorization code flow with PKCE) acts as the employee who logged in.
-- Log in once in a terminal with `npx -y @t4dhg/mcp-factorial login` (needs FACTORIAL_OAUTH_CLIENT_ID). After that every write goes out as that user, the caller is that employee, and FACTORIAL_EMPLOYEE_ID is ignored. Reads keep using the API key when one is set. `whoami` shows the state; `logout` revokes and removes the login.
+- Log in once in a terminal with `npx -y @t4dhg/mcp-factorial login` (needs FACTORIAL_OAUTH_CLIENT_ID). The command opens Factorial in the browser; after the user approves, Factorial by default sends them to a page that shows an address, and they paste that whole address into the terminal. A code on its own is refused. After that every write goes out as that user, the caller is that employee, and FACTORIAL_EMPLOYEE_ID is ignored. Reads keep using the API key when one is set. `whoami` shows the state; `logout` revokes and removes the login.
 - Without a login, every confirmation step and every result of a write says that Factorial records it under the company API key's account, not under the user. Tell the user before relying on it.
 - A write never falls back from an expired login to the API key; it fails and says to log in again.
 - FACTORIAL_AUTH_MODE: auto (default), oauth (never write with the API key) or api_key (ignore a stored login).

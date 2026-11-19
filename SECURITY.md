@@ -29,7 +29,7 @@ This project is an MCP server that talks to the FactorialHR API on behalf of who
 - Operations that change or delete Factorial data without the confirmation the tool schema advertises
 - Anything that causes the server to read or write files outside a path the caller asked for
 - Leaking API keys, OAuth tokens, or employee data into logs, error messages, or tool responses
-- Flaws in the OAuth2 token handling used for document downloads
+- Flaws in the OAuth2 token handling used for the user login and for document downloads, including the login's redirect page
 
 Out of scope:
 
