@@ -12,6 +12,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-brightgreen.svg)](https://nodejs.org/)
 [![npm version](https://img.shields.io/npm/v/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
+[![npm downloads](https://img.shields.io/npm/dm/@t4dhg/mcp-factorial.svg)](https://www.npmjs.com/package/@t4dhg/mcp-factorial)
+[![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-2d6a4f)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.t4dhg%2Fmcp-factorial/versions/latest)
+[![t4dhg/mcp-factorial MCP server](https://glama.ai/mcp/servers/t4dhg/mcp-factorial/badges/score.svg)](https://glama.ai/mcp/servers/t4dhg/mcp-factorial)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
 [![Audited by AddonAudit](https://addonaudit.com/badges/audited.svg)](https://addonaudit.com/addon/io-github-t4dhg-mcp-factorial/)
 
