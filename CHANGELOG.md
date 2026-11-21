@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+Three smaller follow-ups to 13.0.1, all about a `.env` file the server found by itself rather than one named by `ENV_FILE_PATH`.
+
+- **The place the login is kept is no longer taken from a found `.env`.** `FACTORIAL_TOKEN_FILE` set in such a file is refused with a message naming the setting and the file, the same way the address settings are; before, the file could have the login written to, or read from, a place somebody else chose. `XDG_CONFIG_HOME`, `APPDATA`, `HOME` and `USERPROFILE` supplied by such a file are ignored. What to do, only if you keep `FACTORIAL_TOKEN_FILE` in a `.env`: point `ENV_FILE_PATH` at that file, or move the setting to the environment.
+- **`login` shows what a found `.env` chose for it.** When the client id came from a found `.env`, `login` prints the id and the file. When the redirect address came from one and is not the default, `login` shows it and sends nothing until the person types `yes`.
+- `FACTORIAL_API_VERSION` must be a dated version such as `2026-07-01`. It becomes part of the address every request is sent to, and anything else is now refused with a message naming the setting.
+
 ## [13.0.1] - 2026-11-21
 
 ### Security

@@ -15,7 +15,8 @@
 
 import { loadEnv } from '../config.js';
 
-// Load environment variables before other imports
+// Imports are hoisted above this call, so no module may read the environment
+// while it is being loaded: settings are read when they are used.
 loadEnv();
 
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';

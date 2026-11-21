@@ -43,22 +43,53 @@ const ADDRESS_SETTINGS = [
   'FACTORIAL_OAUTH_REVOKE_URL',
 ] as const;
 
-/** Address settings that a found .env file tried to supply, and the file each came from */
-const refusedAddressSettings = new Map<string, string>();
+/** Settings naming a file that credentials are written to and read from */
+const FILE_SETTINGS = ['FACTORIAL_TOKEN_FILE'] as const;
+
+/**
+ * Directories the login file's default place is worked out from. They are not
+ * this server's settings, so one a found .env file supplies is dropped quietly.
+ */
+const DIRECTORY_VARIABLES = ['XDG_CONFIG_HOME', 'APPDATA', 'HOME', 'USERPROFILE'] as const;
+
+/** Settings a found .env file may supply, whose source `login` shows before it is used */
+const SHOWN_SETTINGS = ['FACTORIAL_OAUTH_CLIENT_ID', 'FACTORIAL_OAUTH_REDIRECT_URI'] as const;
+
+/** Settings that a found .env file tried to supply and may not, and the file each came from */
+const refusedSettings = new Map<string, string>();
+
+/** Settings that a found .env file did supply, and the file each came from */
+const foundSettings = new Map<string, string>();
 
 /**
  * Load a .env file nobody named. Whoever supplied the directory supplied the
- * file, so it may not say where credentials go: an address it sets is taken
- * back out and remembered, to be refused by name when it is asked for.
+ * file, so it may not say where credentials go or where they are kept: an
+ * address or a file it sets is taken back out and remembered, to be refused by
+ * name when it is asked for.
  */
 function loadFoundEnv(path?: string): void {
-  const alreadySet = new Set(ADDRESS_SETTINGS.filter(name => process.env[name] !== undefined));
+  const watched = [
+    ...ADDRESS_SETTINGS,
+    ...FILE_SETTINGS,
+    ...DIRECTORY_VARIABLES,
+    ...SHOWN_SETTINGS,
+  ] as const;
+  const alreadySet = new Set<string>(watched.filter(name => process.env[name] !== undefined));
   if (path) config({ path });
   else config();
-  for (const name of ADDRESS_SETTINGS) {
-    if (alreadySet.has(name) || process.env[name] === undefined) continue;
+  const source = path ?? join(process.cwd(), '.env');
+  const supplied = (name: string): boolean =>
+    !alreadySet.has(name) && process.env[name] !== undefined;
+  for (const name of [...ADDRESS_SETTINGS, ...FILE_SETTINGS]) {
+    if (!supplied(name)) continue;
     delete process.env[name];
-    refusedAddressSettings.set(name, path ?? join(process.cwd(), '.env'));
+    refusedSettings.set(name, source);
+  }
+  for (const name of DIRECTORY_VARIABLES) {
+    if (supplied(name)) delete process.env[name];
+  }
+  for (const name of SHOWN_SETTINGS) {
+    if (supplied(name)) foundSettings.set(name, source);
   }
 }
 
@@ -73,7 +104,8 @@ function loadFoundEnv(path?: string): void {
  * set an address that credentials are sent to.
  */
 export function loadEnv(): void {
-  refusedAddressSettings.clear();
+  refusedSettings.clear();
+  foundSettings.clear();
 
   // 1. An explicit path is the only file read, whether or not it exists
   const explicit = process.env.ENV_FILE_PATH;
@@ -89,7 +121,8 @@ export function loadEnv(): void {
     return;
   }
 
-  // 3. Check home directory
+  // 3. Check home directory. A .env file is not what says where that is, and
+  // none has been read yet.
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
   const homeEnv = join(homeDir, '.env');
   if (existsSync(homeEnv)) {
@@ -101,23 +134,42 @@ export function loadEnv(): void {
   loadFoundEnv();
 }
 
+/** @throws ConfigurationError when a found .env file tried to supply the setting */
+function refuseIfFound(name: string, what: string): void {
+  const source = refusedSettings.get(name);
+  if (source === undefined) return;
+  throw new ConfigurationError(
+    `${name} is set in ${source}, a .env file this server found by itself rather than one ` +
+      `it was told to use. ${what} is accepted only from ` +
+      `the environment or from the file named by ENV_FILE_PATH. Remove ${name} from that ` +
+      'file, or set ENV_FILE_PATH to it if the file is yours. Nothing was sent.'
+  );
+}
+
 /**
  * An address setting, checked: undefined when unset.
  *
  * @throws ConfigurationError when a found .env file tried to supply it, or it is not https
  */
 export function addressSetting(name: string): string | undefined {
-  const source = refusedAddressSettings.get(name);
-  if (source !== undefined) {
-    throw new ConfigurationError(
-      `${name} is set in ${source}, a .env file this server found by itself rather than one ` +
-        'it was told to use. An address that credentials are sent to is accepted only from ' +
-        `the environment or from the file named by ENV_FILE_PATH. Remove ${name} from that ` +
-        'file, or set ENV_FILE_PATH to it if the file is yours. Nothing was sent.'
-    );
-  }
+  refuseIfFound(name, 'An address that credentials are sent to');
   const value = process.env[name]?.trim();
   return value ? secureUrl(name, value) : undefined;
+}
+
+/**
+ * A setting naming a file that credentials are kept in: undefined when unset.
+ *
+ * @throws ConfigurationError when a found .env file tried to supply it
+ */
+export function fileSetting(name: string): string | undefined {
+  refuseIfFound(name, 'A file that credentials are kept in');
+  return process.env[name]?.trim() || undefined;
+}
+
+/** The found .env file that supplied a login application setting, if one did */
+export function foundEnvSource(name: string): string | undefined {
+  return foundSettings.get(name);
 }
 
 /**
@@ -139,9 +191,19 @@ export function getApiKey(): string {
 
 /**
  * Get the API version from environment or default
+ *
+ * @throws ConfigurationError when it is not a date: it becomes part of the
+ *   address every request is sent to
  */
 export function getApiVersion(): string {
-  return process.env.FACTORIAL_API_VERSION || DEFAULT_API_VERSION;
+  const version = process.env.FACTORIAL_API_VERSION?.trim();
+  if (!version) return DEFAULT_API_VERSION;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(version)) {
+    throw new ConfigurationError(
+      `FACTORIAL_API_VERSION must be a dated version such as ${DEFAULT_API_VERSION}.`
+    );
+  }
+  return version;
 }
 
 /** Hosts that never leave this machine, where plain http exposes nothing */

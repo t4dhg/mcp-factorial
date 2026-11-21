@@ -19,6 +19,12 @@ import {
   waitForCallback,
 } from '../../../auth/login.js';
 
+const foundSources = vi.hoisted(() => new Map<string, string>());
+vi.mock('../../../config.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../../config.js')>()),
+  foundEnvSource: (name: string) => foundSources.get(name),
+}));
+
 const mockFetch = vi.fn();
 const TOKEN_URL = 'https://id.factorialhr.com/api/oauth/token';
 const REVOKE_URL = 'https://id.factorialhr.com/api/oauth/revoke';
@@ -469,6 +475,110 @@ describe('login', () => {
         token_origin: 'https://id.factorialhr.com',
         api_origin: 'https://api.example.test',
       });
+    });
+  });
+
+  describe('application settings from a .env file nobody named', () => {
+    const io = (
+      answers: string[],
+      seen: { prompts: string[]; opened: string[]; printed: string[] }
+    ) => ({
+      print: (line: string) => void seen.printed.push(line),
+      openBrowser: (url: string) => void seen.opened.push(url),
+      readLine: async (prompt: string) => {
+        seen.prompts.push(prompt);
+        const answer = answers.shift() ?? '';
+        if (answer !== 'PASTE') return answer;
+        const authorize = new URL(seen.opened[0]);
+        const state = authorize.searchParams.get('state');
+        return `${authorize.searchParams.get('redirect_uri')}?code=code-1&state=${state}`;
+      },
+    });
+    const fresh = () => ({
+      prompts: [] as string[],
+      opened: [] as string[],
+      printed: [] as string[],
+    });
+
+    beforeEach(() => {
+      foundSources.clear();
+    });
+    afterEach(() => {
+      foundSources.clear();
+    });
+
+    it('asks before sending the browser to a redirect address a found file supplied', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_REDIRECT_URI = 'https://example.test/cb';
+      foundSources.set('FACTORIAL_OAUTH_REDIRECT_URI', '/work/project/.env');
+      const seen = fresh();
+
+      await expect(runLogin(io(['no'], seen))).rejects.toThrow(/Nothing was sent/);
+
+      const output = seen.printed.join('\n');
+      expect(output).toContain('https://example.test/cb');
+      expect(output).toContain('FACTORIAL_OAUTH_REDIRECT_URI');
+      expect(output).toContain('/work/project/.env');
+      expect(seen.opened).toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('goes ahead with that redirect address once confirmed', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_REDIRECT_URI = 'https://example.test/cb';
+      foundSources.set('FACTORIAL_OAUTH_REDIRECT_URI', '/work/project/.env');
+      const seen = fresh();
+
+      const login = await runLogin(io(['yes', 'PASTE'], seen));
+
+      expect(login.employee_id).toBe('2');
+      expect(seen.prompts).toHaveLength(2);
+    });
+
+    it('does not ask about a redirect address the person set in the environment', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_REDIRECT_URI = 'https://example.test/cb';
+      const seen = fresh();
+
+      await runLogin(io(['PASTE'], seen));
+
+      expect(seen.prompts).toHaveLength(1);
+    });
+
+    it('does not ask when a found file only repeats the default redirect address', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_REDIRECT_URI = 'https://t4dhg.github.io/mcp-factorial/callback/';
+      foundSources.set('FACTORIAL_OAUTH_REDIRECT_URI', '/work/project/.env');
+      const seen = fresh();
+
+      await runLogin(io(['PASTE'], seen));
+
+      expect(seen.prompts).toHaveLength(1);
+    });
+
+    it('says which application is used and the found file that named it', async () => {
+      routeFetch();
+      foundSources.set('FACTORIAL_OAUTH_CLIENT_ID', '/work/project/.env');
+      const seen = fresh();
+
+      await runLogin(io(['PASTE'], seen));
+
+      const before = seen.printed.slice(
+        0,
+        seen.printed.findIndex(line => line.includes('Open this address'))
+      );
+      expect(before.join('\n')).toContain('client-1');
+      expect(before.join('\n')).toContain('/work/project/.env');
+      expect(seen.prompts).toHaveLength(1);
+    });
+
+    it('says nothing about the application when its id came from the environment', async () => {
+      routeFetch();
+      const seen = fresh();
+
+      await runLogin(io(['PASTE'], seen));
+
+      expect(seen.printed.join('\n')).not.toContain('FACTORIAL_OAUTH_CLIENT_ID');
     });
   });
 

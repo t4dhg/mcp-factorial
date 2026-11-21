@@ -32,8 +32,11 @@ const {
   isDebugEnabled,
   debug,
   addressSetting,
+  fileSetting,
+  foundEnvSource,
 } = await import('../../config.js');
 const { ConfigurationError } = await import('../../errors.js');
+const { tokenFilePath } = await import('../../auth/token-store.js');
 
 describe('Config Module', () => {
   beforeEach(() => {
@@ -217,6 +220,142 @@ describe('Config Module', () => {
       });
     });
 
+    describe('settings that say where the login is kept', () => {
+      const cwdPath = join(process.cwd(), '.env');
+      const NAMES = ['FACTORIAL_TOKEN_FILE', 'XDG_CONFIG_HOME', 'APPDATA', 'HOME', 'USERPROFILE'];
+      const saved: Record<string, string | undefined> = {};
+
+      beforeEach(() => {
+        for (const name of NAMES) {
+          saved[name] = process.env[name];
+          delete process.env[name];
+        }
+      });
+      afterEach(() => {
+        for (const name of NAMES) {
+          if (saved[name] === undefined) delete process.env[name];
+          else process.env[name] = saved[name];
+        }
+        mockDotenvConfig.mockReset();
+        mockExistsSync.mockReturnValue(false);
+        loadEnv();
+      });
+
+      it('refuses FACTORIAL_TOKEN_FILE from a .env file the server found by itself', () => {
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_TOKEN_FILE = '/tmp/shared/login.json';
+        });
+
+        loadEnv();
+
+        expect(process.env.FACTORIAL_TOKEN_FILE).toBeUndefined();
+        expect(() => fileSetting('FACTORIAL_TOKEN_FILE')).toThrow(ConfigurationError);
+        expect(() => fileSetting('FACTORIAL_TOKEN_FILE')).toThrow(/FACTORIAL_TOKEN_FILE/);
+        expect(() => fileSetting('FACTORIAL_TOKEN_FILE')).toThrow(/ENV_FILE_PATH/);
+        expect(() => fileSetting('FACTORIAL_TOKEN_FILE')).toThrow(cwdPath);
+      });
+
+      it('does not keep the login where a found .env file said to', () => {
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_TOKEN_FILE = '/tmp/shared/login.json';
+        });
+
+        loadEnv();
+
+        expect(() => tokenFilePath()).toThrow(ConfigurationError);
+        expect(() => tokenFilePath()).toThrow(/FACTORIAL_TOKEN_FILE/);
+      });
+
+      it.each(['XDG_CONFIG_HOME', 'APPDATA', 'HOME', 'USERPROFILE'])(
+        'drops %s when a found .env file supplies it',
+        name => {
+          mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+          mockDotenvConfig.mockImplementation(() => {
+            process.env[name] = '/tmp/shared';
+            process.env.FACTORIAL_API_KEY = 'test-key-from-file';
+          });
+
+          loadEnv();
+
+          expect(process.env[name]).toBeUndefined();
+          expect(process.env.FACTORIAL_API_KEY).toBe('test-key-from-file');
+        }
+      );
+
+      it('keeps a directory that was already in the environment', () => {
+        process.env.XDG_CONFIG_HOME = '/home/someone/.config';
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => undefined);
+
+        loadEnv();
+
+        expect(process.env.XDG_CONFIG_HOME).toBe('/home/someone/.config');
+      });
+
+      it('accepts FACTORIAL_TOKEN_FILE from the file ENV_FILE_PATH names', () => {
+        process.env.ENV_FILE_PATH = '/chosen/.env';
+        mockExistsSync.mockReturnValue(true);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_TOKEN_FILE = '/chosen/login.json';
+        });
+
+        loadEnv();
+
+        expect(fileSetting('FACTORIAL_TOKEN_FILE')).toBe('/chosen/login.json');
+      });
+    });
+
+    describe('where the login application settings came from', () => {
+      const cwdPath = join(process.cwd(), '.env');
+      const NAMES = ['FACTORIAL_OAUTH_CLIENT_ID', 'FACTORIAL_OAUTH_REDIRECT_URI'];
+
+      beforeEach(() => {
+        for (const name of NAMES) delete process.env[name];
+      });
+      afterEach(() => {
+        for (const name of NAMES) delete process.env[name];
+        mockDotenvConfig.mockReset();
+        mockExistsSync.mockReturnValue(false);
+        loadEnv();
+      });
+
+      it.each(NAMES)('remembers the found .env file that supplied %s', name => {
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env[name] = 'from-file';
+        });
+
+        loadEnv();
+
+        expect(process.env[name]).toBe('from-file');
+        expect(foundEnvSource(name)).toBe(cwdPath);
+      });
+
+      it('names no file for a setting that was already in the environment', () => {
+        process.env.FACTORIAL_OAUTH_CLIENT_ID = 'from-environment';
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => undefined);
+
+        loadEnv();
+
+        expect(foundEnvSource('FACTORIAL_OAUTH_CLIENT_ID')).toBeUndefined();
+      });
+
+      it('names no file for a setting from the file ENV_FILE_PATH names', () => {
+        process.env.ENV_FILE_PATH = '/chosen/.env';
+        mockExistsSync.mockReturnValue(true);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_OAUTH_CLIENT_ID = 'from-chosen-file';
+        });
+
+        loadEnv();
+
+        expect(foundEnvSource('FACTORIAL_OAUTH_CLIENT_ID')).toBeUndefined();
+      });
+    });
+
     it('should fall back to default dotenv behavior if no .env found', () => {
       mockExistsSync.mockReturnValue(false);
 
@@ -248,6 +387,16 @@ describe('Config Module', () => {
       process.env.FACTORIAL_API_VERSION = '2024-01-01';
       expect(getApiVersion()).toBe('2024-01-01');
     });
+
+    it.each(['../../oauth', '2026-07-01/../x', 'latest', '2026-7-1'])(
+      'refuses %j, which is not a dated version',
+      value => {
+        process.env.FACTORIAL_API_VERSION = value;
+        expect(() => getApiVersion()).toThrow(ConfigurationError);
+        expect(() => getApiVersion()).toThrow(/FACTORIAL_API_VERSION/);
+        expect(() => getBaseUrl()).toThrow(ConfigurationError);
+      }
+    );
 
     it('should return default version if not set', () => {
       delete process.env.FACTORIAL_API_VERSION;

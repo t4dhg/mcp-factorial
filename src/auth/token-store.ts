@@ -23,6 +23,7 @@ import {
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import * as z from 'zod';
+import { fileSetting } from '../config.js';
 import { ConfigurationError } from '../errors.js';
 
 const StoredLoginSchema = z.object({
@@ -55,7 +56,7 @@ const FILE_NAME = 'login.json';
 
 /** FACTORIAL_TOKEN_FILE, or login.json in the user's config directory */
 export function tokenFilePath(): string {
-  const explicit = process.env.FACTORIAL_TOKEN_FILE?.trim();
+  const explicit = fileSetting('FACTORIAL_TOKEN_FILE');
   if (explicit) return explicit;
   const xdg = process.env.XDG_CONFIG_HOME?.trim();
   if (xdg) return join(xdg, APP_DIR, FILE_NAME);

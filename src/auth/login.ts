@@ -15,7 +15,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { getBaseUrl, LOOPBACK_HOSTS } from '../config.js';
+import { foundEnvSource, getBaseUrl, LOOPBACK_HOSTS } from '../config.js';
 import { ConfigurationError, FactorialError } from '../errors.js';
 import { getAuthMode, LOGIN_COMMAND } from './mode.js';
 import {
@@ -335,12 +335,20 @@ const who = (login: StoredLogin): string =>
   `${login.employee_name ?? 'an employee'} (employee ${login.employee_id})`;
 
 /**
- * The new token is sent to the configured API to learn whose it is, and the
- * code to the configured token endpoint. Those settings can come from a `.env`
- * file in the current directory, so anything other than Factorial's own hosts
- * is shown and confirmed before a browser opens.
+ * The new token is sent to the configured API to learn whose it is, the code
+ * to the configured token endpoint, and the browser to the redirect address
+ * carrying the code. Anything other than Factorial's own hosts, and a redirect
+ * address taken from a `.env` file nobody named, is shown and confirmed before
+ * a browser opens.
  */
-async function confirmDestinations(io: LoginIo): Promise<void> {
+async function confirmDestinations(io: LoginIo, settings: LoginSettings): Promise<void> {
+  const clientIdSource = foundEnvSource('FACTORIAL_OAUTH_CLIENT_ID');
+  if (clientIdSource !== undefined) {
+    io.print(
+      `Using the OAuth application with client id ${settings.clientId} ` +
+        `(FACTORIAL_OAUTH_CLIENT_ID, from ${clientIdSource}).`
+    );
+  }
   const configured = configuredOrigins();
   const unusual: string[] = [];
   if (configured.token_origin !== FACTORIAL_ORIGINS.token_origin) {
@@ -349,13 +357,17 @@ async function confirmDestinations(io: LoginIo): Promise<void> {
   if (configured.api_origin !== FACTORIAL_ORIGINS.api_origin) {
     unusual.push(`  API: ${configured.api_origin} (FACTORIAL_BASE_URL)`);
   }
+  const redirectSource = foundEnvSource('FACTORIAL_OAUTH_REDIRECT_URI');
+  if (redirectSource !== undefined && settings.redirectUri !== DEFAULT_REDIRECT_URI) {
+    unusual.push(
+      `  redirect address: ${settings.redirectUri} ` +
+        `(FACTORIAL_OAUTH_REDIRECT_URI, from ${redirectSource})`
+    );
+  }
   if (unusual.length === 0) return;
-  io.print("This login is configured to use addresses other than Factorial's own:");
+  io.print("This login is configured to use addresses other than this server's usual ones:");
   io.print(unusual.join('\n'));
-  io.print(
-    'Your login would be sent there. These settings may come from a .env file in the ' +
-      'current directory. Continue only if you set them yourself.'
-  );
+  io.print('Your login would be sent there. Continue only if you set them yourself.');
   const answer = await io.readLine('Type "yes" to log in against these addresses: ');
   if (answer.trim().toLowerCase() !== 'yes') {
     throw new FactorialError('Login cancelled. Nothing was sent.');
@@ -365,7 +377,7 @@ async function confirmDestinations(io: LoginIo): Promise<void> {
 /** The login command */
 export async function runLogin(io: LoginIo): Promise<StoredLogin> {
   const settings = loginSettings();
-  await confirmDestinations(io);
+  await confirmDestinations(io, settings);
   const { verifier, challenge } = createPkce();
   const state = randomBytes(24).toString('base64url');
   const authorizeUrl = buildAuthorizeUrl(settings, state, challenge);
