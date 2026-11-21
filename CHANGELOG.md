@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.0.1] - 2026-11-21
+
 ### Security
 
+These affect 13.0.0 and, for the company API key, every earlier version. If the server was ever started in a directory whose `.env` you did not write, treat the API key as exposed and replace it, and log in again.
+
 - **A stored login is only used with the hosts it was issued for.** The server reads settings from a `.env` file in the directory it is started in, so a directory that came from somebody else could set `FACTORIAL_OAUTH_TOKEN_URL` or `FACTORIAL_BASE_URL` and have the login's refresh token or access token sent to a host of their choosing. The login now records the token endpoint and the API it was issued for, and the server refuses to use it against any other host, before a token is read out or sent. Logging out sends the token for revocation only to the host that issued it. A login stored by 13.0.0 is treated as issued by Factorial's own hosts and keeps working. What to do: nothing, unless you logged in against other hosts through these settings, in which case log in once more.
+- **An address that credentials are sent to is no longer taken from a `.env` file the server found by itself.** `FACTORIAL_BASE_URL` and the three `FACTORIAL_OAUTH_*_URL` settings are accepted from the environment (for example the `env` block of the MCP client configuration) or from the file named by `ENV_FILE_PATH`. Set in a `.env` found in the current or home directory, they are refused with a message naming the setting and the file, and nothing is sent; before, such a file could send the company API key to another host. Every other setting in a found `.env` still applies. What to do, only if you keep one of these four settings in a `.env`: point `ENV_FILE_PATH` at that file, or move the setting to the environment.
+- When `ENV_FILE_PATH` is set, that file is the only one read. Before, a path that did not exist fell through to a `.env` in the current directory.
+- The server no longer looks for a `.env` in `~/turborepo` or `~/projects`. What to do, if you relied on one: point `ENV_FILE_PATH` at it.
 - `login` shows the token endpoint and the API it is about to use whenever they are not Factorial's own, and sends nothing until the person types `yes`.
 - `FACTORIAL_BASE_URL`, `FACTORIAL_OAUTH_AUTHORIZE_URL`, `FACTORIAL_OAUTH_TOKEN_URL` and `FACTORIAL_OAUTH_REVOKE_URL` must be https, since credentials are sent to them. Plain http is accepted only for a loopback address. Anything else is refused with a message naming the setting.
 

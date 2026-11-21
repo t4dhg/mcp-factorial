@@ -35,25 +35,57 @@ const DEFAULT_API_VERSION = '2026-07-01';
 const DEFAULT_TIMEOUT = 30000; // 30 seconds
 const DEFAULT_MAX_RETRIES = 3;
 
+/** Settings naming a host that credentials are sent to */
+const ADDRESS_SETTINGS = [
+  'FACTORIAL_BASE_URL',
+  'FACTORIAL_OAUTH_AUTHORIZE_URL',
+  'FACTORIAL_OAUTH_TOKEN_URL',
+  'FACTORIAL_OAUTH_REVOKE_URL',
+] as const;
+
+/** Address settings that a found .env file tried to supply, and the file each came from */
+const refusedAddressSettings = new Map<string, string>();
+
 /**
- * Load environment variables from .env file with priority:
- * 1. ENV_FILE_PATH environment variable
+ * Load a .env file nobody named. Whoever supplied the directory supplied the
+ * file, so it may not say where credentials go: an address it sets is taken
+ * back out and remembered, to be refused by name when it is asked for.
+ */
+function loadFoundEnv(path?: string): void {
+  const alreadySet = new Set(ADDRESS_SETTINGS.filter(name => process.env[name] !== undefined));
+  if (path) config({ path });
+  else config();
+  for (const name of ADDRESS_SETTINGS) {
+    if (alreadySet.has(name) || process.env[name] === undefined) continue;
+    delete process.env[name];
+    refusedAddressSettings.set(name, path ?? join(process.cwd(), '.env'));
+  }
+}
+
+/**
+ * Load environment variables from a .env file:
+ * 1. The file ENV_FILE_PATH names, and nothing else when it is set
  * 2. Current working directory .env
  * 3. Home directory .env
- * 4. Common project locations
- * 5. Default dotenv behavior
+ * 4. Default dotenv behavior
+ *
+ * Only the first is a file somebody chose. The others are found, and may not
+ * set an address that credentials are sent to.
  */
 export function loadEnv(): void {
-  // 1. Check if explicit path provided
-  if (process.env.ENV_FILE_PATH && existsSync(process.env.ENV_FILE_PATH)) {
-    config({ path: process.env.ENV_FILE_PATH });
+  refusedAddressSettings.clear();
+
+  // 1. An explicit path is the only file read, whether or not it exists
+  const explicit = process.env.ENV_FILE_PATH;
+  if (explicit) {
+    if (existsSync(explicit)) config({ path: explicit });
     return;
   }
 
   // 2. Check current working directory
   const cwdEnv = join(process.cwd(), '.env');
   if (existsSync(cwdEnv)) {
-    config({ path: cwdEnv });
+    loadFoundEnv(cwdEnv);
     return;
   }
 
@@ -61,22 +93,31 @@ export function loadEnv(): void {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '';
   const homeEnv = join(homeDir, '.env');
   if (existsSync(homeEnv)) {
-    config({ path: homeEnv });
+    loadFoundEnv(homeEnv);
     return;
   }
 
-  // 4. Check common project locations
-  const commonPaths = [join(homeDir, 'turborepo', '.env'), join(homeDir, 'projects', '.env')];
-
-  for (const envPath of commonPaths) {
-    if (existsSync(envPath)) {
-      config({ path: envPath });
-      return;
-    }
-  }
-
   // Fall back to default dotenv behavior
-  config();
+  loadFoundEnv();
+}
+
+/**
+ * An address setting, checked: undefined when unset.
+ *
+ * @throws ConfigurationError when a found .env file tried to supply it, or it is not https
+ */
+export function addressSetting(name: string): string | undefined {
+  const source = refusedAddressSettings.get(name);
+  if (source !== undefined) {
+    throw new ConfigurationError(
+      `${name} is set in ${source}, a .env file this server found by itself rather than one ` +
+        'it was told to use. An address that credentials are sent to is accepted only from ' +
+        `the environment or from the file named by ENV_FILE_PATH. Remove ${name} from that ` +
+        'file, or set ENV_FILE_PATH to it if the file is yours. Nothing was sent.'
+    );
+  }
+  const value = process.env[name]?.trim();
+  return value ? secureUrl(name, value) : undefined;
 }
 
 /**
@@ -132,9 +173,8 @@ export function secureUrl(name: string, value: string): string {
  * Get the base URL for the Factorial API
  */
 export function getBaseUrl(): string {
-  if (process.env.FACTORIAL_BASE_URL) {
-    return secureUrl('FACTORIAL_BASE_URL', process.env.FACTORIAL_BASE_URL);
-  }
+  const custom = addressSetting('FACTORIAL_BASE_URL');
+  if (custom) return custom;
   return `https://api.factorialhr.com/api/${getApiVersion()}/resources`;
 }
 

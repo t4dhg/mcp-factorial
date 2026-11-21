@@ -13,7 +13,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { debug, getBaseUrl, secureUrl } from '../config.js';
+import { addressSetting, debug, getBaseUrl } from '../config.js';
 import { ConfigurationError, FactorialError } from '../errors.js';
 import { getUserLogin, LOGIN_COMMAND, LoginRequiredError } from './mode.js';
 import { tokenFilePath, writeStoredLogin, type StoredLogin } from './token-store.js';
@@ -26,10 +26,7 @@ const DEFAULT_ENDPOINTS = {
 
 /** The Factorial ID endpoints; each can be overridden, for the demo environment */
 export function oauthEndpoints(): { authorize: string; token: string; revoke: string } {
-  const endpoint = (name: string, fallback: string): string => {
-    const value = process.env[name]?.trim();
-    return value ? secureUrl(name, value) : fallback;
-  };
+  const endpoint = (name: string, fallback: string): string => addressSetting(name) ?? fallback;
   return {
     authorize: endpoint('FACTORIAL_OAUTH_AUTHORIZE_URL', DEFAULT_ENDPOINTS.authorize),
     token: endpoint('FACTORIAL_OAUTH_TOKEN_URL', DEFAULT_ENDPOINTS.token),

@@ -23,8 +23,16 @@ vi.mock('dotenv', async () => {
 });
 
 // Import after mocking
-const { loadEnv, getApiKey, getApiVersion, getBaseUrl, getConfig, isDebugEnabled, debug } =
-  await import('../../config.js');
+const {
+  loadEnv,
+  getApiKey,
+  getApiVersion,
+  getBaseUrl,
+  getConfig,
+  isDebugEnabled,
+  debug,
+  addressSetting,
+} = await import('../../config.js');
 const { ConfigurationError } = await import('../../errors.js');
 
 describe('Config Module', () => {
@@ -86,14 +94,127 @@ describe('Config Module', () => {
       expect(mockDotenvConfig).toHaveBeenCalledWith({ path: userProfilePath });
     });
 
-    it('should check common project locations', () => {
-      process.env.HOME = '/Users/testuser';
-      const turborepoPath = join('/Users/testuser', 'turborepo', '.env');
-      mockExistsSync.mockImplementation((path: string) => path === turborepoPath);
+    it.each(['turborepo', 'projects'])(
+      'does not look for a .env in the %s folder under the home directory',
+      folder => {
+        process.env.HOME = '/Users/testuser';
+        const projectPath = join('/Users/testuser', folder, '.env');
+        mockExistsSync.mockImplementation((path: string) => path === projectPath);
+
+        loadEnv();
+
+        expect(mockDotenvConfig).not.toHaveBeenCalledWith({ path: projectPath });
+      }
+    );
+
+    it('loads nothing else when ENV_FILE_PATH names a file that does not exist', () => {
+      process.env.ENV_FILE_PATH = '/custom/path/.env';
+      const cwdPath = join(process.cwd(), '.env');
+      mockExistsSync.mockImplementation((path: string) => path === cwdPath);
 
       loadEnv();
 
-      expect(mockDotenvConfig).toHaveBeenCalledWith({ path: turborepoPath });
+      expect(mockDotenvConfig).not.toHaveBeenCalled();
+    });
+
+    describe('address settings', () => {
+      const ADDRESS_SETTINGS = [
+        'FACTORIAL_BASE_URL',
+        'FACTORIAL_OAUTH_AUTHORIZE_URL',
+        'FACTORIAL_OAUTH_TOKEN_URL',
+        'FACTORIAL_OAUTH_REVOKE_URL',
+      ];
+      const cwdPath = join(process.cwd(), '.env');
+
+      beforeEach(() => {
+        for (const name of ADDRESS_SETTINGS) delete process.env[name];
+      });
+      afterEach(() => {
+        for (const name of ADDRESS_SETTINGS) delete process.env[name];
+        mockDotenvConfig.mockReset();
+        mockExistsSync.mockReturnValue(false);
+        loadEnv();
+      });
+
+      it.each(ADDRESS_SETTINGS)('refuses %s from a .env file the server found by itself', name => {
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env[name] = 'https://elsewhere.example.test/x';
+          process.env.FACTORIAL_API_KEY = 'test-key-from-file';
+        });
+
+        loadEnv();
+
+        expect(process.env[name]).toBeUndefined();
+        expect(() => addressSetting(name)).toThrow(ConfigurationError);
+        expect(() => addressSetting(name)).toThrow(new RegExp(name));
+        expect(() => addressSetting(name)).toThrow(/ENV_FILE_PATH/);
+        expect(() => addressSetting(name)).toThrow(cwdPath);
+        // Everything else in the file still applies.
+        expect(process.env.FACTORIAL_API_KEY).toBe('test-key-from-file');
+      });
+
+      it('refuses an address from a .env in the home directory too', () => {
+        process.env.HOME = '/Users/testuser';
+        const homePath = join('/Users/testuser', '.env');
+        mockExistsSync.mockImplementation((path: string) => path === homePath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_BASE_URL = 'https://elsewhere.example.test/x';
+        });
+
+        loadEnv();
+
+        expect(() => getBaseUrl()).toThrow(ConfigurationError);
+        expect(() => getBaseUrl()).toThrow(homePath);
+      });
+
+      it('sends the API key nowhere when the base URL came from a found .env', () => {
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_BASE_URL = 'https://elsewhere.example.test/x';
+        });
+
+        loadEnv();
+
+        expect(() => getBaseUrl()).toThrow(ConfigurationError);
+      });
+
+      it('accepts an address from the file ENV_FILE_PATH names', () => {
+        process.env.ENV_FILE_PATH = '/custom/path/.env';
+        mockExistsSync.mockImplementation((path: string) => path === '/custom/path/.env');
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_BASE_URL = 'https://demo.example.test/x';
+        });
+
+        loadEnv();
+
+        expect(getBaseUrl()).toBe('https://demo.example.test/x');
+      });
+
+      it('accepts an address that was already in the environment', () => {
+        process.env.FACTORIAL_BASE_URL = 'https://demo.example.test/x';
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_API_KEY = 'test-key-from-file';
+        });
+
+        loadEnv();
+
+        expect(getBaseUrl()).toBe('https://demo.example.test/x');
+      });
+
+      it('forgets a refusal once the settings are loaded again without it', () => {
+        mockExistsSync.mockImplementation((path: string) => path === cwdPath);
+        mockDotenvConfig.mockImplementation(() => {
+          process.env.FACTORIAL_BASE_URL = 'https://elsewhere.example.test/x';
+        });
+        loadEnv();
+        mockDotenvConfig.mockReset();
+
+        loadEnv();
+
+        expect(getBaseUrl()).toBe('https://api.factorialhr.com/api/2026-07-01/resources');
+      });
     });
 
     it('should fall back to default dotenv behavior if no .env found', () => {
