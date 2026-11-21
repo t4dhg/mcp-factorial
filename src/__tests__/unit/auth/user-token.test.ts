@@ -9,6 +9,7 @@ import {
   type StoredLogin,
 } from '../../../auth/token-store.js';
 import { LoginRequiredError } from '../../../auth/mode.js';
+import { ConfigurationError } from '../../../errors.js';
 import { getUserAccessToken, oauthEndpoints } from '../../../auth/user-token.js';
 
 const mockFetch = vi.fn();
@@ -59,6 +60,9 @@ describe('user access token', () => {
     process.env.FACTORIAL_TOKEN_FILE = join(dir, 'login.json');
     delete process.env.FACTORIAL_OAUTH_CLIENT_SECRET;
     delete process.env.FACTORIAL_OAUTH_TOKEN_URL;
+    delete process.env.FACTORIAL_OAUTH_AUTHORIZE_URL;
+    delete process.env.FACTORIAL_OAUTH_REVOKE_URL;
+    delete process.env.FACTORIAL_BASE_URL;
   });
 
   afterEach(() => {
@@ -267,5 +271,110 @@ describe('user access token', () => {
     );
     expect(await getUserAccessToken({ rejected: 'access-old' })).toBe('access-elsewhere');
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  describe('a login stays with the hosts it was issued for', () => {
+    it('never sends the refresh token to a token endpoint on another host', async () => {
+      writeStoredLogin(loginWith({ expires_at: NOW - 1 }));
+      process.env.FACTORIAL_OAUTH_TOKEN_URL = 'https://id.example.test/api/oauth/token';
+
+      await expect(getUserAccessToken()).rejects.toThrow(ConfigurationError);
+      await expect(getUserAccessToken()).rejects.toThrow(/FACTORIAL_OAUTH_TOKEN_URL/);
+      await expect(getUserAccessToken()).rejects.toThrow(/https:\/\/id\.example\.test/);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(readStoredLogin()?.refresh_token).toBe('refresh-old');
+    });
+
+    it('never hands out the access token for an API on another host', async () => {
+      writeStoredLogin(loginWith());
+      process.env.FACTORIAL_BASE_URL = 'https://api.example.test/api/2026-07-01/resources';
+
+      await expect(getUserAccessToken()).rejects.toThrow(ConfigurationError);
+      await expect(getUserAccessToken()).rejects.toThrow(/FACTORIAL_BASE_URL/);
+      await expect(getUserAccessToken()).rejects.toThrow(/npx -y @t4dhg\/mcp-factorial login/);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'https://api.factorialhr.com.@api.example.test/resources',
+      'https://api.factorialhr.com./resources',
+      'https://api.factorialhr.com:8443/resources',
+      'https://api.factorialhr.com.example.test/resources',
+    ])('is not fooled by a lookalike of the API host: %s', async url => {
+      writeStoredLogin(loginWith());
+      process.env.FACTORIAL_BASE_URL = url;
+      await expect(getUserAccessToken()).rejects.toThrow(ConfigurationError);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('treats case and the default port as the same host', async () => {
+      writeStoredLogin(loginWith());
+      process.env.FACTORIAL_BASE_URL = 'https://API.FactorialHR.com:443/api/2026-07-01/resources';
+      expect(await getUserAccessToken()).toBe('access-old');
+    });
+
+    it('keeps working when only the path of the API changes on the same host', async () => {
+      writeStoredLogin(loginWith());
+      process.env.FACTORIAL_BASE_URL = 'https://api.factorialhr.com/api/2027-01-01/resources';
+      expect(await getUserAccessToken()).toBe('access-old');
+    });
+
+    it('refreshes a login made under overrides against those same hosts', async () => {
+      process.env.FACTORIAL_OAUTH_TOKEN_URL = 'https://id.example.test/api/oauth/token';
+      process.env.FACTORIAL_BASE_URL = 'https://api.example.test/resources';
+      writeStoredLogin(
+        loginWith({
+          expires_at: NOW - 1,
+          token_origin: 'https://id.example.test',
+          api_origin: 'https://api.example.test',
+        })
+      );
+      mockFetch.mockResolvedValueOnce(
+        tokenResponse({ access_token: 'access-new', refresh_token: 'refresh-new' })
+      );
+
+      expect(await getUserAccessToken()).toBe('access-new');
+      expect(mockFetch.mock.calls[0][0]).toBe('https://id.example.test/api/oauth/token');
+      // The binding survives the refresh.
+      expect(readStoredLogin()).toMatchObject({
+        token_origin: 'https://id.example.test',
+        api_origin: 'https://api.example.test',
+      });
+    });
+
+    it('refuses a login made under overrides once they are gone', async () => {
+      writeStoredLogin(
+        loginWith({
+          token_origin: 'https://id.example.test',
+          api_origin: 'https://api.example.test',
+        })
+      );
+      await expect(getUserAccessToken()).rejects.toThrow(ConfigurationError);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('endpoint overrides', () => {
+    it.each([
+      ['FACTORIAL_OAUTH_TOKEN_URL', 'http://id.example.test/api/oauth/token'],
+      ['FACTORIAL_OAUTH_AUTHORIZE_URL', 'http://id.example.test/oauth/authorize'],
+      ['FACTORIAL_OAUTH_REVOKE_URL', 'http://id.example.test/api/oauth/revoke'],
+    ])('refuses %s over plain http', (name, value) => {
+      process.env[name] = value;
+      expect(() => oauthEndpoints()).toThrow(ConfigurationError);
+      expect(() => oauthEndpoints()).toThrow(new RegExp(name));
+    });
+
+    it('accepts plain http on a loopback address', () => {
+      process.env.FACTORIAL_OAUTH_TOKEN_URL = 'http://127.0.0.1:4000/token';
+      expect(oauthEndpoints().token).toBe('http://127.0.0.1:4000/token');
+    });
+
+    it('sends nothing when the token endpoint is plain http', async () => {
+      writeStoredLogin(loginWith({ expires_at: NOW - 1, token_origin: 'http://id.example.test' }));
+      process.env.FACTORIAL_OAUTH_TOKEN_URL = 'http://id.example.test/api/oauth/token';
+      await expect(getUserAccessToken()).rejects.toThrow(ConfigurationError);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 });

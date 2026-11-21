@@ -7,6 +7,7 @@
 import { config } from 'dotenv';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { ConfigurationError } from './errors.js';
 
 /**
  * Configuration interface for FactorialHR API client
@@ -102,12 +103,37 @@ export function getApiVersion(): string {
   return process.env.FACTORIAL_API_VERSION || DEFAULT_API_VERSION;
 }
 
+/** Hosts that never leave this machine, where plain http exposes nothing */
+export const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', 'localhost', '[::1]'];
+
+/**
+ * A configured address that credentials are sent to: https, or a loopback host.
+ * Over plain http to another machine, a key or a token would cross the network
+ * in the clear.
+ *
+ * @throws ConfigurationError naming the setting
+ */
+export function secureUrl(name: string, value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ConfigurationError(`${name} is not a valid URL.`);
+  }
+  if (url.protocol === 'https:') return value;
+  if (url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname)) return value;
+  throw new ConfigurationError(
+    `${name} must be an https URL: credentials are sent to it. Plain http is accepted only ` +
+      'for a loopback address such as http://127.0.0.1.'
+  );
+}
+
 /**
  * Get the base URL for the Factorial API
  */
 export function getBaseUrl(): string {
   if (process.env.FACTORIAL_BASE_URL) {
-    return process.env.FACTORIAL_BASE_URL;
+    return secureUrl('FACTORIAL_BASE_URL', process.env.FACTORIAL_BASE_URL);
   }
   return `https://api.factorialhr.com/api/${getApiVersion()}/resources`;
 }

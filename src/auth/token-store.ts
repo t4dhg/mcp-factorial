@@ -39,6 +39,13 @@ const StoredLoginSchema = z.object({
   employee_name: z.string().nullable(),
   email: z.string().nullable(),
   obtained_at: z.string(),
+  /**
+   * Where the login came from: the origin of the token endpoint that issued it
+   * and of the API it is for. The tokens are sent to these and nowhere else.
+   * A login stored before these existed came from Factorial's own hosts.
+   */
+  token_origin: z.string().min(1).optional(),
+  api_origin: z.string().min(1).optional(),
 });
 
 export type StoredLogin = z.infer<typeof StoredLoginSchema>;

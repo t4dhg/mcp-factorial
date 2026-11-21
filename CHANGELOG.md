@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **A stored login is only used with the hosts it was issued for.** The server reads settings from a `.env` file in the directory it is started in, so a directory that came from somebody else could set `FACTORIAL_OAUTH_TOKEN_URL` or `FACTORIAL_BASE_URL` and have the login's refresh token or access token sent to a host of their choosing. The login now records the token endpoint and the API it was issued for, and the server refuses to use it against any other host, before a token is read out or sent. Logging out sends the token for revocation only to the host that issued it. A login stored by 13.0.0 is treated as issued by Factorial's own hosts and keeps working. What to do: nothing, unless you logged in against other hosts through these settings, in which case log in once more.
+- `login` shows the token endpoint and the API it is about to use whenever they are not Factorial's own, and sends nothing until the person types `yes`.
+- `FACTORIAL_BASE_URL`, `FACTORIAL_OAUTH_AUTHORIZE_URL`, `FACTORIAL_OAUTH_TOKEN_URL` and `FACTORIAL_OAUTH_REVOKE_URL` must be https, since credentials are sent to them. Plain http is accepted only for a loopback address. Anything else is refused with a message naming the setting.
+
 ## [13.0.0] - 2026-11-19
 
 ### Changed

@@ -13,8 +13,8 @@
 
 import { randomBytes } from 'node:crypto';
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { debug } from '../config.js';
-import { FactorialError } from '../errors.js';
+import { debug, getBaseUrl, secureUrl } from '../config.js';
+import { ConfigurationError, FactorialError } from '../errors.js';
 import { getUserLogin, LOGIN_COMMAND, LoginRequiredError } from './mode.js';
 import { tokenFilePath, writeStoredLogin, type StoredLogin } from './token-store.js';
 
@@ -26,11 +26,66 @@ const DEFAULT_ENDPOINTS = {
 
 /** The Factorial ID endpoints; each can be overridden, for the demo environment */
 export function oauthEndpoints(): { authorize: string; token: string; revoke: string } {
-  return {
-    authorize: process.env.FACTORIAL_OAUTH_AUTHORIZE_URL?.trim() || DEFAULT_ENDPOINTS.authorize,
-    token: process.env.FACTORIAL_OAUTH_TOKEN_URL?.trim() || DEFAULT_ENDPOINTS.token,
-    revoke: process.env.FACTORIAL_OAUTH_REVOKE_URL?.trim() || DEFAULT_ENDPOINTS.revoke,
+  const endpoint = (name: string, fallback: string): string => {
+    const value = process.env[name]?.trim();
+    return value ? secureUrl(name, value) : fallback;
   };
+  return {
+    authorize: endpoint('FACTORIAL_OAUTH_AUTHORIZE_URL', DEFAULT_ENDPOINTS.authorize),
+    token: endpoint('FACTORIAL_OAUTH_TOKEN_URL', DEFAULT_ENDPOINTS.token),
+    revoke: endpoint('FACTORIAL_OAUTH_REVOKE_URL', DEFAULT_ENDPOINTS.revoke),
+  };
+}
+
+const DEFAULT_TOKEN_ORIGIN = new URL(DEFAULT_ENDPOINTS.token).origin;
+const DEFAULT_API_ORIGIN = 'https://api.factorialhr.com';
+
+/** Factorial's own hosts: where a login goes when nothing is overridden */
+export const FACTORIAL_ORIGINS: { token_origin: string; api_origin: string } = {
+  token_origin: DEFAULT_TOKEN_ORIGIN,
+  api_origin: DEFAULT_API_ORIGIN,
+};
+
+/** The hosts this process is configured to send a login to */
+export function configuredOrigins(): { token_origin: string; api_origin: string } {
+  return {
+    token_origin: new URL(oauthEndpoints().token).origin,
+    api_origin: new URL(getBaseUrl()).origin,
+  };
+}
+
+/** The hosts a login was issued for; one stored before they were recorded came from Factorial's own */
+export function issuedOrigins(login: StoredLogin): { token_origin: string; api_origin: string } {
+  return {
+    token_origin: login.token_origin ?? DEFAULT_TOKEN_ORIGIN,
+    api_origin: login.api_origin ?? DEFAULT_API_ORIGIN,
+  };
+}
+
+/**
+ * A login goes only to the hosts it was issued for. Settings can come from a
+ * `.env` file in whatever directory the server was started in, so a changed
+ * address is not evidence that the person who logged in chose it.
+ *
+ * @throws ConfigurationError before any token is read out or sent
+ */
+export function assertLoginDestinations(login: StoredLogin): void {
+  const issued = issuedOrigins(login);
+  const configured = configuredOrigins();
+  const moved: string[] = [];
+  if (configured.token_origin !== issued.token_origin) {
+    moved.push(`the token endpoint is now ${configured.token_origin} (FACTORIAL_OAUTH_TOKEN_URL)`);
+  }
+  if (configured.api_origin !== issued.api_origin) {
+    moved.push(`the API is now ${configured.api_origin} (FACTORIAL_BASE_URL)`);
+  }
+  if (moved.length === 0) return;
+  throw new ConfigurationError(
+    `The stored Factorial login was issued by ${issued.token_origin} for the API at ` +
+      `${issued.api_origin}, but ${moved.join(' and ')}. The login was not sent there. ` +
+      'Restore the setting, or if the change is intended run ' +
+      `\`${LOGIN_COMMAND}\` again to log in against the new address.`
+  );
 }
 
 /** What the token endpoint answers on success */
@@ -187,6 +242,7 @@ async function refresh(rejected?: string): Promise<string> {
     // Another process may have refreshed while this one waited for the lock.
     const login = getUserLogin();
     if (!login) throw loginRequired();
+    assertLoginDestinations(login);
     if (usable(login, rejected)) return login.access_token;
 
     debug('Refreshing the user access token');
@@ -234,6 +290,7 @@ export interface AccessTokenOptions {
 export async function getUserAccessToken(options: AccessTokenOptions = {}): Promise<string> {
   const login = getUserLogin();
   if (!login) throw loginRequired();
+  assertLoginDestinations(login);
   if (usable(login, options.rejected)) return login.access_token;
 
   inFlight ??= refresh(options.rejected).finally(() => {

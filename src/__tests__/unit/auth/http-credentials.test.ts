@@ -6,7 +6,7 @@ import { readStoredLogin, writeStoredLogin, type StoredLogin } from '../../../au
 import { LoginRequiredError } from '../../../auth/mode.js';
 import { installAttribution } from '../../../auth/attribution.js';
 import { factorialRequest, postAction } from '../../../http-client.js';
-import { AuthenticationError, AuthorizationError } from '../../../errors.js';
+import { AuthenticationError, AuthorizationError, ConfigurationError } from '../../../errors.js';
 
 const mockFetch = vi.fn();
 const TOKEN_URL = 'https://id.factorialhr.com/api/oauth/token';
@@ -92,6 +92,15 @@ describe('which credential a request carries', () => {
       await factorialRequest('/teams/teams/1', { method, body: { name: 'x' } });
       expect(apiCalls()[0].headers.Authorization).toBe('Bearer access-old');
       expect('x-api-key' in apiCalls()[0].headers).toBe(false);
+    });
+
+    it('sends no credential when the API has moved to another host since the login', async () => {
+      process.env.FACTORIAL_BASE_URL = 'https://api.example.test/resources';
+      mockFetch.mockResolvedValue(json({ id: '1' }));
+      await expect(postAction('/timeoff/leaves/approve', { id: 1 })).rejects.toThrow(
+        ConfigurationError
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('keeps reading with the key, so nothing readable today disappears', async () => {

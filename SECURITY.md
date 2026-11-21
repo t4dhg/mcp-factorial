@@ -40,4 +40,6 @@ Out of scope:
 ## Operational notes
 
 - The API key grants whatever the Factorial API grants it. Scope it to the least you need, keep it in `.env` or your MCP client's `env` block, and never commit it.
+- The API key is sent to whatever `FACTORIAL_BASE_URL` names, and settings are read from a `.env` file in the directory the server is started in. Start the server only in directories whose `.env` you trust, or name the file to use with `ENV_FILE_PATH`, which is honoured only when that file exists. A stored login is not exposed this way: it is used only with the hosts it was issued for, and `login` asks before using any address other than Factorial's own.
+- The login file is trusted exactly as the tokens in it are. Anyone who can change it can already read the tokens, so the employee it names is not checked again against Factorial.
 - Write operations are real and, for deletes, irreversible. Confirmation gating reduces accidents; it is not an authorization boundary.

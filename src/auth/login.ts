@@ -15,7 +15,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { getBaseUrl } from '../config.js';
+import { getBaseUrl, LOOPBACK_HOSTS } from '../config.js';
 import { ConfigurationError, FactorialError } from '../errors.js';
 import { getAuthMode, LOGIN_COMMAND } from './mode.js';
 import {
@@ -25,7 +25,14 @@ import {
   writeStoredLogin,
   type StoredLogin,
 } from './token-store.js';
-import { applyTokenResponse, oauthEndpoints, requestToken } from './user-token.js';
+import {
+  applyTokenResponse,
+  configuredOrigins,
+  FACTORIAL_ORIGINS,
+  issuedOrigins,
+  oauthEndpoints,
+  requestToken,
+} from './user-token.js';
 
 export interface LoginSettings {
   clientId: string;
@@ -153,6 +160,7 @@ export async function completeLogin(
       employee_name: identity.name,
       email: identity.email,
       obtained_at: new Date().toISOString(),
+      ...configuredOrigins(),
     },
     response
   );
@@ -176,7 +184,7 @@ const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 /** True when this process can listen for the redirect itself */
 export function isLoopbackRedirect(redirectUri: string): boolean {
   const url = new URL(redirectUri);
-  return url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+  return url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname);
 }
 
 /**
@@ -326,9 +334,38 @@ export interface LoginIo {
 const who = (login: StoredLogin): string =>
   `${login.employee_name ?? 'an employee'} (employee ${login.employee_id})`;
 
+/**
+ * The new token is sent to the configured API to learn whose it is, and the
+ * code to the configured token endpoint. Those settings can come from a `.env`
+ * file in the current directory, so anything other than Factorial's own hosts
+ * is shown and confirmed before a browser opens.
+ */
+async function confirmDestinations(io: LoginIo): Promise<void> {
+  const configured = configuredOrigins();
+  const unusual: string[] = [];
+  if (configured.token_origin !== FACTORIAL_ORIGINS.token_origin) {
+    unusual.push(`  token endpoint: ${configured.token_origin} (FACTORIAL_OAUTH_TOKEN_URL)`);
+  }
+  if (configured.api_origin !== FACTORIAL_ORIGINS.api_origin) {
+    unusual.push(`  API: ${configured.api_origin} (FACTORIAL_BASE_URL)`);
+  }
+  if (unusual.length === 0) return;
+  io.print("This login is configured to use addresses other than Factorial's own:");
+  io.print(unusual.join('\n'));
+  io.print(
+    'Your login would be sent there. These settings may come from a .env file in the ' +
+      'current directory. Continue only if you set them yourself.'
+  );
+  const answer = await io.readLine('Type "yes" to log in against these addresses: ');
+  if (answer.trim().toLowerCase() !== 'yes') {
+    throw new FactorialError('Login cancelled. Nothing was sent.');
+  }
+}
+
 /** The login command */
 export async function runLogin(io: LoginIo): Promise<StoredLogin> {
   const settings = loginSettings();
+  await confirmDestinations(io);
   const { verifier, challenge } = createPkce();
   const state = randomBytes(24).toString('base64url');
   const authorizeUrl = buildAuthorizeUrl(settings, state, challenge);
@@ -376,7 +413,12 @@ export async function runLogout(io: Pick<LoginIo, 'print'>): Promise<void> {
     const form = new URLSearchParams({ client_id: login.client_id, token: login.refresh_token });
     const secret = process.env.FACTORIAL_OAUTH_CLIENT_SECRET?.trim();
     if (secret) form.set('client_secret', secret);
-    const response = await fetch(oauthEndpoints().revoke, {
+    const revokeUrl = oauthEndpoints().revoke;
+    // The token goes back only to the host that issued it.
+    if (new URL(revokeUrl).origin !== issuedOrigins(login).token_origin) {
+      throw new Error('revoke endpoint is not the issuer');
+    }
+    const response = await fetch(revokeUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form.toString(),

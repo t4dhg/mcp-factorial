@@ -25,6 +25,7 @@ vi.mock('dotenv', async () => {
 // Import after mocking
 const { loadEnv, getApiKey, getApiVersion, getBaseUrl, getConfig, isDebugEnabled, debug } =
   await import('../../config.js');
+const { ConfigurationError } = await import('../../errors.js');
 
 describe('Config Module', () => {
   beforeEach(() => {
@@ -137,6 +138,27 @@ describe('Config Module', () => {
     it('should return custom base URL from environment', () => {
       process.env.FACTORIAL_BASE_URL = 'https://custom.api.com';
       expect(getBaseUrl()).toBe('https://custom.api.com');
+    });
+
+    it('refuses a base URL over plain http on a remote host', () => {
+      process.env.FACTORIAL_BASE_URL = 'http://api.example.test/resources';
+      expect(() => getBaseUrl()).toThrow(ConfigurationError);
+      expect(() => getBaseUrl()).toThrow(/FACTORIAL_BASE_URL/);
+      expect(() => getBaseUrl()).toThrow(/https/);
+    });
+
+    it.each(['http://127.0.0.1:1', 'http://localhost:3000/x', 'http://[::1]:3000'])(
+      'accepts plain http on the loopback address %s',
+      url => {
+        process.env.FACTORIAL_BASE_URL = url;
+        expect(getBaseUrl()).toBe(url);
+      }
+    );
+
+    it('names the variable when the base URL is not a URL', () => {
+      process.env.FACTORIAL_BASE_URL = 'api.example.test';
+      expect(() => getBaseUrl()).toThrow(ConfigurationError);
+      expect(() => getBaseUrl()).toThrow(/FACTORIAL_BASE_URL/);
     });
 
     it('should construct default base URL with API version', () => {

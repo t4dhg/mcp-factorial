@@ -229,6 +229,8 @@ describe('login', () => {
         employee_name: 'Test Person',
         email: 'person@example.com',
         scope: 'read write time_off',
+        token_origin: 'https://id.factorialhr.com',
+        api_origin: 'https://api.factorialhr.com',
       });
       if (process.platform !== 'win32') {
         expect(statSync(tokenFilePath()).mode & 0o777).toBe(0o600);
@@ -411,6 +413,65 @@ describe('login', () => {
     });
   });
 
+  describe("logging in against addresses other than Factorial's own", () => {
+    const io = (
+      answers: string[],
+      seen: { prompts: string[]; opened: string[]; printed: string[] }
+    ) => ({
+      print: (line: string) => void seen.printed.push(line),
+      openBrowser: (url: string) => void seen.opened.push(url),
+      readLine: async (prompt: string) => {
+        seen.prompts.push(prompt);
+        const answer = answers.shift() ?? '';
+        if (answer !== 'PASTE') return answer;
+        const state = new URL(seen.opened[0]).searchParams.get('state');
+        return `https://t4dhg.github.io/mcp-factorial/callback/?code=code-1&state=${state}`;
+      },
+    });
+
+    it('sends nothing unless the person confirms the addresses', async () => {
+      routeFetch();
+      process.env.FACTORIAL_BASE_URL = 'https://api.example.test/resources';
+      const seen = { prompts: [] as string[], opened: [] as string[], printed: [] as string[] };
+
+      await expect(runLogin(io(['no'], seen))).rejects.toThrow(/Nothing was sent/);
+
+      expect(seen.printed.join('\n')).toContain('https://api.example.test');
+      expect(seen.printed.join('\n')).toContain('FACTORIAL_BASE_URL');
+      expect(seen.prompts).toHaveLength(1);
+      expect(seen.opened).toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(existsSync(tokenFilePath())).toBe(false);
+    });
+
+    it('names a token endpoint on another host before anything is sent', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_TOKEN_URL = 'https://id.example.test/api/oauth/token';
+      const seen = { prompts: [] as string[], opened: [] as string[], printed: [] as string[] };
+
+      await expect(runLogin(io([''], seen))).rejects.toThrow(/Nothing was sent/);
+
+      expect(seen.printed.join('\n')).toContain('https://id.example.test');
+      expect(seen.printed.join('\n')).toContain('FACTORIAL_OAUTH_TOKEN_URL');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('goes ahead once confirmed, and binds the login to those addresses', async () => {
+      routeFetch();
+      process.env.FACTORIAL_BASE_URL = 'https://api.example.test/resources';
+      const seen = { prompts: [] as string[], opened: [] as string[], printed: [] as string[] };
+
+      const login = await runLogin(io(['yes', 'PASTE'], seen));
+
+      expect(login.employee_id).toBe('2');
+      expect(seen.prompts).toHaveLength(2);
+      expect(readStoredLogin()).toMatchObject({
+        token_origin: 'https://id.factorialhr.com',
+        api_origin: 'https://api.example.test',
+      });
+    });
+  });
+
   describe('logout', () => {
     const stored = {
       version: 1 as const,
@@ -443,6 +504,28 @@ describe('login', () => {
       writeStoredLogin(stored);
       const printed: string[] = [];
       await runLogout({ print: line => printed.push(line) });
+      expect(existsSync(tokenFilePath())).toBe(false);
+      expect(printed.join('\n')).toContain('could not be revoked');
+    });
+
+    it('deletes the file without sending the token to a plain http revoke address', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_REVOKE_URL = 'http://id.example.test/api/oauth/revoke';
+      writeStoredLogin(stored);
+      const printed: string[] = [];
+      await runLogout({ print: line => printed.push(line) });
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(existsSync(tokenFilePath())).toBe(false);
+      expect(printed.join('\n')).toContain('could not be revoked');
+    });
+
+    it('does not send the token to a revoke address on another host', async () => {
+      routeFetch();
+      process.env.FACTORIAL_OAUTH_REVOKE_URL = 'https://id.example.test/api/oauth/revoke';
+      writeStoredLogin(stored);
+      const printed: string[] = [];
+      await runLogout({ print: line => printed.push(line) });
+      expect(mockFetch).not.toHaveBeenCalled();
       expect(existsSync(tokenFilePath())).toBe(false);
       expect(printed.join('\n')).toContain('could not be revoked');
     });
