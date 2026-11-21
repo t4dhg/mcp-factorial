@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [13.0.2] - 2026-11-21
+
 ### Security
 
 Three smaller follow-ups to 13.0.1, all about a `.env` file the server found by itself rather than one named by `ENV_FILE_PATH`.
